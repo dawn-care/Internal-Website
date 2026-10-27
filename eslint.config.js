@@ -7,7 +7,8 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // jumpscare is a separate project (served at /game) and isn't held to the site's lint rules.
+  globalIgnores(['dist', 'jumpscare']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

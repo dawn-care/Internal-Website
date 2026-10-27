@@ -357,6 +357,14 @@ Rules (both themes):
   navigable, visible focus rings (focus token).
 - Color is never the only signal: every badge/tag also has a text label.
 
+## /game (jumpscare)
+- jumpscare/ is a standalone trivia game, unrelated to D.A.W.N. It is not part of the
+  React app (no nav link, no Layout, no design tokens). vite.game.config.ts builds it
+  with the site's own dependencies into dist/game (base "/game/") as the last step of
+  `npm run build`; vercel.json rewrites /game and /game/ to /game/index.html (before the
+  SPA rewrite). `npm run dev:game` serves it at localhost:5173/game/. It's excluded
+  from the site's lint config but type-checked by `tsc -b`.
+
 ## Conventions
 - src/pages/* for routes, src/components/* for shared UI, src/lib/* for non-UI logic.
 - Keep Drive API code isolated in src/lib/drive so it can be swapped for a build-time
