@@ -358,8 +358,13 @@ Rules (both themes):
 - Color is never the only signal: every badge/tag also has a text label.
 
 ## /game (jumpscare)
-- jumpscare/ is a standalone trivia game, unrelated to D.A.W.N. It is not part of the
-  React app (no nav link, no Layout, no design tokens). vite.game.config.ts builds it
+- jumpscare/ is a standalone trivia game, unrelated to D.A.W.N. After 5 questions it turns
+  into a first-person walk through a house (jumpscare/src/house: a canvas raycaster with
+  drawn textures; all its sound is synthesized with Web Audio, no new dependencies). The
+  trivia itself has no jumpscares; the house does. Memories (paintings) and door riddles live
+  in jumpscare/src/house/story.ts and are placed by key in the map in map.ts. The last door
+  leads outside to the fog and a giant; reaching you there is the (current) ending. It is
+  not part of the React app (no nav link, no Layout, no design tokens). vite.game.config.ts builds it
   with the site's own dependencies into dist/game (base "/game/") as the last step of
   `npm run build`; vercel.json rewrites /game and /game/ to /game/index.html (before the
   SPA rewrite). `npm run dev:game` serves it at localhost:5173/game/. It's excluded

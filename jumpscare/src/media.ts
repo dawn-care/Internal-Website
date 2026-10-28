@@ -1,10 +1,15 @@
 // Files are picked up at build time. Restart the dev server after adding or renaming them.
-const images = Object.values(
-  import.meta.glob("../media/*.{png,jpg,jpeg,gif,webp,svg}", {
-    eager: true,
-    query: "?url",
-    import: "default",
-  }) as Record<string, string>,
+// The house hangs some of these on its walls as paintings (see house/story.ts).
+const imageFiles = import.meta.glob("../media/*.{png,jpg,jpeg,gif,webp,svg}", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+
+const images = Object.values(imageFiles);
+
+const imagesByName = new Map(
+  Object.entries(imageFiles).map(([path, url]) => [path.slice(path.lastIndexOf("/") + 1), url]),
 );
 
 // The one sound in the jumpscare folder itself, played while an image shows.
@@ -21,4 +26,9 @@ export const jumpscareSound: string | null = sounds[0] ?? null;
 export function randomImage(): string | null {
   if (images.length === 0) return null;
   return images[Math.floor(Math.random() * images.length)];
+}
+
+// The URL of a file in media/, by its file name (e.g. "ashton.jpg").
+export function imageByName(name: string): string | null {
+  return imagesByName.get(name) ?? null;
 }
