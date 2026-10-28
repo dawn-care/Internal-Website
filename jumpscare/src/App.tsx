@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchQuestion, type Question } from "./trivia";
+import { nextQuestion, takeQueuedQuestion, type Question } from "./trivia";
 import { jumpscareSound, randomImage } from "./media";
 
 const JUMPSCARE_MS = 3000;
@@ -15,12 +15,18 @@ export default function App() {
   const loadQuestion = useCallback(async () => {
     // Guards against double loads (React dev mode, fast clicks), which the API rate-limits.
     if (loading.current) return;
-    loading.current = true;
-    setQuestion(null);
     setSelected(null);
     setError(null);
+    // Usually a question is already queued, so swap it in without a loading state.
+    const queued = takeQueuedQuestion();
+    if (queued) {
+      setQuestion(queued);
+      return;
+    }
+    loading.current = true;
+    setQuestion(null);
     try {
-      setQuestion(await fetchQuestion());
+      setQuestion(await nextQuestion());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load a question");
     } finally {
