@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { nextQuestion, takeQueuedQuestion, type Question } from "./trivia";
-import { jumpscareSound, randomImage } from "./media";
+import { fetchQuestion, type Question } from "./trivia";
+import { randomImage, randomSound } from "./media";
 
 const JUMPSCARE_MS = 3000;
 
@@ -8,25 +8,21 @@ export default function App() {
   const [question, setQuestion] = useState<Question | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // undefined: no jumpscare showing. null: showing, but the media folder has no images.
-  const [jumpscare, setJumpscare] = useState<string | null | undefined>(undefined);
+  // undefined: no jumpscare showing. A null image or sound means its folder is empty.
+  const [jumpscare, setJumpscare] = useState<
+    { image: string | null; sound: string | null } | undefined
+  >(undefined);
   const loading = useRef(false);
 
   const loadQuestion = useCallback(async () => {
     // Guards against double loads (React dev mode, fast clicks), which the API rate-limits.
     if (loading.current) return;
-    setSelected(null);
-    setError(null);
-    // Usually a question is already queued, so swap it in without a loading state.
-    const queued = takeQueuedQuestion();
-    if (queued) {
-      setQuestion(queued);
-      return;
-    }
     loading.current = true;
     setQuestion(null);
+    setSelected(null);
+    setError(null);
     try {
-      setQuestion(await nextQuestion());
+      setQuestion(await fetchQuestion());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load a question");
     } finally {
@@ -47,7 +43,7 @@ export default function App() {
   function answer(choice: string) {
     if (!question || selected) return;
     setSelected(choice);
-    if (choice !== question.correctAnswer) setJumpscare(randomImage());
+    if (choice !== question.correctAnswer) setJumpscare({ image: randomImage(), sound: randomSound() });
   }
 
   function answerClass(choice: string) {
@@ -98,9 +94,9 @@ export default function App() {
 
       {jumpscare !== undefined && (
         <div className="jumpscare">
-          {jumpscare === null ? <p>WRONG!</p> : <img src={jumpscare} alt="" />}
+          {jumpscare.image === null ? <p>WRONG!</p> : <img src={jumpscare.image} alt="" />}
           {/* Unmounting with the overlay stops the sound after the 3 seconds. */}
-          {jumpscareSound && <audio src={jumpscareSound} autoPlay />}
+          {jumpscare.sound && <audio src={jumpscare.sound} autoPlay />}
         </div>
       )}
     </main>
