@@ -6,7 +6,7 @@
     { "source": "/((?!api/|@|.*\\.).*)", "destination": "/index.html" }
   ],
   "functions": {
-    "api/game.ts": { "includeFiles": "dist/game/index.html" }
+    "api/game.ts": { "includeFiles": "api/_game/index.html" }
   },
   "headers": [
     {

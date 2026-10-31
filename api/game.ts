@@ -4,7 +4,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getSession } from './_lib/session.js'
 
 const NOT_FOUND_HTML = '<!doctype html><title>Not found</title><p>Not found.</p>'
-const GAME_INDEX_PATH = join(process.cwd(), 'dist/game/index.html')
+// Moved here from dist/game/index.html by scripts/finalize-game-build.mjs: Vercel serves
+// everything under dist/ as a public static file, which would let anyone reach the game
+// directly (and bypass the check below) by requesting that path. Living outside dist/
+// means this file is only reachable through this function.
+const GAME_INDEX_PATH = join(process.cwd(), 'api/_game/index.html')
 
 /**
  * GET /game and /game/. Gated so only signed-in team members (the only people with a
