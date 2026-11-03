@@ -1,12 +1,17 @@
 import { shuffle } from "./trivia";
 
 // Files are picked up at build time. Restart the dev server after adding or renaming them.
-const images = Object.values(
-  import.meta.glob("../media/*.{png,jpg,jpeg,gif,webp,svg}", {
-    eager: true,
-    query: "?url",
-    import: "default",
-  }) as Record<string, string>,
+// The house hangs some of these on its walls as paintings (see house/story.ts).
+const imageFiles = import.meta.glob("../media/*.{png,jpg,jpeg,gif,webp,svg}", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+
+const images = Object.values(imageFiles);
+
+const imagesByName = new Map(
+  Object.entries(imageFiles).map(([path, url]) => [path.slice(path.lastIndexOf("/") + 1), url]),
 );
 
 // Played while an image shows.
@@ -38,3 +43,8 @@ function shuffleBag(items: string[]): () => string | null {
 
 export const randomImage = shuffleBag(images);
 export const randomSound = shuffleBag(sounds);
+
+// The URL of a file in media/, by its file name (e.g. "ashton.jpg").
+export function imageByName(name: string): string | null {
+  return imagesByName.get(name) ?? null;
+}
