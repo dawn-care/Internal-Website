@@ -15,7 +15,7 @@ After 5 questions it stops being trivia. "Can you remember your life?" has only 
 - **The house:** tables with candles, chairs, a rocking chair that rocks by itself, a ticking grandfather clock, bookshelves, and claw marks torn into the walls and doors.
 - **Atmosphere:** swinging, creaking ceiling lamps, fog and the sea outside every window, footsteps that sometimes run up behind you, and a low drone with distant knocks, creaks, whispers and the house groaning.
 
-The house is a hand-written raycaster on a canvas, with procedurally drawn textures. Every sound in it is synthesized with the Web Audio API, so it needs no extra files or dependencies.
+The house is a hand-written raycaster on a canvas, with procedurally drawn textures. Its footsteps, ambience and other sounds are synthesized with the Web Audio API, so they need no extra files or dependencies.
 
 ### Adding memories and riddles
 
@@ -32,4 +32,4 @@ npm run dev      # localhost:5173
 
 From the site root, `npm run dev:game` serves it at localhost:5173/game/. In dev, localhost:5173/game/#house skips straight to the house, and the browser console can move things around through `window.__house` (for example `__house.player.x = 22`).
 
-The jumpscare sound is the one sound file (mp3, wav or ogg) directly in this folder, next to `package.json`. The trivia API allows one request every 5 seconds, so a new question can take a few seconds to load if you click through quickly.
+Each jumpscare plays a random sound from `sounds/` (mp3, wav or ogg) with a random image from `media/`. On the deployed site, `/game` is only served to signed-in team members. The trivia API allows one request every 5 seconds, so a new question can take a few seconds to load if you click through quickly.
