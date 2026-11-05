@@ -363,8 +363,10 @@ Rules (both themes):
   drawn textures; its ambient sound is synthesized with Web Audio, no new dependencies). The
   trivia itself has no jumpscares; the house does, each with a random image from
   jumpscare/media and a random sound from jumpscare/sounds. Memories (paintings) and door riddles live
-  in jumpscare/src/house/story.ts and are placed by key in the map in map.ts. The last door
-  leads outside to the fog and a giant; reaching you there is the (current) ending. It is
+  in jumpscare/src/house/story.ts and are placed by key in the map in map.ts. Door 1 leads down
+  to a basement (the floating head), door 2 to the east wing (the pale thing), and the double
+  door, whose answer is in the east wing, leads outside to the fog and a giant; reaching you
+  there is the (current) ending. jumpscare/CLAUDE.md has more on the game itself. It is
   not part of the React app (no nav link, no Layout, no design tokens). vite.game.config.ts builds it
   with the site's own dependencies into dist/game (base "/game/") as the last step of
   `npm run build`. It's signed-in only: scripts/finalize-game-build.mjs moves the built

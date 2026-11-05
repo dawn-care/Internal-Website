@@ -170,6 +170,101 @@ export function playGiantStep(volume: number, pan: number) {
   rumble.stop(t + 1.3);
 }
 
+// Quick, wet breaths in through the nose, and one out.
+export function playSniff(volume: number, pan: number, muffled: boolean) {
+  if (volume < 0.01) return;
+  const a = getAudio();
+  const dest = placed(a, volume, pan, muffled);
+  let t = a.ctx.currentTime;
+  const sniffs = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < sniffs; i++) {
+    const breath = noiseSource(a);
+    breath
+      .connect(filter(a, "bandpass", rand(1900, 2900), 3))
+      .connect(envelope(a, t, 0.06, 0.4, 0.07))
+      .connect(dest);
+    breath.start(t, rand(0, 1.5));
+    breath.stop(t + 0.16);
+    t += rand(0.17, 0.25);
+  }
+  const out = noiseSource(a);
+  out.connect(filter(a, "lowpass", 700)).connect(envelope(a, t + 0.1, 0.05, 0.3, 0.3)).connect(dest);
+  out.start(t + 0.1, rand(0, 1.5));
+  out.stop(t + 0.5);
+}
+
+// A hand landing on the floor, and something long dragging after it.
+export function playCrawl(volume: number, pan: number, muffled: boolean) {
+  if (volume < 0.01) return;
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const dest = placed(a, volume, pan, muffled);
+  thump(a, dest, t, rand(70, 100), 40, 0.3);
+  const drag = noiseSource(a);
+  drag.connect(filter(a, "lowpass", 800)).connect(envelope(a, t + 0.03, 0.06, 0.16, 0.25)).connect(dest);
+  drag.start(t, rand(0, 1.5));
+  drag.stop(t + 0.4);
+}
+
+// Low in the throat, right next to you.
+export function playGrowl(volume: number, pan: number, muffled: boolean) {
+  if (volume < 0.01) return;
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const dest = placed(a, volume, pan, muffled);
+  const throat = a.ctx.createOscillator();
+  throat.type = "sawtooth";
+  throat.frequency.setValueAtTime(rand(58, 70), t);
+  const rattle = a.ctx.createGain();
+  rattle.gain.value = 0.6;
+  const lfo = a.ctx.createOscillator();
+  lfo.type = "square";
+  lfo.frequency.value = rand(16, 24);
+  const depth = a.ctx.createGain();
+  depth.gain.value = 0.4;
+  lfo.connect(depth).connect(rattle.gain);
+  throat.connect(rattle).connect(filter(a, "lowpass", 420)).connect(envelope(a, t, 0.3, 0.5, 1.2)).connect(dest);
+  throat.start(t);
+  lfo.start(t);
+  throat.stop(t + 1.6);
+  lfo.stop(t + 1.6);
+}
+
+// The pale thing going for you.
+export function playShriek() {
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const swell = envelope(a, t, 0.08, 0.5, 0.6);
+  swell.connect(a.out);
+  for (const frequency of [520, 555, 790]) {
+    const osc = a.ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(frequency, t);
+    osc.frequency.exponentialRampToValueAtTime(frequency * 2.2, t + 0.5);
+    osc.connect(filter(a, "bandpass", 1800, 1)).connect(swell);
+    osc.start(t);
+    osc.stop(t + 0.75);
+  }
+  const rush = noiseSource(a);
+  rush.connect(filter(a, "highpass", 1500)).connect(swell);
+  rush.start(t, rand(0, 1));
+  rush.stop(t + 0.75);
+}
+
+// Your own feet on old wooden stairs, sounding duller the further down they go.
+export function playStairs(down: boolean) {
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const dull = filter(a, "lowpass", down ? 2400 : 700);
+  dull.frequency.linearRampToValueAtTime(down ? 700 : 2400, t + 1);
+  dull.connect(a.out);
+  for (let i = 0; i < 6; i++) {
+    const at = t + i * 0.17;
+    step(a, dull, at, 0.8);
+    if (Math.random() < 0.5) creak(a, dull, at + 0.03, 0.07);
+  }
+}
+
 // The way back in, slammed shut.
 export function playDoorSlam() {
   const a = getAudio();

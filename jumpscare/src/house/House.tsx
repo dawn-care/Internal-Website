@@ -80,7 +80,9 @@ export default function House({ onJumpscare }: { onJumpscare: (image: string | n
       {!overlay && !ended && focus && focus.kind !== "fog" && (
         <button className="house-prompt" onClick={() => gameRef.current?.interact()}>
           {TOUCH ? "" : "E · "}
-          {focus.kind === "painting" ? "Look closer" : "Try the door"}
+          {focus.kind === "painting" && "Look closer"}
+          {focus.kind === "door" && "Try the door"}
+          {focus.kind === "stairs" && (focus.key === "down" ? "Go down the stairs" : "Go back up")}
         </button>
       )}
       {!overlay && !ended && (notice || focus?.kind === "fog") && (

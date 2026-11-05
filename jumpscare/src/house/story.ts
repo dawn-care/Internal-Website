@@ -5,11 +5,13 @@
 export type Painting = {
   image: string | null; // a file in jumpscare/media, or null for a frame of pure black
   memory: string;
+  stone?: boolean; // hangs on the basement's stone instead of wallpaper
 };
 
 export type RiddleDoor = {
   riddle: string;
   answers: string[]; // compared ignoring case, spaces and punctuation
+  stairs?: boolean; // opens onto stairs down to the basement
 };
 
 export const PAINTINGS: Record<string, Painting> = {
@@ -37,11 +39,30 @@ export const PAINTINGS: Record<string, Painting> = {
     memory:
       "My mom scared me so bad one time when she hid in my room. But what I'm looking at isn't her.",
   },
-  // Behind door 1, in the room where the head lives. Its memory opens door 2.
+  // In the basement behind door 1, where the head lives. Its memory opens door 2.
   f: {
+    stone: true,
     image: "Goblin_shark.png",
     memory:
       "I used to play this game called Blue World with my sister. We found a 30-foot shark called Thanatos. But we never found any goblin sharks. I remember it so clearly. Where am I right now?",
+  },
+  l: {
+    stone: true,
+    image: "Mandela_Catalogue.png",
+    memory:
+      "I made it to the third step once, before I ran back up. Grandma laughed and laughed. She said there was nothing down here to be scared of. So who is this?",
+  },
+  // In the east wing behind door 2, where the pale thing lives. How to live with it.
+  k: {
+    image: "scary_face.png",
+    memory:
+      "Dad told me what to do if a strange dog ever followed me home. Don't run. Don't walk up to it. Stand still and let it smell you until it gets bored. Why am I remembering that now?",
+  },
+  // In the east wing's far room. Its memory opens the double door.
+  j: {
+    image: "images (1).jpeg",
+    memory:
+      "This isn't her. But it's how her face looked at the end, in the dark of that hallway. She never once called me by my name. \"Minnow,\" she'd say. \"Come down here, Minnow.\"",
   },
   g: {
     image: "scary-ocean-photos-9-65646c1f021ec.jpg",
@@ -65,16 +86,24 @@ export const DOORS: Record<string, RiddleDoor> = {
     riddle:
       'Someone has scratched words into the wood:\n\n"We shared a dorm, but never a comb.\nWhat was my name?"',
     answers: ["ashton"],
+    stairs: true,
   },
-  // The way out of the house. It leads outside, into the fog.
+  // Leads to the east wing.
   "2": {
     riddle:
       'Carved under the handle:\n\n"Thirty feet long, it swam through the blue world\nyou shared with your sister.\nWhat did you call it?"',
     answers: ["thanatos"],
   },
+  // The way out of the house, into the fog. The answer is behind door 2, so you find this one
+  // early and have to come back to it.
+  "3": {
+    riddle:
+      'Carved across both doors:\n\n"She never once called you by your name.\nWhat did she call you?"',
+    answers: ["minnow"],
+  },
 };
 
-// The floating head that lives behind door 1.
+// The floating head that lives in the basement.
 export const HEAD_IMAGE = "fzi0qw3ahctc1.jpg";
 
 export const LOCKED_MESSAGE = "It's locked. It won't budge.";

@@ -11,6 +11,7 @@ import {
   RIDDLE_DOOR,
   TEX,
   WINDOW,
+  WOOD,
   type Texture,
   type Textures,
 } from "./textures";
@@ -249,6 +250,7 @@ export function render(
     const ambient = view.ambient * fade;
     const below = y > horizon;
     const texture = below ? textures.floor : textures.ceiling;
+    const basementTexture = below ? textures.basementFloor : textures.basementCeiling;
     const hidden = fogAmount(view, distance);
     const outdoorLight = OUTDOOR_AMBIENT * view.outside * fade;
     let fx = view.x + distance * leftX;
@@ -269,7 +271,8 @@ export function render(
         pixels[i] = mix(color, fog, hidden);
       } else {
         const warm = lampLight(lamps, index, fx, fy);
-        pixels[i] = shade(texture[ty * TEX + tx], lit * spot[i] + ambient, warm);
+        const surface = fy >= world.basementTop ? basementTexture : texture;
+        pixels[i] = shade(surface[ty * TEX + tx], lit * spot[i] + ambient, warm);
       }
       fx += stepX;
       fy += stepY;
@@ -332,6 +335,12 @@ export function render(
     let texture = textures.walls[cell];
     if (outdoors && cell !== FOG_WALL && cell !== DOOR && cell !== RIDDLE_DOOR) {
       texture = cell === WINDOW ? textures.darkWindow : textures.siding;
+    }
+    // The sides of an open doorway: the door itself, swung flat against one, and the frame.
+    const openDoor = world.openDoors.get(fromIndex);
+    if (openDoor) {
+      const facing = side === 0 ? stepX : stepY;
+      texture = textures.walls[facing === openDoor.side ? openDoor.leaf : WOOD];
     }
     const fade = falloff(distance) * (side === 1 ? 0.75 : 1);
     const lit = view.light * fade;

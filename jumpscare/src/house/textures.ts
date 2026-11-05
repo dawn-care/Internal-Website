@@ -19,13 +19,25 @@ export type Textures = {
   ground: Texture; // outside
   siding: Texture; // the house's walls, seen from outside
   darkWindow: Texture; // its windows, seen from outside
+  basementFloor: Texture;
+  basementCeiling: Texture;
   figure: Texture;
+  pale: PaleTextures;
   lamp: Texture;
   head: Texture;
   table: Texture;
   chair: Texture;
   rocker: Texture;
   clock: [Texture, Texture]; // pendulum swung left, swung right
+};
+
+// The pale thing from each side. Two of each, for its limbs on alternate steps.
+export type PaleTextures = {
+  front: [Texture, Texture];
+  back: [Texture, Texture];
+  right: [Texture, Texture]; // its head toward the right of the screen
+  left: [Texture, Texture];
+  reared: Texture; // up on its hind legs, sniffing
 };
 
 // The color of the fog outside, before it's dimmed for the light.
@@ -36,7 +48,7 @@ export const MESSAGES = [
   "WHY DO\nYOU\nMATTER",
   "YOU\nFORGOT",
   "REMEMBER",
-  "DON'T\nLET IT\nSEE YOU",
+  "DON'T\nRUN",
   "WHO\nARE\nYOU",
 ];
 
@@ -51,7 +63,12 @@ export const RIDDLE_DOOR = 5;
 export const CLAWED = 6;
 export const BOOKSHELF = 7;
 export const FOG_WALL = 8;
-export const WRITING = 9; // one per message
+export const STONE = 9;
+export const STAIRS_DOWN = 10;
+export const STAIRS_UP = 11;
+export const DOUBLE_DOOR_LEFT = 12;
+export const DOUBLE_DOOR_RIGHT = 13;
+export const WRITING = 14; // one per message
 const PAINTING = WRITING + MESSAGES.length; // one per painting
 
 export function paintingTexture(key: string) {
@@ -220,6 +237,167 @@ function doorBase(g: CanvasRenderingContext2D, rand: () => number) {
   }
 }
 
+// One leaf of the double doors: tall boards and iron bands, with words scratched across.
+// Drawn as the left leaf; `mirror` makes it the right one.
+function doubleDoor(mirror: boolean): Draw {
+  return (g, rand) => {
+    g.save();
+    if (mirror) {
+      g.translate(TEX, 0);
+      g.scale(-1, 1);
+    }
+    g.fillStyle = "#241309";
+    g.fillRect(0, 0, TEX, TEX);
+    for (let x = 7; x < TEX; x += 20) {
+      g.fillStyle = `rgba(${50 + rand() * 25},${28 + rand() * 12},14,0.5)`;
+      g.fillRect(x, 0, 20, TEX);
+      g.fillStyle = "#0e0703";
+      g.fillRect(x, 0, 1.5, TEX);
+    }
+    g.fillStyle = "#120904";
+    g.fillRect(0, 0, TEX, 7);
+    g.fillRect(0, 0, 7, TEX);
+    for (const y of [22, 100]) {
+      g.fillStyle = "#17171a";
+      g.fillRect(7, y, TEX - 7, 9);
+      g.fillStyle = "#3b3b40";
+      for (let x = 14; x < TEX; x += 18) g.fillRect(x, y + 3, 3, 3);
+    }
+    g.fillStyle = "#040201";
+    g.fillRect(TEX - 2, 0, 2, TEX);
+    g.strokeStyle = "#7a6830";
+    g.lineWidth = 2.5;
+    g.beginPath();
+    g.arc(TEX - 16, 72, 7, 0, Math.PI * 2);
+    g.stroke();
+    g.strokeStyle = "rgba(225,200,170,0.4)";
+    g.lineWidth = 1;
+    for (let line = 0; line < 3; line++) {
+      let x = 18;
+      const y = 40 + line * 9;
+      g.beginPath();
+      g.moveTo(x, y);
+      while (x < TEX - 4) {
+        x += 2 + rand() * 3;
+        g.lineTo(x, y + (rand() - 0.5) * 5);
+        if (rand() < 0.15) {
+          x += 4;
+          g.moveTo(x, y);
+        }
+      }
+      g.stroke();
+    }
+    g.restore();
+    grain(g, rand, 12);
+  };
+}
+
+// Steps going away from you through a dark opening, each one narrower. `lit` gives a step's
+// brightness, from step 0 (the nearest) up.
+function steps(g: CanvasRenderingContext2D, lit: (step: number) => number) {
+  let y = TEX;
+  let height = 16;
+  let inset = 0;
+  for (let step = 0; step < 8; step++) {
+    const shade = lit(step);
+    g.fillStyle = `rgb(${shade},${shade * 0.72},${shade * 0.48})`;
+    g.fillRect(20 + inset, y - height, 88 - inset * 2, height - 2);
+    y -= height;
+    height *= 0.84;
+    inset += 4;
+  }
+}
+
+// The door to the basement, swung open onto stairs going down into the dark.
+function stairsDown(g: CanvasRenderingContext2D, rand: () => number) {
+  wallpaper(g, rand);
+  g.fillStyle = "#020202";
+  g.fillRect(20, 6, 88, 122);
+  steps(g, (step) => Math.max(4, 58 - step * 9));
+  g.fillStyle = "#2a170c";
+  g.beginPath();
+  g.moveTo(108, 6);
+  g.lineTo(86, 20);
+  g.lineTo(86, 120);
+  g.lineTo(108, 128);
+  g.closePath();
+  g.fill();
+  g.fillStyle = "#8a6a2a";
+  g.beginPath();
+  g.arc(90, 68, 2.5, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = "#170c05";
+  g.lineWidth = 8;
+  g.strokeRect(18, 4, 92, 128);
+  grain(g, rand, 10);
+}
+
+// The way back up: steps rising out of the basement toward a little light.
+function stairsUp(g: CanvasRenderingContext2D, rand: () => number) {
+  stone(g, rand);
+  g.fillStyle = "#050403";
+  g.fillRect(20, 6, 88, 122);
+  g.fillStyle = "#6b4a22";
+  g.fillRect(46, 14, 36, 34);
+  steps(g, (step) => 26 + step * 7);
+  g.strokeStyle = "#141210";
+  g.lineWidth = 8;
+  g.strokeRect(18, 4, 92, 128);
+  grain(g, rand, 10);
+}
+
+// Rough, damp stone blocks.
+function stone(g: CanvasRenderingContext2D, rand: () => number) {
+  g.fillStyle = "#0e0d0b";
+  g.fillRect(0, 0, TEX, TEX);
+  for (let y = 0, row = 0; y < TEX; y += 26, row++) {
+    for (let x = row % 2 ? -24 : 0; x < TEX; x += 48) {
+      g.fillStyle = `hsl(40, 6%, ${13 + rand() * 7}%)`;
+      g.fillRect(x + 1, y + 1, 46, 24);
+    }
+  }
+  for (let i = 0; i < 6; i++) {
+    stain(g, rand() * TEX, rand() * TEX, 8 + rand() * 20, "rgba(12,16,8,0.55)");
+  }
+  g.fillStyle = "rgba(10,12,8,0.4)";
+  for (let i = 0; i < 4; i++) g.fillRect(rand() * TEX, 0, 1 + rand() * 2, 20 + rand() * 70);
+  grain(g, rand, 16);
+}
+
+function basementFloor(g: CanvasRenderingContext2D, rand: () => number) {
+  g.fillStyle = "#1e1d19";
+  g.fillRect(0, 0, TEX, TEX);
+  for (let i = 0; i < 8; i++) stain(g, rand() * TEX, rand() * TEX, 8 + rand() * 24, "rgba(6,6,4,0.6)");
+  g.strokeStyle = "rgba(4,4,3,0.7)";
+  g.lineWidth = 1;
+  let x = rand() * TEX;
+  let y = 0;
+  g.beginPath();
+  g.moveTo(x, y);
+  while (y < TEX) {
+    x += (rand() - 0.5) * 16;
+    y += 6 + rand() * 8;
+    g.lineTo(x, y);
+  }
+  g.stroke();
+  grain(g, rand, 16);
+}
+
+// The underside of the floor above: boards and heavy joists.
+function basementCeiling(g: CanvasRenderingContext2D, rand: () => number) {
+  g.fillStyle = "#17110b";
+  g.fillRect(0, 0, TEX, TEX);
+  for (let x = 0; x < TEX; x += 16) {
+    g.fillStyle = "#0c0805";
+    g.fillRect(x, 0, 1, TEX);
+  }
+  g.fillStyle = "#271a10";
+  g.fillRect(0, 48, TEX, 26);
+  g.fillStyle = "#0a0603";
+  g.fillRect(0, 74, TEX, 3);
+  grain(g, rand, 12);
+}
+
 // A curtained window. The glass is painted pure blue here only so it can be found and marked
 // as OUTSIDE afterwards.
 function windowPixels(): Uint8ClampedArray {
@@ -275,9 +453,9 @@ function writing(message: string, seed: number): Texture {
   }, seed);
 }
 
-function painting(image: HTMLImageElement | null): Draw {
+function painting(image: HTMLImageElement | null, wall: Draw): Draw {
   return (g, rand) => {
-    wallpaper(g, rand);
+    wall(g, rand);
     g.fillStyle = "rgba(0,0,0,0.4)";
     g.fillRect(36, 15, 60, 68);
     g.fillStyle = "#5a4418";
@@ -393,6 +571,239 @@ function figure(): Texture {
     else pixels[i + 3] = pixels[i] > 150 ? 230 : 255;
   }
   return new Uint32Array(pixels.buffer);
+}
+
+const PALE = "#aaa496";
+const PALE_DARK = "#716c60";
+const HAIR = "#0a0909";
+const EYE = "#d8ff9c"; // the only color here this green, so sprite() can make it glow
+
+type Pixel = [number, number];
+
+function limb(g: CanvasRenderingContext2D, color: string, width: number, points: Pixel[]) {
+  g.strokeStyle = color;
+  g.lineWidth = width;
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  g.beginPath();
+  g.moveTo(...points[0]);
+  for (const point of points.slice(1)) g.lineTo(...point);
+  g.stroke();
+}
+
+// Long fingers, splayed on the floor from a hand at (x, y).
+function fingers(g: CanvasRenderingContext2D, color: string, x: number, y: number, spread: number) {
+  for (let finger = -2; finger <= 2; finger++) {
+    limb(g, color, 1.5, [
+      [x, y],
+      [x + finger * spread, 127],
+    ]);
+  }
+}
+
+// Long, lank strands falling from around the crown of the head at `top` to around `bottom`.
+function hair(
+  g: CanvasRenderingContext2D,
+  rand: () => number,
+  x0: number,
+  x1: number,
+  top: number,
+  bottom: number,
+  strands: number,
+) {
+  g.strokeStyle = HAIR;
+  g.lineCap = "round";
+  for (let strand = 0; strand < strands; strand++) {
+    let x = x0 + ((x1 - x0) * (strand + rand())) / strands;
+    const fromMiddle = (2 * (x - x0)) / (x1 - x0) - 1;
+    const start = top + fromMiddle * fromMiddle * 12;
+    const end = bottom - rand() * (bottom - top) * 0.25;
+    g.lineWidth = 1 + rand() * 1.5;
+    g.beginPath();
+    g.moveTo(x, start);
+    for (let y = start; y < end; y += 6) {
+      x += (rand() - 0.5) * 2;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+}
+
+function paleSprite(draw: Draw, seed: number): Texture {
+  return sprite(draw, seed, (_r, g) => (g > 235 ? 252 : 255));
+}
+
+// Coming at you on all fours, head low, hair hanging to the floor, eyes showing through it.
+function paleFront(step: number): Texture {
+  return paleSprite((g, rand) => {
+    for (const side of [-1, 1]) {
+      limb(g, PALE_DARK, 8, [
+        [64 + side * 16, 84],
+        [64 + side * 30, 74],
+        [64 + side * 26, 126],
+      ]);
+    }
+    g.fillStyle = PALE_DARK;
+    g.beginPath();
+    g.ellipse(64, 66, 28, 20, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = PALE;
+    g.beginPath();
+    g.ellipse(64, 78, 25, 13, 0, 0, Math.PI * 2);
+    g.fill();
+    for (const side of [-1, 1]) {
+      const reaching = side === (step ? 1 : -1);
+      const handX = 64 + side * (reaching ? 50 : 36);
+      const handY = reaching ? 120 : 114;
+      limb(g, PALE, 8, [
+        [64 + side * 22, 76],
+        [64 + side * (reaching ? 44 : 40), reaching ? 70 : 78],
+        [handX, handY],
+      ]);
+      fingers(g, PALE, handX, handY, 3);
+    }
+    g.fillStyle = PALE;
+    g.beginPath();
+    g.ellipse(64, 92, 11, 13, 0, 0, Math.PI * 2);
+    g.fill();
+    hair(g, rand, 42, 86, 72, 128, 56);
+    g.fillStyle = EYE;
+    g.fillRect(56, 90, 5, 3);
+    g.fillRect(67, 90, 5, 3);
+  }, 30 + step);
+}
+
+// Going away from you: all spine and shoulder blades.
+function paleBack(step: number): Texture {
+  return paleSprite((g) => {
+    for (const side of [-1, 1]) {
+      const reaching = side === (step ? 1 : -1);
+      limb(g, PALE_DARK, 7, [
+        [64 + side * 20, 74],
+        [64 + side * (reaching ? 44 : 38), reaching ? 70 : 78],
+        [64 + side * (reaching ? 46 : 34), 124],
+      ]);
+      limb(g, PALE, 9, [
+        [64 + side * 14, 92],
+        [64 + side * 28, 80],
+        [64 + side * 24, 126],
+      ]);
+    }
+    g.fillStyle = PALE;
+    g.beginPath();
+    g.ellipse(64, 84, 24, 20, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = PALE_DARK;
+    for (let y = 68; y < 102; y += 6) g.fillRect(63, y, 3, 3);
+    for (let rib = 0; rib < 4; rib++) {
+      limb(g, PALE_DARK, 1, [
+        [50, 74 + rib * 6],
+        [60, 77 + rib * 6],
+      ]);
+      limb(g, PALE_DARK, 1, [
+        [78, 74 + rib * 6],
+        [68, 77 + rib * 6],
+      ]);
+    }
+  }, 32 + step);
+}
+
+// Side on, stretched out long, with its head at the right. Far limbs are in shadow.
+function paleSide(step: number, mirror: boolean): Texture {
+  return paleSprite((g, rand) => {
+    if (mirror) {
+      g.translate(TEX, 0);
+      g.scale(-1, 1);
+    }
+    const arm = (color: string, forward: boolean, width: number) => {
+      const handX = forward ? 112 : 82;
+      limb(g, color, width, [
+        [90, 96],
+        [forward ? 104 : 80, 90],
+        [handX, 122],
+      ]);
+      fingers(g, color, handX, 122, 2);
+    };
+    const leg = (color: string, forward: boolean, width: number) => {
+      limb(g, color, width, [
+        [22, 94],
+        [forward ? 38 : 12, 86],
+        [forward ? 36 : 6, 126],
+      ]);
+    };
+    arm(PALE_DARK, step === 1, 4.5);
+    leg(PALE_DARK, step === 0, 5);
+    g.strokeStyle = PALE;
+    g.lineWidth = 15;
+    g.lineCap = "round";
+    g.beginPath();
+    g.moveTo(22, 94);
+    g.quadraticCurveTo(56, 76, 90, 96);
+    g.stroke();
+    limb(g, PALE, 6, [
+      [90, 96],
+      [108, 106],
+    ]);
+    g.fillStyle = PALE;
+    g.beginPath();
+    g.ellipse(112, 108, 8, 7, 0, 0, Math.PI * 2);
+    g.fill();
+    for (let rib = 0; rib < 5; rib++) {
+      limb(g, PALE_DARK, 1, [
+        [50 + rib * 7, 83 + rib],
+        [52 + rib * 7, 93],
+      ]);
+    }
+    arm(PALE, step === 0, 5);
+    leg(PALE, step === 1, 6);
+    hair(g, rand, 98, 122, 94, 128, 24);
+    g.fillStyle = EYE;
+    g.fillRect(114, 107, 4, 2);
+  }, 34 + step);
+}
+
+// Risen to its full height, bent under the ceiling, arms hanging to the floor.
+function paleReared(): Texture {
+  return paleSprite((g, rand) => {
+    limb(g, PALE_DARK, 8, [
+      [54, 74],
+      [50, 126],
+    ]);
+    limb(g, PALE_DARK, 8, [
+      [74, 74],
+      [78, 126],
+    ]);
+    limb(g, PALE, 17, [
+      [64, 34],
+      [64, 80],
+    ]);
+    for (let rib = 0; rib < 5; rib++) {
+      limb(g, PALE_DARK, 1, [
+        [57, 40 + rib * 6],
+        [71, 42 + rib * 6],
+      ]);
+    }
+    for (const side of [-1, 1]) {
+      limb(g, PALE, 5, [
+        [64 + side * 8, 32],
+        [64 + side * 22, 72],
+        [64 + side * 24, 114],
+      ]);
+      fingers(g, PALE, 64 + side * 24, 114, 2.5);
+    }
+    limb(g, PALE, 6, [
+      [64, 34],
+      [64, 24],
+    ]);
+    g.fillStyle = PALE;
+    g.beginPath();
+    g.ellipse(64, 15, 9, 11, 0, 0, Math.PI * 2);
+    g.fill();
+    hair(g, rand, 48, 80, 2, 90, 44);
+    g.fillStyle = EYE;
+    g.fillRect(57, 13, 5, 3);
+    g.fillRect(66, 13, 5, 3);
+  }, 36);
 }
 
 // A shaded bulb on a cord from the ceiling. The bulb glows.
@@ -686,6 +1097,11 @@ export function createTextures(): Textures {
   walls[DOOR] = paint(door, 3);
   walls[WINDOW] = new Uint32Array(windowPixels().buffer);
   walls[RIDDLE_DOOR] = paint(riddleDoor, 3);
+  walls[STONE] = paint(stone, 19);
+  walls[STAIRS_DOWN] = paint(stairsDown, 3);
+  walls[STAIRS_UP] = paint(stairsUp, 19);
+  walls[DOUBLE_DOOR_LEFT] = paint(doubleDoor(false), 3);
+  walls[DOUBLE_DOOR_RIGHT] = paint(doubleDoor(true), 3);
   walls[CLAWED] = paint(clawed, 15);
   walls[BOOKSHELF] = paint(bookshelf, 16);
   walls[FOG_WALL] = fogWall();
@@ -695,12 +1111,13 @@ export function createTextures(): Textures {
   // image stays black.
   PAINTING_KEYS.forEach((key, i) => {
     const seed = 20 + i;
-    const texture = paint(painting(null), seed);
+    const wall = PAINTINGS[key].stone ? stone : wallpaper;
+    const texture = paint(painting(null, wall), seed);
     walls[PAINTING + i] = texture;
     const name = PAINTINGS[key].image;
     if (!name) return;
     loadImage(name, (image) =>
-      texture.set(new Uint32Array(drawPixels(painting(image), seed).buffer)),
+      texture.set(new Uint32Array(drawPixels(painting(image, wall), seed).buffer)),
     );
   });
   const head = new Uint32Array(TEX * TEX);
@@ -713,7 +1130,16 @@ export function createTextures(): Textures {
     ground: paint(ground, 17),
     siding: paint(siding, 18),
     darkWindow: paint(darkWindow, 18),
+    basementFloor: paint(basementFloor, 22),
+    basementCeiling: paint(basementCeiling, 23),
     figure: figure(),
+    pale: {
+      front: [paleFront(0), paleFront(1)],
+      back: [paleBack(0), paleBack(1)],
+      right: [paleSide(0, false), paleSide(1, false)],
+      left: [paleSide(0, true), paleSide(1, true)],
+      reared: paleReared(),
+    },
     lamp: lamp(),
     head,
     table: table(),

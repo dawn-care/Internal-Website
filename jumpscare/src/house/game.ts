@@ -1,4 +1,5 @@
 import {
+  playCrawl,
   playCreakAt,
   playDoorOpen,
   playDoorSlam,
@@ -6,7 +7,11 @@ import {
   playFade,
   playFootstep,
   playGiantStep,
+  playGrowl,
   playRunningBehind,
+  playShriek,
+  playSniff,
+  playStairs,
   playSting,
   playTick,
   startAmbience,
@@ -27,7 +32,15 @@ import {
 } from "./map";
 import { createFrame, planeLength, render, type Frame, type Lamp, type Sprite } from "./raycaster";
 import { HEAD_IMAGE } from "./story";
-import { createTextures, DOOR, FOG, FOG_WALL } from "./textures";
+import {
+  createTextures,
+  DOOR,
+  DOUBLE_DOOR_LEFT,
+  FOG,
+  FOG_WALL,
+  STAIRS_DOWN,
+  STAIRS_UP,
+} from "./textures";
 
 const HEIGHT = 200; // render height in pixels; the canvas scales it up
 const WALK_SPEED = 1.5; // cells per second
@@ -40,6 +53,8 @@ const TOUCH_LOOK = 0.006;
 const TOUCH_WALK = 50; // pixels of drag for full speed
 const RADIUS = 0.22; // how close you can get to a wall
 const FADE_IN_SECONDS = 3;
+const STAIRS_HOLD_MS = 1100; // in the dark, on the way up or down
+const STAIRS_FADE_SECONDS = 0.8;
 const REACH = 1.6; // how close you need to be to a painting or door to use it
 const AMBIENT = 0.045; // how much you can see outside the flashlight's beam
 
@@ -64,6 +79,25 @@ const HEAD_BEAM_RANGE = 7;
 const HEAD_FADE_SECONDS = 2; // of steady light to make it disappear
 const HEAD_RETURN_SECONDS = 2.5; // to fade back in, once out of the light
 const CAUGHT_HOLD_MS = 3000;
+
+// The pale thing behind door 2 is an animal, not a hunter. It wanders with its nose to the
+// floor until it catches your scent, then follows you, slower than you walk and in fits and
+// starts. It stops just out of reach to rear up and sniff at you, and if you stay put it gets
+// bored and goes away for a while. Walk into it, or run while it's near, and it goes for you.
+// It can't take the stairs, so the basement shakes it off.
+const PALE_SPEED = 0.7;
+const PALE_STRIDE = 0.4; // cells per step
+const PALE_SIDE_SCALE = 1.7; // seen side on it's longer than a cell
+const PALE_SCENT = 14; // how far it can smell you from, in cells of walking
+const PALE_LOSES_SCENT = 22; // how far you have to get from it once it's following you
+const PALE_REPATH_SECONDS = 0.75;
+const PALE_SNIFF_DISTANCE = 2.2; // it comes this close, no closer
+const PALE_BITE_DISTANCE = 1.4; // come this close to it and it attacks
+const PALE_SPOOK_DISTANCE = 3.2; // run this close to it and it attacks
+const PALE_LUNGE_WINDUP = 0.45;
+const PALE_LUNGE_SPEED = 5;
+const PALE_LUNGE_SECONDS = 1.1;
+const PALE_LUNGE_CATCH = 0.6;
 
 // Outside, through door 2: open ground, fog, and something forty feet tall walking toward
 // you. It's slow, but wherever you go it's there ahead of you in the fog. When it reaches
@@ -103,6 +137,7 @@ const MOVE_KEYS = new Set([
 export type Focus =
   | { kind: "painting"; key: string }
   | { kind: "door"; key: string | null }
+  | { kind: "stairs"; key: "down" | "up" }
   | { kind: "fog"; key?: undefined };
 
 export type GameEvents = {
@@ -177,6 +212,22 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     opacity: 1,
     goneUntil: 0, // while time is before this, it has faded away
   };
+  const pale = {
+    x: world.paleHome.x,
+    y: world.paleHome.y,
+    state: "roam" as "roam" | "follow" | "sniff" | "windup" | "lunge",
+    path: [] as Point[],
+    scent: [] as Point[], // the way to you, the last time it checked
+    nextScent: 0,
+    heading: Math.PI, // the way it's facing, in radians
+    stride: 0, // distance since its last step
+    step: 0 as 0 | 1, // which limbs are forward
+    stateUntil: 0, // when sniffing, winding up or lunging ends
+    restUntil: 0, // between bursts of crawling it stops where it is
+    crawlUntil: 0,
+    boredUntil: 0, // until then it ignores your scent
+    nextSniff: 0,
+  };
   const giant = { x: 0, y: 0, active: false, nextStep: 0 };
   const lights = world.lights.map((light) => ({
     ...light,
@@ -189,7 +240,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     .filter((prop) => prop.kind === "rocker")
     .map((prop) => ({ prop, phase: rand(0, Math.PI * 2), forward: true }));
   // In dev, the browser console can move things around: __house.player.x = 22.
-  if (import.meta.env.DEV) Object.assign(window, { __house: { player, head, giant, world } });
+  if (import.meta.env.DEV) Object.assign(window, { __house: { player, head, pale, giant, world, openDoor } });
   const keys = new Set<string>();
   let look = 0; // radians of mouse or touch turning since the last frame
   let walkTouch: { id: number; startX: number; startY: number; x: number; y: number } | null =
@@ -198,6 +249,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
 
   let time = 0;
   let wokeAt = 0; // when you last woke up, for the fade in
+  let fadeSeconds = FADE_IN_SECONDS;
   let paused = false;
   let ended = false;
   let lockedBeforePause = false;
@@ -216,7 +268,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
   let nextTick = 1;
   let tock = false;
   let outside = false;
-  let exitDoor: number | null = null; // the door to the outside, while it's open
+  let exitDoors: number[] = []; // the doorway to the outside, while it's open
   let lookingAt: Sprite | null = null;
   let focus: Focus | null = null;
 
@@ -246,9 +298,10 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     const dx = x - player.x;
     const dy = y - player.y;
     const turn = Math.atan2(dy, dx) - player.angle;
+    const sameFloor = y >= world.basementTop === player.y >= world.basementTop;
     return {
       distance: Math.hypot(dx, dy),
-      volume: 1 / (1 + carry * (dx * dx + dy * dy)),
+      volume: sameFloor ? 1 / (1 + carry * (dx * dx + dy * dy)) : 0,
       pan: Math.sin(turn) * 0.8,
       muffled: !lineOfSight(world, player.x, player.y, x, y),
     };
@@ -280,22 +333,22 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     figure.visible = true;
   }
 
-  // Moves the head along its path. Returns false once it has arrived.
-  function followPath(speed: number) {
-    while (head.path.length > 0) {
-      const next = head.path[0];
-      const dx = next.x - head.x;
-      const dy = next.y - head.y;
+  // Moves something along its path. Returns false once it has arrived.
+  function followPath(mover: Point & { path: Point[] }, speed: number) {
+    while (mover.path.length > 0) {
+      const next = mover.path[0];
+      const dx = next.x - mover.x;
+      const dy = next.y - mover.y;
       const distance = Math.hypot(dx, dy);
       if (distance > speed) {
-        head.x += (dx / distance) * speed;
-        head.y += (dy / distance) * speed;
+        mover.x += (dx / distance) * speed;
+        mover.y += (dy / distance) * speed;
         return true;
       }
-      head.x = next.x;
-      head.y = next.y;
+      mover.x = next.x;
+      mover.y = next.y;
       speed -= distance;
-      head.path.shift();
+      mover.path.shift();
     }
     return false;
   }
@@ -307,15 +360,41 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     head.path = [];
   }
 
-  function caught() {
-    events.onJumpscare(headImage);
+  // After it's had you, it leaves you alone for a while.
+  function sendPaleHome() {
+    pale.x = world.paleHome.x;
+    pale.y = world.paleHome.y;
+    pale.state = "roam";
+    pale.path = [];
+    pale.scent = [];
+    pale.restUntil = 0;
+    pale.boredUntil = time + rand(20, 30);
+  }
+
+  // A null image picks a random one.
+  function caught(image: string | null) {
+    events.onJumpscare(image);
     holdUntil = performance.now() + CAUGHT_HOLD_MS;
     player.x = world.spawn.x;
     player.y = world.spawn.y;
     player.angle = 0;
     sendHeadHome();
+    sendPaleHome();
     vanishFigure(rand(20, 35));
     wokeAt = time;
+    fadeSeconds = FADE_IN_SECONDS;
+  }
+
+  // Up or down, in the dark, and out the other end.
+  function takeStairs(index: number) {
+    const landing = world.stairs.get(index)!;
+    playStairs(world.cells[index] === STAIRS_DOWN);
+    player.x = landing.x;
+    player.y = landing.y;
+    player.angle = landing.angle;
+    holdUntil = performance.now() + STAIRS_HOLD_MS;
+    wokeAt = time;
+    fadeSeconds = STAIRS_FADE_SECONDS;
   }
 
   // The head comes back somewhere you can't see it, well away from you.
@@ -376,7 +455,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
         head.y += ((player.y - head.y) / distance) * step;
       } else {
         if (head.path.length === 0) head.path = findPath(world, head, head.lastSeen);
-        if (!followPath(HEAD_CHASE_SPEED * slow * dt)) {
+        if (!followPath(head, HEAD_CHASE_SPEED * slow * dt)) {
           head.state = "search";
           head.searchUntil = time + HEAD_SEARCH_SECONDS;
         }
@@ -384,7 +463,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     } else {
       const searching = head.state === "search";
       if (searching && time > head.searchUntil) head.state = "wander";
-      if (!followPath(HEAD_WANDER_SPEED * slow * dt)) {
+      if (!followPath(head, HEAD_WANDER_SPEED * slow * dt)) {
         const destination = searching
           ? randomDestination(world, head, 1, 3)
           : randomDestination(world, head, 3, 12);
@@ -394,18 +473,165 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
 
     // Too faded to hurt you.
     if (head.opacity > 0.5 && Math.hypot(player.x - head.x, player.y - head.y) < HEAD_CATCH) {
-      caught();
+      caught(headImage);
     }
+  }
+
+  // Turns its body to match how it just moved, and takes a step when it's gone far enough.
+  function paleMoved(fromX: number, fromY: number) {
+    const dx = pale.x - fromX;
+    const dy = pale.y - fromY;
+    const moved = Math.hypot(dx, dy);
+    if (moved === 0) return;
+    pale.heading = Math.atan2(dy, dx);
+    pale.stride += moved;
+    if (pale.stride >= PALE_STRIDE) {
+      pale.stride -= PALE_STRIDE;
+      pale.step = pale.step ? 0 : 1;
+      const sound = hear(pale.x, pale.y);
+      playCrawl(sound.volume, sound.pan, sound.muffled);
+    }
+  }
+
+  function paleSniffs(minSeconds: number, maxSeconds: number) {
+    if (time < pale.nextSniff) return;
+    pale.nextSniff = time + rand(minSeconds, maxSeconds);
+    const sound = hear(pale.x, pale.y);
+    playSniff(sound.volume, sound.pan, sound.muffled);
+  }
+
+  function updatePale(dt: number) {
+    if (outside) return;
+    const dx = player.x - pale.x;
+    const dy = player.y - pale.y;
+    const distance = Math.hypot(dx, dy);
+    const visible = lineOfSight(world, pale.x, pale.y, player.x, player.y);
+    const toYou = Math.atan2(dy, dx);
+
+    if (pale.state === "windup") {
+      pale.heading = toYou;
+      if (time > pale.stateUntil) {
+        pale.state = "lunge";
+        pale.stateUntil = time + PALE_LUNGE_SECONDS;
+      }
+      return;
+    }
+    if (pale.state === "lunge") {
+      pale.heading = toYou;
+      if (visible && distance > 0) {
+        const step = Math.min(distance, PALE_LUNGE_SPEED * dt);
+        pale.x += (dx / distance) * step;
+        pale.y += (dy / distance) * step;
+      }
+      if (Math.hypot(player.x - pale.x, player.y - pale.y) < PALE_LUNGE_CATCH) {
+        caught(null);
+      } else if (time > pale.stateUntil || !visible) {
+        // It missed. It backs off, for now.
+        pale.state = "roam";
+        pale.path = [];
+        pale.restUntil = time + 1.5;
+        pale.boredUntil = time + rand(8, 12);
+      }
+      return;
+    }
+
+    if (visible && (distance < PALE_BITE_DISTANCE || (running && distance < PALE_SPOOK_DISTANCE))) {
+      pale.state = "windup";
+      pale.stateUntil = time + PALE_LUNGE_WINDUP;
+      playShriek();
+      return;
+    }
+
+    if (time > pale.nextScent) {
+      pale.nextScent = time + PALE_REPATH_SECONDS;
+      pale.scent = findPath(world, pale, player);
+    }
+    const reach = pale.state === "roam" ? PALE_SCENT : PALE_LOSES_SCENT;
+    const smelled = time > pale.boredUntil && pale.scent.length > 0 && pale.scent.length <= reach;
+    const fromX = pale.x;
+    const fromY = pale.y;
+
+    if (pale.state === "sniff") {
+      pale.heading = toYou;
+      paleSniffs(1, 1.8);
+      if (distance > PALE_SNIFF_DISTANCE + 0.7 || !visible) {
+        pale.state = "follow";
+        pale.crawlUntil = time + rand(2, 4);
+      } else if (time > pale.stateUntil) {
+        // You've stayed still long enough. You're not interesting.
+        pale.state = "roam";
+        pale.boredUntil = time + rand(15, 25);
+        const away = randomDestination(world, pale, 8, 16);
+        pale.path = away ? findPath(world, pale, away) : [];
+      }
+    } else if (pale.state === "follow") {
+      if (!smelled) {
+        pale.state = "roam";
+        pale.path = [];
+      } else if (visible && distance <= PALE_SNIFF_DISTANCE) {
+        pale.state = "sniff";
+        pale.stateUntil = time + rand(5, 9);
+        pale.path = [];
+        const sound = hear(pale.x, pale.y);
+        playGrowl(sound.volume, sound.pan, sound.muffled);
+      } else if (time < pale.restUntil) {
+        if (visible) pale.heading = toYou;
+        paleSniffs(1.2, 2.2);
+      } else if (time > pale.crawlUntil) {
+        pale.restUntil = time + rand(0.8, 2);
+        pale.crawlUntil = pale.restUntil + rand(2, 4);
+      } else if (visible) {
+        const step = Math.min(PALE_SPEED * dt, distance - PALE_SNIFF_DISTANCE);
+        pale.x += (dx / distance) * step;
+        pale.y += (dy / distance) * step;
+      } else {
+        pale.path = pale.scent;
+        followPath(pale, PALE_SPEED * dt);
+      }
+    } else if (smelled) {
+      pale.state = "follow";
+      pale.restUntil = time + 1; // it lifts its head first
+      pale.crawlUntil = pale.restUntil + rand(2, 4);
+    } else if (time < pale.restUntil) {
+      paleSniffs(2, 4);
+    } else if (!followPath(pale, PALE_SPEED * dt)) {
+      pale.restUntil = time + rand(1.5, 4);
+      const destination = randomDestination(world, pale, 3, 12);
+      if (destination) pale.path = findPath(world, pale, destination);
+    }
+    paleMoved(fromX, fromY);
+  }
+
+  // What it looks like from where you're standing.
+  function paleSprite(): Sprite {
+    const { x, y, state, heading, step } = pale;
+    const look = textures.pale;
+    if (state === "lunge") return { x, y, texture: look.front[0], scale: 1.3, lift: 0.15 };
+    if (state === "sniff" || state === "windup" || (state === "follow" && time < pale.restUntil)) {
+      return { x: x + Math.sin(time * 3) * 0.02, y, texture: look.reared, scale: 1, lift: 0 };
+    }
+    const facing = offCenter(heading - Math.atan2(player.y - y, player.x - x));
+    if (facing < 1) return { x, y, texture: look.front[step], scale: 1, lift: 0 };
+    if (facing > 2.1) return { x, y, texture: look.back[step], scale: 1, lift: 0 };
+    const towardRight =
+      -Math.cos(heading) * Math.sin(player.angle) + Math.sin(heading) * Math.cos(player.angle);
+    return {
+      x,
+      y,
+      texture: (towardRight > 0 ? look.right : look.left)[step],
+      scale: PALE_SIDE_SCALE,
+      lift: (PALE_SIDE_SCALE - 1) / 2,
+    };
   }
 
   // Puts the giant `distance` cells ahead of you, inside the fog.
   function placeGiantAhead(distance: number) {
-    const top = world.height - 26;
+    const top = world.basementTop - 26;
     giant.x = clamp(player.x + Math.cos(player.angle) * distance, 2, world.width - 2);
-    giant.y = clamp(player.y + Math.sin(player.angle) * distance, top, world.height - 2);
+    giant.y = clamp(player.y + Math.sin(player.angle) * distance, top, world.basementTop - 2);
     if (!isOutdoors(world, giant.x, giant.y)) {
       giant.x = world.width / 2;
-      giant.y = world.height - 6;
+      giant.y = world.basementTop - 6;
     }
   }
 
@@ -424,14 +650,19 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     ambience.setOutside(outside);
 
     // Once you're out, the door slams behind you and won't open again.
-    if (exitDoor !== null && outside) {
-      const doorX = (exitDoor % world.width) + 0.5;
-      const doorY = Math.floor(exitDoor / world.width) + 0.5;
-      if (Math.hypot(player.x - doorX, player.y - doorY) > DOOR_SHUTS_AT) {
-        world.cells[exitDoor] = DOOR;
-        exitDoor = null;
+    if (exitDoors.length > 0 && outside) {
+      const clear = exitDoors.every((door) => {
+        const doorX = (door % world.width) + 0.5;
+        const doorY = Math.floor(door / world.width) + 0.5;
+        return Math.hypot(player.x - doorX, player.y - doorY) > DOOR_SHUTS_AT;
+      });
+      if (clear) {
+        for (const door of exitDoors) {
+          world.cells[door] = DOOR;
+          world.openDoors.delete(door);
+        }
+        exitDoors = [];
         lights.forEach((light) => (light.lit = lightSight(world, light)));
-        if (isOutdoors(world, head.x, head.y)) sendHeadHome();
         playDoorSlam();
         if (!reducedMotion) shake = 6;
         giant.active = true;
@@ -536,6 +767,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     }
 
     updateHead(dt);
+    updatePale(dt);
     updateOutside(dt);
     if (ended) return;
 
@@ -578,7 +810,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
   }
 
   function draw() {
-    const fadeIn = Math.min(1, (time - wokeAt) / FADE_IN_SECONDS);
+    const fadeIn = Math.min(1, (time - wokeAt) / fadeSeconds);
     let light = fadeIn;
     if (time < blackoutUntil) light = 0;
     else if (time < flickerUntil && Math.random() < 0.5) light *= rand(0.1, 0.45);
@@ -633,6 +865,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
         opacity: head.opacity,
       });
     }
+    if (!outside) sprites.push(paleSprite());
     if (giant.active) {
       sprites.push({
         x: giant.x,
@@ -680,6 +913,9 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
       const door = world.doors.get(center.index);
       if (painting) next = { kind: "painting", key: painting };
       else if (door) next = { kind: "door", key: door };
+      else if (world.stairs.has(center.index)) {
+        next = { kind: "stairs", key: center.cell === STAIRS_UP ? "up" : "down" };
+      }
       else if (center.cell === DOOR) next = { kind: "door", key: null };
       else if (center.cell === FOG_WALL) next = { kind: "fog" };
     }
@@ -702,13 +938,40 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
   }
 
   function interact() {
-    if (focus && focus.kind !== "fog" && !paused && !ended) events.onInteract(focus);
+    if (!focus || focus.kind === "fog" || paused || ended || performance.now() < holdUntil) return;
+    if (focus.kind === "stairs") takeStairs(frame.center.index);
+    else events.onInteract(focus);
+  }
+
+  function openDoor(key: string) {
+    for (const [index, door] of world.doors) {
+      if (door !== key) continue;
+      world.doors.delete(index);
+      if (world.stairs.has(index)) {
+        world.cells[index] = STAIRS_DOWN;
+        continue;
+      }
+      // Each leaf of a double door swings back against the side of the doorway nearest it.
+      const leaf = world.cells[index];
+      world.openDoors.set(index, { leaf, side: leaf === DOUBLE_DOOR_LEFT ? 1 : -1 });
+      world.cells[index] = 0;
+      // A door with the outside next to it is the way out.
+      const x = index % world.width;
+      const y = Math.floor(index / world.width);
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => isOutdoors(world, x + dx + 0.5, y + dy + 0.5))) {
+        exitDoors.push(index);
+      }
+    }
+    // Light can now spill through the doorway.
+    lights.forEach((light) => (light.lit = lightSight(world, light)));
+    playDoorOpen();
   }
 
   function onKeyDown(e: KeyboardEvent) {
     unlockAudio();
     if (paused || ended) return;
     if (e.code === "KeyE") {
+      e.preventDefault(); // or the E lands in the riddle box that opens
       interact();
       return;
     }
@@ -800,21 +1063,6 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
       if (lockedBeforePause) lockPointer();
     },
     interact,
-    openDoor(key) {
-      for (const [index, door] of world.doors) {
-        if (door !== key) continue;
-        world.doors.delete(index);
-        world.cells[index] = 0;
-        // A door with the outside next to it is the way out.
-        const x = index % world.width;
-        const y = Math.floor(index / world.width);
-        if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => isOutdoors(world, x + dx + 0.5, y + dy + 0.5))) {
-          exitDoor = index;
-        }
-      }
-      // Light can now spill through the doorway.
-      lights.forEach((light) => (light.lit = lightSight(world, light)));
-      playDoorOpen();
-    },
+    openDoor,
   };
 }
