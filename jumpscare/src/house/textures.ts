@@ -1,8 +1,8 @@
 // Every texture is drawn here at startup, so the house needs no image files of its own. The
-// paintings on the walls and the floating head are images from media/.
+// paintings on the walls are images from media/.
 
 import { imageByName } from "../media";
-import { HEAD_IMAGE, PAINTINGS } from "./story";
+import { PAINTINGS } from "./story";
 
 export const TEX = 128;
 
@@ -23,12 +23,30 @@ export type Textures = {
   basementCeiling: Texture;
   figure: Texture;
   pale: PaleTextures;
+  statue: StatueTextures;
+  spider: [Texture, Texture]; // its legs on alternate steps
   lamp: Texture;
-  head: Texture;
   table: Texture;
   chair: Texture;
   rocker: Texture;
   clock: [Texture, Texture]; // pendulum swung left, swung right
+  journal: Texture;
+  dresser: Texture;
+  bed: Texture;
+  coatrack: Texture;
+  boxes: Texture;
+  mannequin: Texture;
+  vase: Texture;
+  barrel: Texture;
+  web: Texture;
+};
+
+// The statue in the basement, in the poses you catch it in. It only moves when you can't see.
+export type StatueTextures = {
+  praying: Texture; // on its plinth, until you first look away
+  plinth: Texture; // what's left behind
+  reaching: Texture;
+  lunging: Texture; // this close, it isn't praying at all
 };
 
 // The pale thing from each side. Two of each, for its limbs on alternate steps.
@@ -41,7 +59,7 @@ export type PaleTextures = {
 };
 
 // The color of the fog outside, before it's dimmed for the light.
-export const FOG: [number, number, number] = [58, 63, 68];
+export const FOG: [number, number, number] = [40, 44, 48];
 
 // In the order the R cells appear in the map, reading left to right, top to bottom.
 export const MESSAGES = [
@@ -831,22 +849,6 @@ function lamp(): Texture {
   return new Uint32Array(pixels.buffer);
 }
 
-// The head's photo with its black background cut away. It glows faintly, so it can be seen
-// coming in the dark.
-function headPixels(image: HTMLImageElement): Uint32Array {
-  const pixels = drawPixels((g) => {
-    const scale = Math.min(TEX / image.width, TEX / image.height);
-    const w = image.width * scale;
-    const h = image.height * scale;
-    g.drawImage(image, (TEX - w) / 2, (TEX - h) / 2, w, h);
-  }, 8);
-  for (let i = 0; i < pixels.length; i += 4) {
-    const light = pixels[i] + pixels[i + 1] + pixels[i + 2];
-    pixels[i + 3] = pixels[i + 3] < 128 || light < 60 ? 0 : 46;
-  }
-  return new Uint32Array(pixels.buffer);
-}
-
 // Something dragged its claws down the wall, tearing the paper down to the plaster.
 function clawed(g: CanvasRenderingContext2D, rand: () => number) {
   wallpaper(g, rand);
@@ -1079,6 +1081,552 @@ function clock(swing: number): Texture {
   );
 }
 
+const WOOD_DARK = "#2a190d";
+const WOOD_MID = "#3b2614";
+
+// A journal lying open on a little stand. Its pages catch what light there is, so you can spot
+// one from across a dark room.
+function journal(): Texture {
+  return sprite(
+    (g) => {
+      g.fillStyle = WOOD_DARK;
+      g.fillRect(61, 92, 6, 36);
+      g.fillRect(50, 124, 28, 4);
+      g.fillStyle = WOOD_MID;
+      g.fillRect(42, 86, 44, 6);
+      g.fillStyle = "#3a1712";
+      g.fillRect(44, 80, 40, 6);
+      g.fillStyle = "#d9d0b6";
+      g.beginPath();
+      g.moveTo(45, 80);
+      g.quadraticCurveTo(54, 72, 64, 79);
+      g.quadraticCurveTo(74, 72, 83, 80);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = "#5a5346";
+      g.lineWidth = 0.75;
+      g.beginPath();
+      g.moveTo(64, 79);
+      g.lineTo(64, 74);
+      g.stroke();
+    },
+    40,
+    (r, g, b) => (r > 170 && g > 160 && b > 130 ? 70 : 255),
+  );
+}
+
+function dresser(g: CanvasRenderingContext2D, rand: () => number) {
+  g.fillStyle = WOOD_DARK;
+  g.fillRect(30, 70, 68, 52);
+  g.fillRect(34, 122, 6, 6);
+  g.fillRect(88, 122, 6, 6);
+  g.fillStyle = WOOD_MID;
+  g.fillRect(27, 66, 74, 5);
+  for (let drawer = 0; drawer < 3; drawer++) {
+    const open = drawer === 1 ? 3 : 0;
+    const y = 74 + drawer * 16;
+    g.fillStyle = "#33210f";
+    g.fillRect(33 - open, y, 62 + open * 2, 13);
+    g.fillStyle = "#8a6a2a";
+    g.fillRect(50, y + 5, 4, 2);
+    g.fillRect(74, y + 5, 4, 2);
+  }
+  // A tilted mirror, gone nearly black.
+  g.fillStyle = WOOD_MID;
+  g.fillRect(40, 18, 48, 48);
+  g.fillStyle = "#14171a";
+  g.fillRect(44, 22, 40, 40);
+  g.strokeStyle = "rgba(190,200,210,0.25)";
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(50, 26);
+  g.lineTo(68, 44);
+  g.lineTo(58, 60);
+  g.moveTo(68, 44);
+  g.lineTo(80, 38);
+  g.stroke();
+  grain(g, rand, 10);
+}
+
+// An iron bedstead, with something under the blanket about the size of a person.
+function bed(g: CanvasRenderingContext2D, rand: () => number) {
+  g.fillStyle = "#3f382c";
+  g.fillRect(4, 62, 5, 66);
+  g.fillRect(24, 62, 5, 40);
+  g.fillRect(4, 62, 25, 4);
+  g.fillRect(4, 76, 25, 3);
+  for (let bar = 12; bar < 24; bar += 5) g.fillRect(bar, 66, 2, 34);
+  g.fillRect(119, 84, 5, 44);
+  g.fillStyle = "#6d675a";
+  g.fillRect(9, 96, 110, 14);
+  g.fillStyle = "#474236";
+  g.beginPath();
+  g.moveTo(26, 100);
+  g.quadraticCurveTo(40, 80, 62, 88);
+  g.quadraticCurveTo(84, 82, 104, 92);
+  g.lineTo(118, 100);
+  g.lineTo(118, 118);
+  g.lineTo(26, 118);
+  g.closePath();
+  g.fill();
+  g.fillStyle = "#a59e8b";
+  g.fillRect(10, 90, 18, 10);
+  g.fillStyle = "#3f382c";
+  g.fillRect(12, 110, 4, 18);
+  g.fillRect(110, 110, 4, 18);
+  grain(g, rand, 12);
+}
+
+// A coat on a stand, and from across a dark room it could be someone.
+function coatrack(g: CanvasRenderingContext2D, rand: () => number) {
+  g.fillStyle = WOOD_DARK;
+  g.fillRect(62, 8, 4, 116);
+  g.fillRect(48, 124, 32, 4);
+  g.fillRect(52, 14, 24, 3);
+  g.fillStyle = "#16171b";
+  g.beginPath();
+  g.moveTo(58, 18);
+  g.lineTo(72, 18);
+  g.lineTo(82, 34);
+  g.lineTo(84, 92);
+  g.lineTo(46, 92);
+  g.lineTo(48, 34);
+  g.closePath();
+  g.fill();
+  g.fillStyle = "#0b0c0e";
+  g.fillRect(63, 22, 2, 70);
+  g.fillStyle = "#2a2118";
+  g.beginPath();
+  g.ellipse(65, 8, 11, 5, 0, 0, Math.PI * 2);
+  g.fill();
+  grain(g, rand, 8);
+}
+
+function boxes(g: CanvasRenderingContext2D, rand: () => number) {
+  const box = (x: number, y: number, w: number, h: number, shade: number) => {
+    g.fillStyle = `rgb(${shade + 22},${shade + 10},${shade})`;
+    g.fillRect(x, y, w, h);
+    g.fillStyle = `rgba(0,0,0,0.3)`;
+    g.fillRect(x + w / 2 - 3, y, 6, h);
+    g.strokeStyle = "rgba(0,0,0,0.5)";
+    g.lineWidth = 1;
+    g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  };
+  box(14, 86, 56, 42, 44);
+  box(66, 94, 48, 34, 36);
+  box(26, 52, 46, 34, 40);
+  box(70, 66, 34, 28, 48);
+  grain(g, rand, 12);
+}
+
+// A dressmaker's dummy: no head, no arms, and it's closer than you left it. It isn't, really.
+function mannequin(g: CanvasRenderingContext2D, rand: () => number) {
+  g.fillStyle = WOOD_DARK;
+  g.fillRect(62, 88, 4, 34);
+  g.fillRect(46, 124, 36, 4);
+  g.fillRect(62, 120, 4, 6);
+  const body = g.createLinearGradient(44, 0, 84, 0);
+  body.addColorStop(0, "#4a4436");
+  body.addColorStop(0.5, "#8d8571");
+  body.addColorStop(1, "#4a4436");
+  g.fillStyle = body;
+  g.beginPath();
+  g.moveTo(58, 22);
+  g.lineTo(70, 22);
+  g.lineTo(84, 34);
+  g.quadraticCurveTo(78, 56, 75, 62);
+  g.quadraticCurveTo(84, 78, 80, 92);
+  g.lineTo(48, 92);
+  g.quadraticCurveTo(44, 78, 53, 62);
+  g.quadraticCurveTo(50, 56, 44, 34);
+  g.closePath();
+  g.fill();
+  g.fillStyle = WOOD_DARK;
+  g.fillRect(60, 16, 8, 6);
+  grain(g, rand, 10);
+}
+
+// A vase of something long dead.
+function vase(g: CanvasRenderingContext2D, rand: () => number) {
+  g.fillStyle = WOOD_DARK;
+  g.fillRect(58, 88, 12, 36);
+  g.fillRect(48, 124, 32, 4);
+  g.fillStyle = WOOD_MID;
+  g.fillRect(46, 84, 36, 5);
+  g.fillStyle = "#4d5a57";
+  g.beginPath();
+  g.moveTo(58, 56);
+  g.lineTo(70, 56);
+  g.quadraticCurveTo(82, 70, 72, 84);
+  g.lineTo(56, 84);
+  g.quadraticCurveTo(46, 70, 58, 56);
+  g.fill();
+  g.strokeStyle = "#2c2415";
+  g.lineWidth = 1.25;
+  for (const [x, y] of [
+    [46, 28],
+    [58, 18],
+    [66, 26],
+    [78, 20],
+    [84, 34],
+  ]) {
+    g.beginPath();
+    g.moveTo(64, 56);
+    g.quadraticCurveTo(64, 38, x, y);
+    g.stroke();
+    g.fillStyle = "#231a12";
+    g.beginPath();
+    g.arc(x, y, 2.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  grain(g, rand, 10);
+}
+
+function barrel(g: CanvasRenderingContext2D, rand: () => number) {
+  const staves = g.createLinearGradient(34, 0, 94, 0);
+  staves.addColorStop(0, "#1c1109");
+  staves.addColorStop(0.5, "#46301b");
+  staves.addColorStop(1, "#1c1109");
+  g.fillStyle = staves;
+  g.beginPath();
+  g.moveTo(40, 66);
+  g.lineTo(88, 66);
+  g.quadraticCurveTo(100, 97, 88, 128);
+  g.lineTo(40, 128);
+  g.quadraticCurveTo(28, 97, 40, 66);
+  g.fill();
+  g.fillStyle = "rgba(0,0,0,0.35)";
+  for (let x = 42; x < 88; x += 9) g.fillRect(x, 66, 1.5, 62);
+  g.fillStyle = "#17171a";
+  g.fillRect(36, 78, 56, 4);
+  g.fillRect(34, 112, 60, 4);
+  grain(g, rand, 10);
+}
+
+// A cobweb strung from wall to wall and floor to ceiling, thin and slack.
+function web(g: CanvasRenderingContext2D, rand: () => number) {
+  const cx = 64 + (rand() - 0.5) * 24;
+  const cy = 54 + (rand() - 0.5) * 20;
+  const spokes: Pixel[] = [];
+  for (let spoke = 0; spoke < 18; spoke++) {
+    const angle = ((spoke + (rand() - 0.5) * 0.6) / 18) * Math.PI * 2;
+    spokes.push([Math.cos(angle), Math.sin(angle)]);
+  }
+  g.strokeStyle = "#b9b8ad";
+  g.lineCap = "round";
+  g.lineWidth = 1;
+  for (const [dx, dy] of spokes) {
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.lineTo(cx + dx * 150, cy + dy * 150);
+    g.stroke();
+  }
+  // Each ring sags between the spokes, and gets more ragged toward the edges.
+  for (let ring = 14; ring < 110; ring += 11 + rand() * 6) {
+    spokes.forEach(([dx, dy], i) => {
+      if (rand() < ring / 260) return; // torn
+      const [nx, ny] = spokes[(i + 1) % spokes.length];
+      const r0 = ring * (0.95 + rand() * 0.1);
+      const r1 = ring * (0.95 + rand() * 0.1);
+      const mx = (dx + nx) * 0.5 * ring * 0.8;
+      const my = (dy + ny) * 0.5 * ring * 0.8 + ring * 0.05;
+      g.beginPath();
+      g.moveTo(cx + dx * r0, cy + dy * r0);
+      g.quadraticCurveTo(cx + mx, cy + my, cx + nx * r1, cy + ny * r1);
+      g.stroke();
+    });
+  }
+}
+
+// A spider the size of a hand, seen low and head on. Its eyes glow a little.
+function spider(step: number): Texture {
+  return sprite(
+    (g) => {
+      for (const side of [-1, 1]) {
+        for (let leg = 0; leg < 4; leg++) {
+          const lifted = (leg + step) % 2 === 0 ? 7 : 0;
+          const out = 22 + leg * 11;
+          limb(g, "#2a1d14", 3, [
+            [64 + side * 9, 84 + leg * 3],
+            [64 + side * out, 62 + leg * 6 - lifted],
+            [64 + side * (out + 13), 124 - lifted],
+          ]);
+        }
+      }
+      g.fillStyle = "#3f2c1e";
+      g.beginPath();
+      g.ellipse(64, 80, 20, 17, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "#2c1f15";
+      g.beginPath();
+      g.ellipse(64, 96, 13, 11, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = EYE_RED;
+      g.fillRect(58, 92, 3, 3);
+      g.fillRect(67, 92, 3, 3);
+      g.fillRect(62, 97, 2, 2);
+      g.fillRect(65, 97, 2, 2);
+    },
+    41 + step,
+    (r, g) => (r > 200 && g < 50 ? 150 : 255),
+  );
+}
+
+const EYE_RED = "#e01c1c";
+const STONE_LIGHT = "#8e8c82";
+const STONE_MID = "#6c6a62";
+const STONE_DARK = "#403f39";
+const STONE_BLACK = "#080807";
+
+function stoneGradient(g: CanvasRenderingContext2D, x0: number, x1: number) {
+  const gradient = g.createLinearGradient(x0, 0, x1, 0);
+  gradient.addColorStop(0, STONE_DARK);
+  gradient.addColorStop(0.42, STONE_LIGHT);
+  gradient.addColorStop(1, STONE_DARK);
+  return gradient;
+}
+
+// A long stone gown: narrow shoulders, a thin waist, and heavy folds to the floor.
+function gown(g: CanvasRenderingContext2D, top: number, hem: number) {
+  const waist = top + 32;
+  g.fillStyle = stoneGradient(g, 64 - hem, 64 + hem);
+  g.beginPath();
+  g.moveTo(52, top);
+  g.lineTo(76, top);
+  g.quadraticCurveTo(84, top + 6, 79, top + 14);
+  g.lineTo(73, waist);
+  g.quadraticCurveTo(77, waist + 30, 64 + hem, 127);
+  g.lineTo(64 - hem, 127);
+  g.quadraticCurveTo(51, waist + 30, 55, waist);
+  g.lineTo(49, top + 14);
+  g.quadraticCurveTo(44, top + 6, 52, top);
+  g.fill();
+  g.strokeStyle = "rgba(10,10,8,0.6)";
+  g.lineWidth = 1.5;
+  for (const [x, spread] of [
+    [58, -0.75],
+    [62, -0.3],
+    [66, 0.2],
+    [70, 0.7],
+  ]) {
+    g.beginPath();
+    g.moveTo(x, waist + 2);
+    g.quadraticCurveTo(x + spread * 3, waist + 40, 64 + spread * hem * 0.92, 127);
+    g.stroke();
+  }
+  g.fillStyle = "rgba(8,8,7,0.45)";
+  g.fillRect(55, waist - 1, 18, 2);
+}
+
+// A veil over a bowed head, the face in its shadow.
+function veil(g: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  g.fillStyle = stoneGradient(g, x - r * 1.5, x + r * 1.5);
+  g.beginPath();
+  g.moveTo(x - r * 1.5, y + r * 2.3);
+  g.quadraticCurveTo(x - r * 1.3, y - r * 1.3, x, y - r * 1.25);
+  g.quadraticCurveTo(x + r * 1.3, y - r * 1.3, x + r * 1.5, y + r * 2.3);
+  g.closePath();
+  g.fill();
+}
+
+// A woman at prayer on a plinth: head bowed, eyes closed, hands together.
+function statuePraying(): Texture {
+  return sprite((g, rand) => {
+    g.fillStyle = STONE_DARK;
+    g.fillRect(34, 118, 60, 10);
+    g.fillStyle = STONE_MID;
+    g.fillRect(38, 114, 52, 5);
+    gown(g, 46, 25);
+    veil(g, 64, 28, 11);
+    g.fillStyle = STONE_MID;
+    g.beginPath();
+    g.ellipse(64, 32, 8, 10, 0, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = STONE_BLACK;
+    g.lineWidth = 1.25;
+    g.beginPath();
+    g.moveTo(59, 31);
+    g.lineTo(62, 32);
+    g.moveTo(66, 32);
+    g.lineTo(69, 31);
+    g.moveTo(62, 38);
+    g.lineTo(66, 38);
+    g.stroke();
+    limb(g, STONE_MID, 6, [
+      [50, 54],
+      [52, 72],
+      [63, 62],
+    ]);
+    limb(g, STONE_MID, 6, [
+      [78, 54],
+      [76, 72],
+      [65, 62],
+    ]);
+    g.fillStyle = STONE_LIGHT;
+    g.beginPath();
+    g.ellipse(64, 55, 4, 10, 0, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = STONE_DARK;
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(64, 46);
+    g.lineTo(64, 65);
+    g.stroke();
+    grain(g, rand, 14);
+  }, 43);
+}
+
+function statuePlinth(): Texture {
+  return sprite((g, rand) => {
+    g.fillStyle = STONE_DARK;
+    g.fillRect(34, 118, 60, 10);
+    g.fillStyle = STONE_MID;
+    g.fillRect(38, 114, 52, 5);
+    grain(g, rand, 14);
+  }, 43);
+}
+
+// A long-fingered stone hand at (x, y), its claws fanned toward `angle`.
+function stoneClaw(
+  g: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angle: number,
+  size: number,
+) {
+  g.fillStyle = STONE_MID;
+  g.beginPath();
+  g.ellipse(x, y, size * 0.22, size * 0.26, angle, 0, Math.PI * 2);
+  g.fill();
+  for (let finger = -2; finger <= 2; finger++) {
+    const a = angle + finger * 0.34;
+    const bend = angle + finger * 0.1;
+    const midX = x + Math.cos(a) * size * 0.55;
+    const midY = y + Math.sin(a) * size * 0.55;
+    limb(g, STONE_LIGHT, Math.max(1.25, size * 0.09), [
+      [x, y],
+      [midX, midY],
+      [midX + Math.cos(bend) * size * 0.5, midY + Math.sin(bend) * size * 0.5],
+    ]);
+  }
+}
+
+// It has stopped pretending: sunken sockets and a jaw hanging further open than a jaw should.
+function gauntFace(g: CanvasRenderingContext2D, x: number, y: number, r: number, tilt: number) {
+  g.save();
+  g.translate(x, y);
+  g.rotate(tilt);
+  // The veil, thrown back behind the head.
+  g.fillStyle = STONE_DARK;
+  g.beginPath();
+  g.moveTo(-r * 1.05, r * 1.7);
+  g.quadraticCurveTo(-r * 1.2, -r * 1.25, 0, -r * 1.2);
+  g.quadraticCurveTo(r * 1.2, -r * 1.25, r * 1.05, r * 1.7);
+  g.closePath();
+  g.fill();
+  // A long skull, narrowing to the chin.
+  g.fillStyle = stoneGradient(g, -r * 0.8, r * 0.8);
+  g.beginPath();
+  g.moveTo(-r * 0.68, -r * 0.35);
+  g.quadraticCurveTo(-r * 0.66, -r * 1.05, 0, -r * 1.05);
+  g.quadraticCurveTo(r * 0.66, -r * 1.05, r * 0.68, -r * 0.35);
+  g.quadraticCurveTo(r * 0.62, r * 0.55, r * 0.26, r * 1.35);
+  g.lineTo(-r * 0.26, r * 1.35);
+  g.quadraticCurveTo(-r * 0.62, r * 0.55, -r * 0.68, -r * 0.35);
+  g.fill();
+  // Hollow cheeks.
+  g.fillStyle = "rgba(8,8,7,0.55)";
+  for (const side of [-1, 1]) {
+    g.beginPath();
+    g.ellipse(side * r * 0.46, r * 0.26, r * 0.13, r * 0.36, side * 0.2, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Sockets, slanting in toward the nose, with nothing in them.
+  g.fillStyle = STONE_BLACK;
+  for (const side of [-1, 1]) {
+    g.beginPath();
+    g.ellipse(side * r * 0.3, -r * 0.3, r * 0.2, r * 0.25, side * 0.45, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.beginPath();
+  g.moveTo(-r * 0.05, -r * 0.05);
+  g.lineTo(r * 0.05, -r * 0.05);
+  g.lineTo(r * 0.09, r * 0.12);
+  g.lineTo(-r * 0.09, r * 0.12);
+  g.closePath();
+  g.fill();
+  // The mouth, and everything in it.
+  g.beginPath();
+  g.ellipse(0, r * 0.68, r * 0.25, r * 0.5, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = STONE_LIGHT;
+  for (let tooth = -2; tooth <= 2; tooth++) {
+    const tx = tooth * r * 0.085;
+    for (const [from, to] of [
+      [0.28, 0.5],
+      [1.1, 0.86],
+    ]) {
+      g.beginPath();
+      g.moveTo(tx - r * 0.035, r * from);
+      g.lineTo(tx + r * 0.035, r * from);
+      g.lineTo(tx, r * to);
+      g.closePath();
+      g.fill();
+    }
+  }
+  g.restore();
+}
+
+// Caught mid-stride, one arm out for you, its head on one side.
+function statueReaching(): Texture {
+  return sprite((g, rand) => {
+    gown(g, 44, 27);
+    limb(g, STONE_MID, 5, [
+      [79, 50],
+      [92, 70],
+      [86, 88],
+    ]);
+    stoneClaw(g, 86, 88, 1.9, 15);
+    limb(g, STONE_MID, 5, [
+      [64, 34],
+      [64, 46],
+    ]);
+    gauntFace(g, 65, 26, 11, 0.2);
+    limb(g, STONE_MID, 5, [
+      [49, 50],
+      [32, 58],
+      [20, 46],
+    ]);
+    stoneClaw(g, 20, 46, -2.3, 16);
+    grain(g, rand, 14);
+  }, 44);
+}
+
+// Right in front of you, hunched, both hands coming for your face.
+function statueLunging(): Texture {
+  return sprite((g, rand) => {
+    gown(g, 62, 30);
+    limb(g, STONE_MID, 7, [
+      [50, 66],
+      [24, 88],
+      [26, 56],
+    ]);
+    limb(g, STONE_MID, 7, [
+      [78, 66],
+      [108, 80],
+      [100, 40],
+    ]);
+    limb(g, STONE_MID, 8, [
+      [64, 50],
+      [64, 66],
+    ]);
+    gauntFace(g, 63, 36, 21, -0.14);
+    stoneClaw(g, 26, 52, -0.9, 24);
+    stoneClaw(g, 100, 36, -2.3, 26);
+    grain(g, rand, 14);
+  }, 45);
+}
+
 function loadImage(name: string, onLoad: (image: HTMLImageElement) => void) {
   const url = imageByName(name);
   if (!url) {
@@ -1107,8 +1655,7 @@ export function createTextures(): Textures {
   walls[FOG_WALL] = fogWall();
   MESSAGES.forEach((message, i) => (walls[WRITING + i] = writing(message, 10 + i)));
 
-  // Frames and the head start empty and fill in as their images load. A painting with no
-  // image stays black.
+  // Frames start empty and fill in as their images load. A painting with no image stays black.
   PAINTING_KEYS.forEach((key, i) => {
     const seed = 20 + i;
     const wall = PAINTINGS[key].stone ? stone : wallpaper;
@@ -1120,8 +1667,6 @@ export function createTextures(): Textures {
       texture.set(new Uint32Array(drawPixels(painting(image, wall), seed).buffer)),
     );
   });
-  const head = new Uint32Array(TEX * TEX);
-  loadImage(HEAD_IMAGE, (image) => head.set(headPixels(image)));
 
   return {
     walls,
@@ -1140,11 +1685,26 @@ export function createTextures(): Textures {
       left: [paleSide(0, true), paleSide(1, true)],
       reared: paleReared(),
     },
+    statue: {
+      praying: statuePraying(),
+      plinth: statuePlinth(),
+      reaching: statueReaching(),
+      lunging: statueLunging(),
+    },
+    spider: [spider(0), spider(1)],
     lamp: lamp(),
-    head,
     table: table(),
     chair: chair(),
     rocker: rocker(),
     clock: [clock(-1), clock(1)],
+    journal: journal(),
+    dresser: sprite(dresser, 46),
+    bed: sprite(bed, 47),
+    coatrack: sprite(coatrack, 48),
+    boxes: sprite(boxes, 49),
+    mannequin: sprite(mannequin, 50),
+    vase: sprite(vase, 51),
+    barrel: sprite(barrel, 52),
+    web: sprite(web, 53),
   };
 }

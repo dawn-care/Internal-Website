@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { playMemory, playWrongAnswer } from "../audio";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { pauseAudio, playMemory, playPage, playWrongAnswer, resumeAudio } from "../audio";
 import { imageByName } from "../media";
 import { startGame, type Focus, type Game } from "./game";
 import {
   DOORS,
   ENDING,
   FOG_MESSAGE,
+  JOURNALS,
   LOCKED_MESSAGE,
   PAINTINGS,
   RIGHT_ANSWER,
@@ -17,7 +18,15 @@ const TOUCH = window.matchMedia("(pointer: coarse)").matches;
 const NOTICE_MS = 2500;
 const UNLOCKED_MS = 1500; // how long "You remember" shows before the door opens
 
-type Overlay = { kind: "memory"; key: string } | { kind: "riddle"; key: string } | null;
+type Overlay =
+  | { kind: "memory"; key: string }
+  | { kind: "riddle"; key: string }
+  | { kind: "journal"; key: string }
+  | null;
+
+const CONTROLS = TOUCH
+  ? "Drag on the left to walk. Drag on the right to look around. Tap the prompts."
+  : "Click to look around. WASD or arrow keys to walk. Hold Shift to hurry. E to look closer. P to pause.";
 
 export default function House({ onJumpscare }: { onJumpscare: (image: string | null) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,10 +37,29 @@ export default function House({ onJumpscare }: { onJumpscare: (image: string | n
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  const overlayRef = useRef<Overlay>(null);
 
   useEffect(() => {
     onJumpscareRef.current = onJumpscare;
+    overlayRef.current = overlay;
   });
+
+  // Something being read has already frozen the game, and P might be a letter in a riddle.
+  const togglePause = useCallback(() => {
+    if (overlayRef.current) return;
+    const next = !pausedRef.current;
+    pausedRef.current = next;
+    setPaused(next);
+    if (next) {
+      gameRef.current?.pause();
+      pauseAudio();
+    } else {
+      resumeAudio();
+      gameRef.current?.resume();
+    }
+  }, []);
 
   useEffect(() => {
     const game = startGame(canvasRef.current!, {
@@ -39,6 +67,7 @@ export default function House({ onJumpscare }: { onJumpscare: (image: string | n
       onWalk: () => setWalked(true),
       onFocus: setFocus,
       onEnding: () => setEnded(true),
+      onPauseKey: togglePause,
       onInteract: (target) => {
         if (target.kind === "door" && target.key === null) {
           setNotice(LOCKED_MESSAGE);
@@ -48,6 +77,9 @@ export default function House({ onJumpscare }: { onJumpscare: (image: string | n
         if (target.kind === "painting") {
           playMemory();
           setOverlay({ kind: "memory", key: target.key });
+        } else if (target.kind === "journal") {
+          playPage();
+          setOverlay({ kind: "journal", key: target.key });
         } else if (target.kind === "door") {
           setOverlay({ kind: "riddle", key: target.key! });
         }
@@ -55,7 +87,7 @@ export default function House({ onJumpscare }: { onJumpscare: (image: string | n
     });
     gameRef.current = game;
     return () => game.stop();
-  }, []);
+  }, [togglePause]);
 
   useEffect(() => {
     if (!notice) return;
@@ -77,11 +109,17 @@ export default function House({ onJumpscare }: { onJumpscare: (image: string | n
     <div className="house">
       <canvas ref={canvasRef} />
 
+      {!overlay && !ended && !paused && (
+        <button className="house-pause" onClick={togglePause}>
+          {TOUCH ? "Pause" : "Pause (P)"}
+        </button>
+      )}
       {!overlay && !ended && focus && focus.kind !== "fog" && (
         <button className="house-prompt" onClick={() => gameRef.current?.interact()}>
           {TOUCH ? "" : "E · "}
           {focus.kind === "painting" && "Look closer"}
           {focus.kind === "door" && "Try the door"}
+          {focus.kind === "journal" && "Read the journal"}
           {focus.kind === "stairs" && (focus.key === "down" ? "Go down the stairs" : "Go back up")}
         </button>
       )}
@@ -89,18 +127,54 @@ export default function House({ onJumpscare }: { onJumpscare: (image: string | n
         <p className="house-notice">{notice ?? FOG_MESSAGE}</p>
       )}
       {!walked && (
-        <p className="house-hint">
-          {TOUCH
-            ? "Drag on the left to walk. Drag on the right to look around."
-            : "Click to look around. WASD or arrow keys to walk. Hold Shift to hurry. E to look closer."}
-        </p>
+        <p className="house-hint">{CONTROLS}</p>
       )}
 
       {overlay?.kind === "memory" && <Memory paintingKey={overlay.key} onClose={close} />}
+      {overlay?.kind === "journal" && <Journal page={Number(overlay.key)} onClose={close} />}
       {overlay?.kind === "riddle" && (
         <Riddle doorKey={overlay.key} onCancel={close} onSolve={() => unlock(overlay.key)} />
       )}
+      {paused && <PauseMenu onResume={togglePause} />}
       {ended && <Ending />}
+    </div>
+  );
+}
+
+function PauseMenu({ onResume }: { onResume: () => void }) {
+  return (
+    <div className="house-overlay" role="dialog" aria-label="Paused">
+      <div className="house-card">
+        <h2 className="pause-title">Paused</h2>
+        <p className="pause-controls">{CONTROLS}</p>
+        <button onClick={onResume} autoFocus>
+          {TOUCH ? "Resume" : "Resume (P)"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Closing something you're reading from the keyboard.
+function useCloseKeys(onClose: () => void) {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.code === "KeyE" || e.code === "Escape" || e.code === "Enter") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+}
+
+// A single torn-out page.
+function Journal({ page, onClose }: { page: number; onClose: () => void }) {
+  useCloseKeys(onClose);
+  return (
+    <div className="house-overlay" role="dialog" aria-label="A journal page">
+      <div className="journal-page">
+        <p>{JOURNALS[page]}</p>
+        <button onClick={onClose}>{TOUCH ? "Close" : "Close (E)"}</button>
+      </div>
     </div>
   );
 }
@@ -124,14 +198,7 @@ function Ending() {
 function Memory({ paintingKey, onClose }: { paintingKey: string; onClose: () => void }) {
   const painting = PAINTINGS[paintingKey];
   const image = painting.image ? imageByName(painting.image) : null;
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.code === "KeyE" || e.code === "Escape" || e.code === "Enter") onClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  useCloseKeys(onClose);
 
   return (
     <div className="house-overlay" role="dialog" aria-label="A memory">

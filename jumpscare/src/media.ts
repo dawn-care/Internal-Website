@@ -1,4 +1,4 @@
-import { shuffle } from "./trivia";
+import { shuffle } from "./quiz";
 
 // Files are picked up at build time. Restart the dev server after adding or renaming them.
 // The house hangs some of these on its walls as paintings (see house/story.ts).

@@ -4,6 +4,7 @@
 type Audio = { ctx: AudioContext; out: GainNode; noise: AudioBuffer };
 
 let audio: Audio | null = null;
+let paused = false;
 
 function getAudio(): Audio {
   if (audio) return audio;
@@ -20,8 +21,20 @@ function getAudio(): Audio {
 
 // Browsers only allow sound after a user gesture, so call this from click and key handlers.
 export function unlockAudio() {
+  if (paused) return;
   const { ctx } = getAudio();
   if (ctx.state === "suspended") void ctx.resume();
+}
+
+// Holds every sound exactly where it is, for the pause menu.
+export function pauseAudio() {
+  paused = true;
+  void getAudio().ctx.suspend();
+}
+
+export function resumeAudio() {
+  paused = false;
+  void getAudio().ctx.resume();
 }
 
 function rand(min: number, max: number) {
@@ -265,6 +278,101 @@ export function playStairs(down: boolean) {
   }
 }
 
+// Stone feet, flat out, and getting closer. It stops the moment you look.
+export function playStatueStep(volume: number, pan: number, muffled: boolean) {
+  if (volume < 0.01) return;
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const dest = placed(a, volume, pan, muffled);
+  thump(a, dest, t, rand(95, 120), 45, 0.8);
+  const scrape = noiseSource(a);
+  scrape
+    .connect(filter(a, "bandpass", rand(900, 1500), 1.2))
+    .connect(envelope(a, t, 0.003, 0.5, 0.07))
+    .connect(dest);
+  scrape.start(t, rand(0, 1.5));
+  scrape.stop(t + 0.12);
+}
+
+// Stone turning on stone: the first thing it does after you look away.
+export function playStoneGrind(volume: number, pan: number, muffled: boolean) {
+  if (volume < 0.01) return;
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const dest = placed(a, volume, pan, muffled);
+  const grind = noiseSource(a);
+  const band = filter(a, "bandpass", 240, 2);
+  band.frequency.linearRampToValueAtTime(420, t + 0.8);
+  grind.connect(band).connect(envelope(a, t, 0.15, 0.9, 0.7)).connect(dest);
+  grind.start(t, rand(0, 1));
+  grind.stop(t + 0.9);
+}
+
+// Lots of tiny feet.
+export function playSkitter(volume: number, pan: number, muffled: boolean) {
+  if (volume < 0.01) return;
+  const a = getAudio();
+  const dest = placed(a, volume, pan, muffled);
+  let t = a.ctx.currentTime;
+  const ticks = 5 + Math.floor(Math.random() * 6);
+  for (let i = 0; i < ticks; i++) {
+    const tick = noiseSource(a);
+    tick
+      .connect(filter(a, "bandpass", rand(3000, 6000), 4))
+      .connect(envelope(a, t, 0.001, 0.22, 0.012))
+      .connect(dest);
+    tick.start(t, rand(0, 1.5));
+    tick.stop(t + 0.03);
+    t += rand(0.02, 0.06);
+  }
+}
+
+// A spider got you: a sharp sting of a hiss.
+export function playBite() {
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const hiss = noiseSource(a);
+  hiss.connect(filter(a, "highpass", 2500)).connect(envelope(a, t, 0.005, 0.45, 0.3)).connect(a.out);
+  hiss.start(t, rand(0, 1));
+  hiss.stop(t + 0.4);
+  thump(a, a.out, t, 90, 50, 0.3);
+}
+
+// Pushing into a cobweb.
+export function playWebRustle() {
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const rustle = noiseSource(a);
+  rustle.connect(filter(a, "bandpass", 3400, 1)).connect(envelope(a, t, 0.04, 0.13, 0.3)).connect(a.out);
+  rustle.start(t, rand(0, 1.5));
+  rustle.stop(t + 0.4);
+}
+
+// A page of a journal, turned.
+export function playPage() {
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const page = noiseSource(a);
+  const band = filter(a, "bandpass", 1800, 0.8);
+  band.frequency.exponentialRampToValueAtTime(4200, t + 0.2);
+  page.connect(band).connect(envelope(a, t, 0.05, 0.22, 0.18)).connect(a.out);
+  page.start(t, rand(0, 1.5));
+  page.stop(t + 0.28);
+}
+
+// Water, somewhere in the dark of the basement.
+export function playDrip(volume: number, pan: number) {
+  if (volume < 0.01) return;
+  const a = getAudio();
+  const t = a.ctx.currentTime;
+  const drip = a.ctx.createOscillator();
+  drip.frequency.setValueAtTime(rand(1200, 1700), t);
+  drip.frequency.exponentialRampToValueAtTime(rand(500, 700), t + 0.09);
+  drip.connect(envelope(a, t, 0.004, 0.14, 0.1)).connect(placed(a, volume, pan, false));
+  drip.start(t);
+  drip.stop(t + 0.14);
+}
+
 // The way back in, slammed shut.
 export function playDoorSlam() {
   const a = getAudio();
@@ -275,18 +383,6 @@ export function playDoorSlam() {
   crack.start(t, rand(0, 1));
   crack.stop(t + 0.3);
   creak(a, a.out, t + 0.1, 0.08, 90);
-}
-
-// A falling hiss as the floating head dissolves in the light.
-export function playFade() {
-  const a = getAudio();
-  const t = a.ctx.currentTime;
-  const hiss = noiseSource(a);
-  const band = filter(a, "bandpass", 4000, 3);
-  band.frequency.exponentialRampToValueAtTime(300, t + 1.2);
-  hiss.connect(band).connect(envelope(a, t, 0.05, 0.3, 1.2)).connect(a.out);
-  hiss.start(t, rand(0, 0.5));
-  hiss.stop(t + 1.4);
 }
 
 // Everything swells, then nothing.
@@ -329,87 +425,6 @@ export function playRunningBehind() {
     const closer = (i + 1) / steps;
     step(a, near, start + i * 0.22 + rand(-0.02, 0.02), 0.15 + 0.85 * closer * closer);
   }
-}
-
-// One rasping breath through a narrowed throat: noise that rattles, with a thin whistle.
-function rasp(
-  a: Audio,
-  dest: AudioNode,
-  t: number,
-  pitch: number,
-  duration: number,
-  rattle: number,
-) {
-  const breath = noiseSource(a);
-  const stutter = a.ctx.createGain();
-  stutter.gain.value = 0.6;
-  const lfo = a.ctx.createOscillator();
-  lfo.type = "square";
-  lfo.frequency.value = rattle;
-  const depth = a.ctx.createGain();
-  depth.gain.value = 0.4;
-  lfo.connect(depth).connect(stutter.gain);
-  const swell = a.ctx.createGain();
-  swell.gain.setValueAtTime(0.0001, t);
-  swell.gain.linearRampToValueAtTime(0.6, t + duration * 0.4);
-  swell.gain.linearRampToValueAtTime(0.0001, t + duration);
-  breath.connect(filter(a, "bandpass", pitch, 4)).connect(stutter).connect(swell).connect(dest);
-
-  const whistle = a.ctx.createOscillator();
-  whistle.type = "triangle";
-  whistle.frequency.setValueAtTime(pitch * 0.35, t);
-  whistle.frequency.linearRampToValueAtTime(pitch * 0.4, t + duration);
-  const whistleGain = a.ctx.createGain();
-  whistleGain.gain.value = 0.05;
-  whistle.connect(whistleGain).connect(swell);
-
-  breath.start(t, rand(0, 0.5));
-  lfo.start(t);
-  whistle.start(t);
-  for (const source of [breath, lfo, whistle]) source.stop(t + duration + 0.05);
-}
-
-export type Wheeze = {
-  // Where the head is relative to you; `chasing` makes it breathe faster.
-  update(volume: number, pan: number, muffled: boolean, chasing: boolean): void;
-  stop(): void;
-};
-
-// The floating head's breathing, for as long as it exists.
-export function startWheeze(): Wheeze {
-  const a = getAudio();
-  const panner = a.ctx.createStereoPanner();
-  panner.connect(a.out);
-  const level = a.ctx.createGain();
-  level.gain.value = 0;
-  level.connect(panner);
-  const wall = filter(a, "lowpass", 8000);
-  wall.connect(level);
-  let chasing = false;
-  let timer = 0;
-
-  const breathe = () => {
-    const pace = chasing ? 0.6 : 1;
-    const t = a.ctx.currentTime + 0.05;
-    rasp(a, wall, t, 1050, 1.1 * pace, 26);
-    rasp(a, wall, t + 1.35 * pace, 600, 1.4 * pace, 17);
-    timer = window.setTimeout(breathe, (3200 + rand(-300, 300)) * pace);
-  };
-  breathe();
-
-  return {
-    update(volume, pan, muffled, isChasing) {
-      const now = a.ctx.currentTime;
-      level.gain.setTargetAtTime(volume, now, 0.1);
-      panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), now, 0.1);
-      wall.frequency.setTargetAtTime(muffled ? 450 : 8000, now, 0.2);
-      chasing = isChasing;
-    },
-    stop() {
-      clearTimeout(timer);
-      level.gain.setTargetAtTime(0.0001, a.ctx.currentTime, 0.2);
-    },
-  };
 }
 
 // A heavy door swinging open on old hinges.
