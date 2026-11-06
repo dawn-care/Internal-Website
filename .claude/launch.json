@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:game"],
       "port": 5173
+    },
+    {
+      "name": "retirement",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:retirement", "--", "--port", "5174"],
+      "port": 5174
     }
   ]
 }

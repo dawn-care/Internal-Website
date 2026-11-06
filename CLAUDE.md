@@ -393,6 +393,17 @@ Rules (both themes):
   it at localhost:5173/game/ with no gate. It's excluded
   from the site's lint config but type-checked by `tsc -b`.
 
+## /retirement (Sunset Acres)
+- retirement/ is a standalone shared multiplayer pixel game (nursing home, community garden,
+  kitchen, customizable room and character), unrelated to D.A.W.N. Like /game it isn't part of
+  the React app (no nav link, no Layout, no design tokens) and adds no dependencies.
+  retirement/CLAUDE.md has the details. vite.retirement.config.ts builds it into
+  dist/retirement; scripts/finalize-game-build.mjs moves its index.html to api/_retirement;
+  vercel.json rewrites /retirement to /api/retirement?page=1, which serves it signed-in only.
+  Progress is keyed by the session's GitHub login. Live presence/chat need Upstash Redis
+  (KV_REST_API_URL / KV_REST_API_TOKEN, optional); without it saves use the Blob store and
+  presence is per function instance. `npm run dev:retirement` runs it offline.
+
 ## Conventions
 - src/pages/* for routes, src/components/* for shared UI, src/lib/* for non-UI logic.
 - Keep Drive API code isolated in src/lib/drive so it can be swapped for a build-time

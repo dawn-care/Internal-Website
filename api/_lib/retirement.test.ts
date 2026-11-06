@@ -1,0 +1,209 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { newSave, defaultLook, type Save } from '../../retirement/shared/schema.js'
+import handler from '../retirement.js'
+import { createMemoryStore, setStore } from './retirement/store.js'
+import { encryptSession } from './session.js'
+
+const SECRET = 'test-secret-that-is-long-enough-for-hkdf'
+const ORIGIN = 'http://localhost:3000'
+
+interface FakeRes {
+  statusCode: number
+  body: unknown
+}
+
+async function call(init: {
+  method: string
+  op?: string
+  page?: boolean
+  body?: unknown
+  login?: string | null
+  origin?: string | null
+}): Promise<FakeRes> {
+  vi.stubEnv('GITHUB_CLIENT_ID', 'client-id')
+  vi.stubEnv('GITHUB_CLIENT_SECRET', 'client-secret')
+  vi.stubEnv('SESSION_SECRET', SECRET)
+  vi.stubEnv('GITHUB_ORG', 'dawn')
+  const cookies: Record<string, string> = {}
+  const login = init.login === undefined ? 'ada' : init.login
+  if (login) {
+    cookies.dawn_session = await encryptSession(
+      { accessToken: 'gho_test', user: { login, name: `${login} Lovelace`, avatarUrl: '' } },
+      SECRET,
+    )
+  }
+  const headers: Record<string, string> = { host: 'localhost:3000' }
+  const origin = init.origin === undefined ? ORIGIN : init.origin
+  if (origin) headers.origin = origin
+  const query: Record<string, string> = {}
+  if (init.op) query.op = init.op
+  if (init.page) query.page = '1'
+  const req = {
+    method: init.method,
+    url: '/api/retirement',
+    query,
+    cookies,
+    headers,
+    body: init.body,
+  } as unknown as VercelRequest
+  const out: FakeRes = { statusCode: 200, body: undefined }
+  const res = {
+    headersSent: false,
+    setHeader: () => res,
+    getHeader: () => undefined,
+    status(code: number) {
+      out.statusCode = code
+      return res
+    },
+    json(body: unknown) {
+      out.body = body
+      return res
+    },
+    end(body?: unknown) {
+      if (body !== undefined) out.body = body
+      return res
+    },
+  } as unknown as VercelResponse
+  await handler(req, res)
+  return out
+}
+
+function save(name = 'Ada'): Save {
+  return newSave(defaultLook(name), 1_700_000_000_000)
+}
+
+const presence = { map: 'grounds', x: 10, y: 12, dir: 0, moving: false }
+
+describe('/api/retirement', () => {
+  beforeEach(() => setStore(createMemoryStore()))
+  afterEach(() => {
+    setStore(null)
+    vi.unstubAllEnvs()
+  })
+
+  it('needs a session', async () => {
+    const res = await call({ method: 'GET', op: 'me', login: null })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('serves a sign-in page instead of the game when signed out', async () => {
+    const res = await call({ method: 'GET', page: true, login: null })
+    expect(res.statusCode).toBe(200)
+    expect(String(res.body)).toContain('Sign in with GitHub')
+  })
+
+  it('starts with no save and a free slot, then keeps what was saved', async () => {
+    const first = await call({ method: 'GET', op: 'me' })
+    expect(first.body).toMatchObject({ save: null, slot: 0, user: { login: 'ada' } })
+
+    const s = save()
+    s.coins = 123
+    s.slot = 7 // ignored: the server hands out slots
+    const put = await call({ method: 'POST', op: 'save', body: { save: s } })
+    expect(put.statusCode).toBe(200)
+    expect(put.body).toMatchObject({ slot: 0 })
+
+    const again = await call({ method: 'GET', op: 'me' })
+    expect(again.body).toMatchObject({ slot: 0, save: { coins: 123, slot: 0 } })
+  })
+
+  it('gives each player their own slot and shows everyone in the world', async () => {
+    await call({ method: 'POST', op: 'save', body: { save: save('Ada') } })
+    const grace = await call({
+      method: 'POST',
+      op: 'save',
+      body: { save: save('Grace') },
+      login: 'grace',
+    })
+    expect(grace.body).toMatchObject({ slot: 1 })
+    const world = await call({ method: 'GET', op: 'world' })
+    const profiles = (world.body as { profiles: { login: string; slot: number }[] }).profiles
+    expect(profiles.map((p) => [p.login, p.slot]).sort()).toEqual([
+      ['ada', 0],
+      ['grace', 1],
+    ])
+  })
+
+  it('refuses malformed saves without storing them', async () => {
+    const bad = { ...save(), coins: -5 }
+    const res = await call({ method: 'POST', op: 'save', body: { save: bad } })
+    expect(res.statusCode).toBe(400)
+    expect((await call({ method: 'GET', op: 'me' })).body).toMatchObject({ save: null })
+
+    const furniture = save()
+    furniture.room.items.push({ k: 'piano', x: 40, y: 3 })
+    expect((await call({ method: 'POST', op: 'save', body: { save: furniture } })).statusCode).toBe(
+      400,
+    )
+  })
+
+  it('reads saves from before body types existed as female, and refuses unknown ones', async () => {
+    const old = save() as unknown as { look: Record<string, unknown> }
+    delete old.look.body
+    expect((await call({ method: 'POST', op: 'save', body: { save: old } })).statusCode).toBe(200)
+    expect((await call({ method: 'GET', op: 'me' })).body).toMatchObject({
+      save: { look: { body: 'female' } },
+    })
+
+    const odd = save() as unknown as { look: Record<string, unknown> }
+    odd.look.body = 'robot'
+    expect((await call({ method: 'POST', op: 'save', body: { save: odd } })).statusCode).toBe(400)
+  })
+
+  it('rejects cross-site writes', async () => {
+    const res = await call({
+      method: 'POST',
+      op: 'save',
+      body: { save: save() },
+      origin: 'https://evil.example',
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('shares presence and chat between players', async () => {
+    const look = defaultLook('Ada')
+    await call({
+      method: 'POST',
+      op: 'sync',
+      body: { p: presence, look, msg: '  hello\nthere  ', since: 0 },
+    })
+    const res = await call({
+      method: 'POST',
+      op: 'sync',
+      login: 'grace',
+      body: { p: { ...presence, x: 11 }, look: defaultLook('Grace'), since: 0 },
+    })
+    const body = res.body as {
+      players: { login: string; x: number }[]
+      chat: { login: string; text: string }[]
+    }
+    expect(body.players).toEqual([expect.objectContaining({ login: 'ada', x: 10 })])
+    expect(body.chat).toEqual([expect.objectContaining({ login: 'ada', text: 'hello there' })])
+  })
+
+  it('rate-limits chat per player', async () => {
+    const look = defaultLook('Ada')
+    const a = await call({
+      method: 'POST',
+      op: 'sync',
+      body: { p: presence, look, msg: 'one', since: 0 },
+    })
+    const b = await call({
+      method: 'POST',
+      op: 'sync',
+      body: { p: presence, look, msg: 'two', since: 0 },
+    })
+    expect(a.body).toMatchObject({ sent: true })
+    expect(b.body).toMatchObject({ sent: false })
+  })
+
+  it('rejects presence in places that do not exist', async () => {
+    const res = await call({
+      method: 'POST',
+      op: 'sync',
+      body: { p: { ...presence, map: '../etc' }, look: defaultLook('Ada'), since: 0 },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})

@@ -3,10 +3,13 @@
     { "source": "/api/todos/:id", "destination": "/api/todos?id=:id" },
     { "source": "/game", "destination": "/api/game" },
     { "source": "/game/", "destination": "/api/game" },
+    { "source": "/retirement", "destination": "/api/retirement?page=1" },
+    { "source": "/retirement/", "destination": "/api/retirement?page=1" },
     { "source": "/((?!api/|@|.*\\.).*)", "destination": "/index.html" }
   ],
   "functions": {
-    "api/game.ts": { "includeFiles": "api/_game/index.html" }
+    "api/game.ts": { "includeFiles": "api/_game/index.html" },
+    "api/retirement.ts": { "includeFiles": "api/_retirement/index.html" }
   },
   "headers": [
     {

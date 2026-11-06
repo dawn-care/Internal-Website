@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 api/_game
+api/_retirement
 
 # Editor directories and files
 .vscode/*
