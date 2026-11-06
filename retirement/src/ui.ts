@@ -16,12 +16,14 @@ import {
   SKIN_TONES,
   WALLPAPERS,
 } from '../shared/catalog'
-import { cleanName, type Dir, type Look, type MapId } from '../shared/schema'
+import { INTRO, cleanName, type Dir, type Look, type MapId } from '../shared/schema'
 import { cropIcon, finishSwatch, furnitureIcon } from './art'
-import { isMuted, setMuted, sfx } from './audio'
+import { isMuted, setMuted, sfx, voice } from './audio'
 import { isMusicOn, setMusicOn } from './music'
 import { fmt, type Game } from './game'
+import { INTRO_TASKS, isActive as introActive } from './intro'
 import { personSprite } from './people'
+import { PORTRAIT, portrait } from './portraits'
 
 /* The DOM side of the game: HUD, hotbar, chat, toasts and the modal panels. */
 
@@ -51,6 +53,27 @@ function button(text: string, onClick: () => void, cls = 'btn'): HTMLButtonEleme
 
 const coinIcon = () => el('span', { class: 'coin', title: 'coins' })
 
+/** A choice offered at the end of a dialogue. */
+export interface DialogueChoice {
+  label: string
+  onPick: () => void
+}
+
+export interface DialogueOptions {
+  /** Base pitch of the speaker's voice blips (Hz). */
+  pitch?: number
+  /** Buttons shown once the last line has finished typing. */
+  choices?: DialogueChoice[]
+  /** Called when the dialogue closes without a choice (after the last line). */
+  onDone?: () => void
+  /** Who's talking: their portrait is shown on the left. */
+  look?: Look
+  /** Residents have smile lines; staff don't (see portraits.ts). */
+  old?: boolean
+}
+
+const TYPE_MS = 24
+
 export class UI {
   private game!: Game
   private place = el('div', { class: 'place' })
@@ -66,6 +89,21 @@ export class UI {
   private chatForm = el('form', { class: 'chatform' })
   private chatInput = el('input')
   private toasts = el('div', { class: 'toasts' })
+  private quest = el('div', { class: 'quest' })
+  private lastQuest = ''
+  private dialogueBox = el('div', { class: 'dialogue' })
+  private talk: {
+    who: string
+    lines: string[]
+    i: number
+    shown: number
+    timer: number
+    opts: DialogueOptions
+    text: HTMLElement
+    more: HTMLElement
+    face: HTMLCanvasElement | null
+    faceTimer: number
+  } | null = null
   private decorbar = el('div', { class: 'decorbar' })
   private backdrop = el('div', { class: 'backdrop' })
   private panel: HTMLElement | null = null
@@ -97,6 +135,14 @@ export class UI {
       if (e.target === this.backdrop) this.closePanel()
     })
     this.decorbar.hidden = true
+    this.quest.hidden = true
+    this.quest.setAttribute('aria-live', 'polite')
+    this.dialogueBox.hidden = true
+    this.dialogueBox.setAttribute('role', 'dialog')
+    this.dialogueBox.addEventListener('mousedown', (e) => {
+      e.stopPropagation()
+      if (!(e.target instanceof HTMLButtonElement)) this.advanceDialogue()
+    })
     root.append(
       el(
         'div',
@@ -105,6 +151,7 @@ export class UI {
         this.clock,
         el('div', { class: 'row' }, this.coins, this.saved),
       ),
+      this.quest,
       el('div', { class: 'hud-right' }, this.buttons, this.online),
       this.toasts,
       this.prompt,
@@ -112,6 +159,7 @@ export class UI {
       this.chatlog,
       this.chatForm,
       this.decorbar,
+      this.dialogueBox,
       this.backdrop,
     )
   }
@@ -133,13 +181,261 @@ export class UI {
     this.renderHotbar()
     this.renderDecorbar()
     this.refreshOnline()
+    this.renderQuest()
+  }
+
+  /** Nurse Ada's checklist, shown while the introduction is running (after her greeting). */
+  renderQuest() {
+    const g = this.game
+    const step = g.save.intro
+    if (step === undefined || step === INTRO.greet || g.slot < 0) {
+      this.quest.hidden = true
+      this.lastQuest = ''
+      return
+    }
+    const hint = g.introHint()
+    const key = `${step}|${hint}`
+    if (key === this.lastQuest) return
+    this.lastQuest = key
+    this.quest.hidden = false
+    const now = INTRO_TASKS.find((t) => t.step === step)
+    const done = INTRO_TASKS.filter((t) => t.step < step).length
+    this.quest.replaceChildren(
+      el(
+        'div',
+        { class: 'quest-title' },
+        el('span', { text: "Nurse Ada's list" }),
+        el('span', { class: 'quest-count', text: `${done} of ${INTRO_TASKS.length} done` }),
+      ),
+      el('div', { class: 'quest-task', text: now?.label ?? '' }),
+      el('div', { class: 'quest-hint', text: hint }),
+    )
+  }
+
+  // --- dialogue -------------------------------------------------------------------------------
+
+  dialogueOpen(): boolean {
+    return this.talk !== null
+  }
+
+  /**
+   * A framed speech box at the bottom of the screen: the speaker's portrait and name on the left,
+   * the text on the right, typing out with a voice blip per letter while the portrait talks.
+   */
+  dialogue(who: string, lines: string[], opts: DialogueOptions = {}) {
+    this.closeDialogue()
+    this.game?.keys.clear()
+    const text = el('p', { class: 'dialogue-text' })
+    text.setAttribute('aria-live', 'polite')
+    const more = el('div', { class: 'dialogue-more' })
+    let face: HTMLCanvasElement | null = null
+    let side: HTMLElement | null = null
+    if (opts.look) {
+      face = el('canvas', { class: 'dialogue-face' })
+      face.width = PORTRAIT
+      face.height = PORTRAIT
+      face.setAttribute('aria-hidden', 'true')
+      side = el(
+        'div',
+        { class: 'dialogue-side' },
+        el('div', { class: 'dialogue-frame' }, face),
+        el('div', { class: 'dialogue-name', text: who }),
+      )
+    }
+    this.dialogueBox.replaceChildren(
+      ...(side ? [side] : []),
+      el(
+        'div',
+        { class: 'dialogue-body' },
+        side ? null : el('div', { class: 'dialogue-who', text: who }),
+        text,
+        more,
+      ),
+    )
+    this.dialogueBox.setAttribute('aria-label', `${who} says`)
+    this.talk = { who, lines, i: 0, shown: 0, timer: 0, opts, text, more, face, faceTimer: 0 }
+    this.dialogueBox.hidden = false
+    if (face) this.animateFace()
+    this.showLine()
+  }
+
+  /** Mouth moves while the text is typing; an occasional blink. */
+  private animateFace() {
+    const t = this.talk
+    if (!t?.face || !t.opts.look) return
+    const look = t.opts.look
+    const c = t.face.getContext('2d')!
+    let tick = 0
+    let blinkAt = 20 + Math.floor(Math.random() * 30)
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const draw = () => {
+      if (this.talk !== t) return
+      const typing = t.shown < t.lines[t.i].length
+      const talk = !reduce && typing && tick % 4 < 2
+      const blink = !reduce && tick >= blinkAt && tick < blinkAt + 2
+      if (tick >= blinkAt + 2) blinkAt = tick + 25 + Math.floor(Math.random() * 35)
+      c.clearRect(0, 0, PORTRAIT, PORTRAIT)
+      c.drawImage(portrait(look, { old: t.opts.old, talk, blink }), 0, 0)
+      tick++
+    }
+    draw()
+    t.faceTimer = window.setInterval(draw, 90)
+  }
+
+  private showLine() {
+    const t = this.talk
+    if (!t) return
+    window.clearInterval(t.timer)
+    t.shown = 0
+    t.more.replaceChildren()
+    t.more.className = 'dialogue-more'
+    const line = t.lines[t.i]
+    t.text.setAttribute('aria-label', line)
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce) {
+      t.shown = line.length
+      this.paintLine()
+      return
+    }
+    t.timer = window.setInterval(() => {
+      if (!this.talk || this.talk !== t) return
+      t.shown++
+      const ch = line[t.shown - 1]
+      if (ch && /[a-z0-9]/i.test(ch) && t.shown % 2 === 1) voice(t.opts.pitch ?? 440)
+      this.paintLine()
+      if (t.shown >= line.length) window.clearInterval(t.timer)
+    }, TYPE_MS)
+    this.paintLine()
+  }
+
+  private paintLine() {
+    const t = this.talk
+    if (!t) return
+    const line = t.lines[t.i]
+    const done = t.shown >= line.length
+    const { text, more } = t
+    text.textContent = line.slice(0, t.shown)
+    const last = t.i === t.lines.length - 1
+    if (!done) {
+      more.replaceChildren()
+      return
+    }
+    if (last && t.opts.choices?.length) {
+      if (more.querySelector('button')) return
+      more.className = 'dialogue-choices'
+      more.replaceChildren(
+        ...t.opts.choices.map((c, n) =>
+          button(
+            c.label,
+            () => {
+              this.closeDialogue()
+              c.onPick()
+            },
+            n === 0 ? 'btn primary' : 'btn',
+          ),
+        ),
+      )
+      more.querySelector<HTMLButtonElement>('button')?.focus()
+    } else {
+      more.className = 'dialogue-more'
+      more.textContent = last ? 'E ✕' : 'E ▾'
+      more.title = last ? 'Press E to close' : 'Press E for more'
+    }
+  }
+
+  /** E / Space / a click: finish typing the line, or go on to the next one. */
+  advanceDialogue() {
+    const t = this.talk
+    if (!t) return
+    const line = t.lines[t.i]
+    if (t.shown < line.length) {
+      window.clearInterval(t.timer)
+      t.shown = line.length
+      this.paintLine()
+      return
+    }
+    if (t.i < t.lines.length - 1) {
+      t.i++
+      sfx('blip')
+      this.showLine()
+      return
+    }
+    if (t.opts.choices?.length) return // waiting for a choice
+    this.closeDialogue()
+    t.opts.onDone?.()
+  }
+
+  /** Keys while a dialogue is open. Returns true if the key was used. */
+  dialogueKey(e: KeyboardEvent): boolean {
+    const t = this.talk
+    if (!t) return false
+    const k = e.key.toLowerCase()
+    const buttons = [...this.dialogueBox.querySelectorAll<HTMLButtonElement>('button')]
+    if (buttons.length) {
+      const at = buttons.indexOf(document.activeElement as HTMLButtonElement)
+      if (['arrowleft', 'arrowup', 'arrowright', 'arrowdown', 'tab'].includes(k)) {
+        e.preventDefault()
+        const back = k === 'arrowleft' || k === 'arrowup' || (k === 'tab' && e.shiftKey)
+        const next = (Math.max(0, at) + (back ? -1 : 1) + buttons.length) % buttons.length
+        buttons[next].focus()
+        return true
+      }
+      if (k === 'e' || k === ' ' || k === 'enter') {
+        e.preventDefault()
+        if (!e.repeat) (buttons[at] ?? buttons[0]).click()
+        return true
+      }
+      return true
+    }
+    if (k === 'e' || k === ' ' || k === 'enter') {
+      e.preventDefault()
+      if (!e.repeat) this.advanceDialogue()
+      return true
+    }
+    if (k === 'escape') {
+      // Skip to the end of the conversation.
+      window.clearInterval(t.timer)
+      t.i = t.lines.length - 1
+      t.shown = t.lines[t.i].length
+      if (!t.opts.choices?.length) {
+        this.closeDialogue()
+        t.opts.onDone?.()
+      } else this.showLineDone()
+      return true
+    }
+    // Movement keys are swallowed so you don't walk off mid-sentence.
+    return true
+  }
+
+  private showLineDone() {
+    const t = this.talk
+    if (!t) return
+    this.showLine()
+    window.clearInterval(t.timer)
+    t.shown = t.lines[t.i].length
+    this.paintLine()
+  }
+
+  private closeDialogue() {
+    if (this.talk) {
+      window.clearInterval(this.talk.timer)
+      window.clearInterval(this.talk.faceTimer)
+    }
+    this.talk = null
+    this.dialogueBox.hidden = true
+    this.dialogueBox.replaceChildren()
   }
 
   private renderButtons() {
     const g = this.game
     const b: HTMLButtonElement[] = []
     if (g.inOwnRoom()) {
-      b.push(button('Catalog', () => this.openCatalog()))
+      const catalog = button('Catalog', () => this.openCatalog())
+      if (introActive(g.save) && g.save.intro === INTRO.buy) {
+        catalog.classList.add('glow')
+        catalog.title = "Nurse Ada's list: buy something for your room"
+      }
+      b.push(catalog)
       b.push(
         button(g.decor.active ? 'Done decorating' : 'Decorate', () =>
           g.decor.active ? g.endDecorate() : g.startDecorate(),

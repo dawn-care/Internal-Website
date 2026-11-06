@@ -28,6 +28,16 @@ function disc(f: Pen, cx: number, cy: number, rx: number, ry: number, color: str
   }
 }
 
+/** Lighter (amt > 0) or darker version of a #rrggbb colour. */
+export function shade(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  const ch = (v: number) => Math.max(0, Math.min(255, Math.round(v + amt * 255)))
+  const r = ch((n >> 16) & 255)
+  const g = ch((n >> 8) & 255)
+  const b = ch(n & 255)
+  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`
+}
+
 function canvas(w: number, h: number): [HTMLCanvasElement, Ctx] {
   const cv = document.createElement('canvas')
   cv.width = w
@@ -39,9 +49,10 @@ function canvas(w: number, h: number): [HTMLCanvasElement, Ctx] {
 
 // --- ground tiles ----------------------------------------------------------------------------
 
-const GRASS = '#7bbd4e'
-const GRASS_D = '#66a63f'
-const GRASS_L = '#95d066'
+const GRASS = '#5fb03c'
+const GRASS_D = '#46922f'
+const GRASS_L = '#86cc45'
+const GRASS_DD = '#357a26'
 
 function speckle(
   f: Pen,
@@ -61,18 +72,72 @@ function speckle(
   }
 }
 
+/** Smooth value noise in world pixels (0–1), for big soft patches of lighter and darker grass. */
+function smooth(gx: number, gy: number, scale: number, seed: number): number {
+  const x = gx / scale
+  const y = gy / scale
+  const x0 = Math.floor(x)
+  const y0 = Math.floor(y)
+  const sx = x - x0
+  const sy = y - y0
+  const u = sx * sx * (3 - 2 * sx)
+  const v = sy * sy * (3 - 2 * sy)
+  const a = hash(x0, y0, seed)
+  const b = hash(x0 + 1, y0, seed)
+  const c = hash(x0, y0 + 1, seed)
+  const d = hash(x0 + 1, y0 + 1, seed)
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v
+}
+
+const GRASS_TONES = ['#4f9e33', GRASS, '#6cbd43']
+
+/** A tuft of grass: three blades, dark at the root, lit at the tips. */
+function tuft(f: Pen, bx: number, by: number, dark: string, mid: string, light: string) {
+  f(dark, bx, by + 2, 5, 1)
+  f(mid, bx, by + 1, 1, 1)
+  f(mid, bx + 4, by + 1, 1, 1)
+  f(mid, bx + 2, by, 1, 2)
+  f(light, bx + 1, by + 1, 1, 1)
+  f(light, bx + 2, by - 1, 1, 1)
+  f(light, bx + 3, by + 1, 1, 1)
+}
+
+/**
+ * Grass: soft patches of three greens across the whole lawn (dithered where they meet), tufts of
+ * blades, and the odd clover leaf, instead of a flat colour.
+ */
 function grass(f: Pen, px: number, py: number, x: number, y: number, base = GRASS) {
-  f(base, px, py, 16, 16)
-  speckle(f, px, py, x, y, 7, [GRASS_D, GRASS_D, GRASS_L], 11)
-  for (let i = 0; i < 3; i++) {
-    const bx = px + Math.floor(hash(x, y, 40 + i) * 14) + 1
-    const by = py + Math.floor(hash(y, x, 50 + i) * 13) + 2
-    f(GRASS_D, bx, by, 1, 2)
-    f(GRASS_D, bx + 1, by - 1, 1, 2)
+  const flat = base !== GRASS
+  for (let yy = 0; yy < 16; yy += 2)
+    for (let xx = 0; xx < 16; xx += 2) {
+      const gx = px + xx
+      const gy = py + yy
+      let col = base
+      if (!flat) {
+        const n = smooth(gx, gy, 44, 701) * 0.75 + smooth(gx, gy, 13, 702) * 0.25
+        const j = (hash(gx, gy, 703) - 0.5) * 0.08
+        col = GRASS_TONES[n + j < 0.38 ? 0 : n + j > 0.64 ? 2 : 1]
+      }
+      f(col, gx, gy, 2, 2)
+    }
+  speckle(f, px, py, x, y, 5, [GRASS_D, GRASS_L], 11)
+  const tufts = 2 + Math.floor(hash(x, y, 44) * 3)
+  for (let i = 0; i < tufts; i++) {
+    const bx = px + Math.floor(hash(x, y, 40 + i) * 11)
+    const by = py + 1 + Math.floor(hash(y, x, 50 + i) * 12)
+    tuft(f, bx, by, GRASS_DD, GRASS_D, GRASS_L)
+  }
+  if (!flat && hash(x, y, 45) < 0.12) {
+    const cx = px + 4 + Math.floor(hash(x, y, 46) * 8)
+    const cy = py + 4 + Math.floor(hash(y, x, 47) * 8)
+    f('#3f8a2e', cx, cy + 1, 3, 1)
+    f('#78c84c', cx, cy, 1, 1)
+    f('#78c84c', cx + 2, cy, 1, 1)
+    f('#78c84c', cx + 1, cy + 2, 1, 1)
   }
 }
 
-const FLOWER_COLORS = ['#fff6e6', '#f6a5c0', '#c7a4ef', '#ffd35c', '#ff8a6b']
+const FLOWER_COLORS = ['#ffffff', '#ff7fb0', '#b583f5', '#ffd23a', '#ff6a45', '#5fb2ff']
 
 function flowers(f: Pen, px: number, py: number, x: number, y: number) {
   grass(f, px, py, x, y)
@@ -103,49 +168,190 @@ function fringe(f: Pen, m: GameMap, px: number, py: number, x: number, y: number
 }
 
 function path(f: Pen, m: GameMap, px: number, py: number, x: number, y: number) {
-  f('#dcbf86', px, py, 16, 16)
-  speckle(f, px, py, x, y, 9, ['#c9a96e', '#ead2a0', '#c9a96e'], 21)
+  f('#e2a95f', px, py, 16, 16)
+  speckle(f, px, py, x, y, 10, ['#c98c45', '#f0c27f', '#c98c45'], 21)
   const sx = px + Math.floor(hash(x, y, 22) * 12) + 1
   const sy = py + Math.floor(hash(y, x, 23) * 12) + 2
-  f('#b39467', sx, sy, 3, 2)
-  f('#efdcb3', sx, sy, 2, 1)
+  f('#a8703a', sx, sy, 3, 2)
+  f('#f6d9a2', sx, sy, 2, 1)
   fringe(f, m, px, py, x, y)
 }
 
 function dirt(f: Pen, m: GameMap, px: number, py: number, x: number, y: number) {
-  f('#b38b58', px, py, 16, 16)
-  speckle(f, px, py, x, y, 10, ['#9f7849', '#c49c69', '#a88050'], 31)
+  f('#b8743d', px, py, 16, 16)
+  speckle(f, px, py, x, y, 10, ['#9a5c2c', '#cc8a50', '#a5652f'], 31)
   fringe(f, m, px, py, x, y)
 }
 
+const COBBLES = ['#c4b294', '#b8a586', '#cdbd9f', '#ae9b7c', '#c9b18c']
+const COBBLE_CELL = 8
+
+/** Nearest and second-nearest cobble centres to a world pixel (squashed: stones are wide). */
+function cobbleAt(gx: number, gy: number) {
+  const cx = Math.floor(gx / COBBLE_CELL)
+  const cy = Math.floor(gy / COBBLE_CELL)
+  let d1 = Infinity
+  let d2 = Infinity
+  let best = { x: 0, y: 0, id: 0 }
+  for (let j = -1; j <= 1; j++)
+    for (let i = -1; i <= 1; i++) {
+      const kx = cx + i
+      const ky = cy + j
+      const fx = (kx + 0.15 + hash(kx, ky, 301) * 0.7) * COBBLE_CELL
+      const fy = (ky + 0.15 + hash(kx, ky, 302) * 0.7) * COBBLE_CELL
+      const dx = gx + 0.5 - fx
+      const dy = (gy + 0.5 - fy) * 1.25
+      const d = Math.sqrt(dx * dx + dy * dy)
+      if (d < d1) {
+        d2 = d1
+        d1 = d
+        best = { x: fx, y: fy, id: kx * 7919 + ky }
+      } else if (d < d2) d2 = d
+    }
+  return { ...best, edge: d2 - d1 }
+}
+
+/** Cobblestones: rounded stones of slightly different colours, lit from the top left, with
+ * dark grout (and the odd bit of moss) between them. */
 function stone(f: Pen, m: GameMap, px: number, py: number, x: number, y: number) {
-  f('#cfc6b4', px, py, 16, 16)
-  for (let r = 0; r < 2; r++) {
-    const off = (y + r) % 2 === 0 ? 0 : 4
-    f('#b3a993', px, py + r * 8 + 7, 16, 1)
-    for (let cx = off; cx < 16; cx += 8) f('#b3a993', px + cx, py + r * 8, 1, 7)
-    f('#ddd6c6', px + ((off + 2) % 8), py + r * 8 + 1, 3, 1)
-  }
-  speckle(f, px, py, x, y, 3, ['#c2b8a4'], 41)
+  for (let yy = 0; yy < 16; yy++)
+    for (let xx = 0; xx < 16; xx++) {
+      const gx = px + xx
+      const gy = py + yy
+      const s = cobbleAt(gx, gy)
+      let col: string
+      if (s.edge < 1.15) {
+        col = hash(gx, gy, 303) < 0.07 ? '#6f8a3c' : '#7a6650'
+      } else {
+        const base = COBBLES[Math.floor(hash(s.id, 1, 304) * COBBLES.length)]
+        const above = gy + 0.5 < s.y - 1
+        const below = gy + 0.5 > s.y + 1.2
+        if (s.edge < 2.4 && below) col = shade(base, -0.13)
+        else if (s.edge < 2.2 && above) col = shade(base, 0.09)
+        else if (s.edge < 3.2 && below && gx > s.x) col = shade(base, -0.06)
+        else col = base
+        if (Math.abs(gx + 0.5 - (s.x - 1)) < 1 && Math.abs(gy + 0.5 - (s.y - 1)) < 0.6)
+          col = shade(base, 0.14)
+      }
+      f(col, gx, gy)
+    }
   fringe(f, m, px, py, x, y)
 }
 
+const isWater = (m: GameMap, x: number, y: number) => groundAt(m, x, y) === T.WATER
+
+/** Distance in pixels from a point to the nearest non-water tile (capped at 24). */
+function shoreDist(m: GameMap, gx: number, gy: number): number {
+  const tx = Math.floor(gx / TS)
+  const ty = Math.floor(gy / TS)
+  let best = 24
+  for (let j = -2; j <= 2; j++)
+    for (let i = -2; i <= 2; i++) {
+      if (isWater(m, tx + i, ty + j)) continue
+      const x0 = (tx + i) * TS
+      const y0 = (ty + j) * TS
+      const dx = Math.max(x0 - gx, 0, gx - (x0 + TS - 1))
+      const dy = Math.max(y0 - gy, 0, gy - (y0 + TS - 1))
+      best = Math.min(best, Math.hypot(dx, dy))
+    }
+  return best
+}
+
+/** Sand round the pond: darker and wet right at the water, with a few pebbles and reeds. */
 function sand(f: Pen, m: GameMap, px: number, py: number, x: number, y: number) {
-  f('#e6d29b', px, py, 16, 16)
-  speckle(f, px, py, x, y, 8, ['#d4bd82', '#f0e0b4'], 51)
+  f('#f0d48a', px, py, 16, 16)
+  speckle(f, px, py, x, y, 8, ['#dbb86a', '#f8e6b0'], 51)
+  // Wet sand where it meets the water.
+  for (const [dx, dy] of [
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ]) {
+    if (!isWater(m, x + dx, y + dy)) continue
+    for (let k = 0; k < 4; k++) {
+      const col = k < 2 ? '#c99a52' : '#ddb46c'
+      if (dy === -1) f(col, px, py + k, 16, 1)
+      if (dy === 1) f(col, px, py + 15 - k, 16, 1)
+      if (dx === -1) f(col, px + k, py, 1, 16)
+      if (dx === 1) f(col, px + 15 - k, py, 1, 16)
+    }
+  }
+  if (hash(x, y, 52) < 0.35) {
+    const sx = px + 3 + Math.floor(hash(x, y, 53) * 9)
+    const sy = py + 4 + Math.floor(hash(y, x, 54) * 8)
+    f('#8f8373', sx, sy + 1, 4, 2)
+    f('#b8ad9a', sx, sy, 3, 2)
+    f('#d8cfbd', sx, sy, 1, 1)
+  }
+  // Reeds and cattails on some of the shore next to the water.
+  const nearWater =
+    isWater(m, x, y - 1) || isWater(m, x - 1, y) || isWater(m, x + 1, y) || isWater(m, x, y + 1)
+  if (nearWater && hash(x, y, 55) < 0.4) {
+    for (let i = 0; i < 4; i++) {
+      const rx = px + 2 + Math.floor(hash(x, y, 56 + i) * 12)
+      const h = 6 + Math.floor(hash(y, x, 60 + i) * 6)
+      const ry = py + 14
+      f('#2f6e2a', rx, ry - h, 1, h)
+      f('#5aa43c', rx + 1, ry - h + 2, 1, h - 2)
+      if (i % 2 === 0) {
+        f('#6b3f1e', rx, ry - h - 3, 2, 4)
+        f('#8a5a2e', rx, ry - h - 3, 1, 2)
+      }
+    }
+  }
   fringe(f, m, px, py, x, y)
 }
 
+const WATER_BANDS: [number, string][] = [
+  [3, '#6cc2ec'],
+  [7, '#43a0de'],
+  [13, '#3290d6'],
+  [24, '#2a7cc6'],
+]
+
+/** Pond water, shallow and light at the shore and deeper blue in the middle, with an earth bank
+ * along the top edge, a foam line, soft ripple marks and lily pads. */
 function water(f: Pen, m: GameMap, px: number, py: number, x: number, y: number) {
-  f('#4b93d1', px, py, 16, 16)
-  const notWater = (gx: number, gy: number) => groundAt(m, gx, gy) !== T.WATER
-  if (notWater(x, y - 1)) {
-    f('#d9c58e', px, py, 16, 2)
-    f('#7fb8e6', px, py + 2, 16, 1)
+  for (let yy = 0; yy < 16; yy++)
+    for (let xx = 0; xx < 16; xx++) {
+      const d = shoreDist(m, px + xx, py + yy) + (hash(px + xx, py + yy, 58) - 0.5) * 1.2
+      const col = WATER_BANDS.find(([lim]) => d < lim)?.[1] ?? WATER_BANDS[3][1]
+      f(col, px + xx, py + yy)
+    }
+  // Foam where the water touches the shore.
+  if (!isWater(m, x, y + 1)) f('#d8f0fb', px, py + 15, 16, 1)
+  if (!isWater(m, x - 1, y)) f('#d8f0fb', px, py, 1, 16)
+  if (!isWater(m, x + 1, y)) f('#d8f0fb', px + 15, py, 1, 16)
+  // The bank: an earthy lip on the far (top) side, casting a shadow on the water.
+  if (!isWater(m, x, y - 1)) {
+    f('#a0763f', px, py, 16, 2)
+    f('#7c5a2e', px, py + 2, 16, 2)
+    f('#2468b0', px, py + 4, 16, 1)
   }
-  if (notWater(x, y + 1)) f('#3b7fbd', px, py + 14, 16, 2)
-  if (notWater(x - 1, y)) f('#7fb8e6', px, py, 1, 16)
-  if (notWater(x + 1, y)) f('#7fb8e6', px + 15, py, 1, 16)
+  // Ripple marks.
+  for (let i = 0; i < 2; i++) {
+    const rx = px + 2 + Math.floor(hash(x, y, 62 + i) * 10)
+    const ry = py + 5 + Math.floor(hash(y, x, 64 + i) * 9)
+    f('#5aaee6', rx, ry, 4, 1)
+    f('#5aaee6', rx + 1, ry - 1, 2, 1)
+  }
+  // Lily pads (away from the edge), some with a flower.
+  if (shoreDist(m, px + 8, py + 8) > 10 && hash(x, y, 66) < 0.2) {
+    const lx = px + 2 + Math.floor(hash(x, y, 67) * 5)
+    const ly = py + 3 + Math.floor(hash(y, x, 68) * 6)
+    disc(f, lx + 5, ly + 4, 5, 3.6, '#2a6e2a')
+    disc(f, lx + 5, ly + 3.5, 4.5, 3.1, '#47a338')
+    disc(f, lx + 4, ly + 2.5, 2, 1.2, '#74c652')
+    // The notch.
+    f('#3290d6', lx + 5, ly + 3, 1, 4)
+    f('#3290d6', lx + 6, ly + 5, 1, 2)
+    if (hash(x, y, 69) < 0.5) {
+      f('#ff9fcf', lx + 1, ly + 1, 4, 3)
+      f('#ffe0ef', lx + 2, ly, 2, 2)
+      f('#ffd93b', lx + 2, ly + 2, 2, 1)
+    }
+  }
 }
 
 function hallFloor(f: Pen, px: number, py: number) {
@@ -343,20 +549,70 @@ export function drawWaterGlints(
 
 // --- crops -----------------------------------------------------------------------------------
 
+/** Tilled soil: raised rows with clods, darker and glistening when watered. */
 export function drawSoil(c: Ctx, px: number, py: number, wet: boolean) {
   const f = pen(c)
-  const [base, furrow, hi] = wet
-    ? ['#5f3b22', '#4b2d19', '#6e4529']
-    : ['#8b5a33', '#74472a', '#a06d42']
-  f(base, px + 1, py + 1, 14, 14)
-  for (const r of [4, 8, 12]) {
-    f(furrow, px + 2, py + r, 12, 1)
-    f(hi, px + 2, py + r - 1, 12, 1)
+  const [base, furrow, ridge, clod] = wet
+    ? ['#5a3620', '#3e2414', '#6e4529', '#7d5333']
+    : ['#8e5b32', '#6a4024', '#a8713f', '#b98250']
+  f(furrow, px + 1, py + 1, 14, 14)
+  for (const r of [1, 6, 11]) {
+    f(base, px + 1, py + r, 14, 4)
+    f(ridge, px + 1, py + r, 14, 1)
+    f(furrow, px + 1, py + r + 3, 14, 1)
+  }
+  for (let i = 0; i < 5; i++) {
+    const cx = px + 2 + Math.floor(hash(px, py, 801 + i) * 11)
+    const cy = py + 2 + Math.floor(hash(py, px, 806 + i) * 11)
+    f(clod, cx, cy, 2, 1)
+    f(furrow, cx + 1, cy + 1, 1, 1)
   }
   if (wet) {
-    f('#7a5236', px + 4, py + 3)
-    f('#7a5236', px + 10, py + 9)
+    f('rgba(170,210,255,0.5)', px + 4, py + 2, 2, 1)
+    f('rgba(170,210,255,0.5)', px + 10, py + 7, 2, 1)
+    f('rgba(170,210,255,0.5)', px + 6, py + 12, 2, 1)
   }
+}
+
+/**
+ * The raised wooden bed round a garden plot (w×h tiles), drawn once and cached. Yours has brass
+ * caps on its corner posts.
+ */
+export function plotFrame(w: number, h: number, mine: boolean): HTMLCanvasElement {
+  const W = w * TS + 8
+  const H = h * TS + 10
+  return cached(`plotframe${w}x${h}${mine}`, W, H, (f) => {
+    const plank = (x: number, y: number, len: number, horiz: boolean) => {
+      if (horiz) {
+        f('#5e3a1d', x, y, len, 4)
+        f('#a0703f', x, y, len, 3)
+        f('#c08a52', x, y, len, 1)
+        for (let i = 6; i < len; i += 11) f('#7d5530', x + i, y + 1, 3, 1)
+        for (let i = 15; i < len; i += 16) f('#5e3a1d', x + i, y, 1, 3)
+      } else {
+        f('#5e3a1d', x, y, 4, len)
+        f('#a0703f', x, y, 3, len)
+        f('#c08a52', x, y, 1, len)
+        for (let i = 7; i < len; i += 13) f('#7d5530', x + 1, y + i, 1, 3)
+      }
+    }
+    // Shadow the bed casts down onto the path.
+    f('rgba(40,20,5,0.25)', 2, H - 4, W - 2, 3)
+    plank(0, 0, W, true)
+    plank(0, H - 6, W, true)
+    plank(0, 0, H - 4, false)
+    plank(W - 4, 0, H - 4, false)
+    for (const [cx, cy] of [
+      [0, 0],
+      [W - 5, 0],
+      [0, H - 7],
+      [W - 5, H - 7],
+    ]) {
+      f('#4a2c16', cx, cy, 5, 5)
+      f(mine ? '#f2c94c' : '#8a5d34', cx + 1, cy + 1, 3, 3)
+      f(mine ? '#fff0a8' : '#a87848', cx + 1, cy + 1, 1, 1)
+    }
+  })
 }
 
 /** stage: 0 seed, 1 sprout, 2 growing, 3 ripe. */
@@ -536,17 +792,79 @@ function drawProduce(f: Pen, id: string) {
 
 const spriteCache = new Map<string, HTMLCanvasElement>()
 function cached(key: string, w: number, h: number, draw: (f: Pen) => void): HTMLCanvasElement {
+  return cachedCtx(key, w, h, (c) => draw(pen(c)))
+}
+
+function cachedCtx(key: string, w: number, h: number, draw: (c: Ctx) => void): HTMLCanvasElement {
   let cv = spriteCache.get(key)
   if (!cv) {
     const [nc, c] = canvas(w, h)
-    draw(pen(c))
+    draw(c)
     cv = nc
     spriteCache.set(key, cv)
   }
   return cv
 }
 
+/** A dark outline round everything opaque (alpha > 200), like the characters have. */
+function outlineCanvas(c: Ctx, w: number, h: number, color = [0x1c, 0x33, 0x1c]) {
+  const img = c.getImageData(0, 0, w, h)
+  const d = img.data
+  const solid = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 200
+  const out: number[] = []
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      if (solid(x, y)) continue
+      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) out.push(x, y)
+    }
+  for (let i = 0; i < out.length; i += 2) {
+    const o = (out[i + 1] * w + out[i]) * 4
+    d[o] = color[0]
+    d[o + 1] = color[1]
+    d[o + 2] = color[2]
+    d[o + 3] = 255
+  }
+  c.putImageData(img, 0, 0)
+}
+
+interface Greens {
+  deep: string
+  dark: string
+  mid: string
+  light: string
+  glint: string
+}
+
+const LEAVES: Greens[] = [
+  { deep: '#1b4a24', dark: '#27692c', mid: '#3a8d34', light: '#5cb13f', glint: '#8ed457' },
+  { deep: '#1d4a22', dark: '#2c6e2a', mid: '#46972f', light: '#6dbb3a', glint: '#a6dc58' },
+  { deep: '#1a4626', dark: '#245f30', mid: '#357f3a', light: '#529f45', glint: '#7fc75e' },
+]
+
+/** One clump of leaves: a shaded mound with little individual leaves on it. */
+function leafClump(f: Pen, cx: number, cy: number, r: number, g: Greens, seed: number) {
+  disc(f, cx + 0.6, cy + 1.2, r, r * 0.86, g.dark)
+  disc(f, cx, cy, r * 0.88, r * 0.72, g.mid)
+  disc(f, cx - r * 0.3, cy - r * 0.38, r * 0.42, r * 0.3, g.light)
+  const n = Math.round(r * 1.8)
+  for (let i = 0; i < n; i++) {
+    const a = hash(seed, i, 401) * Math.PI * 2
+    const d = Math.sqrt(hash(i, seed, 402)) * r * 0.85
+    const lx = Math.round(cx + Math.cos(a) * d)
+    const ly = Math.round(cy + Math.sin(a) * d * 0.8)
+    const top = ly < cy - r * 0.35
+    // A leaf: two lit pixels with a dark one tucked under.
+    f(top ? g.glint : g.light, lx, ly, 2, 1)
+    f(top ? g.light : g.dark, lx + 1, ly + 1, 1, 1)
+  }
+  // A darker crease along the bottom of the clump.
+  for (let x = Math.round(cx - r * 0.6); x < cx + r * 0.6; x += 2)
+    f(g.deep, x, Math.round(cy + r * 0.72 + hash(x, seed, 403) * 1.5), 1, 1)
+}
+
 /*
+ * Trees are 64/*
  * Trees are 64×80 (about 3.3 characters tall), pines 48×80. Both stand on a single tile: the
  * trunk is centred on it and the rest of the sprite rises above and around it.
  */
@@ -555,62 +873,224 @@ export const TREE_H = 80
 export const PINE_W = 48
 
 function treeSprite(variant: number): HTMLCanvasElement {
-  return cached(`tree${variant}`, TREE_W, TREE_H, (f) => {
-    disc(f, 32, 77, 15, 3, 'rgba(0,0,0,0.18)')
-    // Trunk and roots.
-    f('#5c3920', 27, 48, 10, 30)
-    f('#7a4e2d', 28, 48, 7, 30)
-    f('#8f6038', 29, 52, 2, 20)
-    f('#5c3920', 23, 75, 18, 3)
-    f('#5c3920', 21, 77, 4, 2)
-    f('#5c3920', 39, 77, 4, 2)
-    // Canopy: a dark silhouette with lumpy edges, lit from the top left.
-    disc(f, 32, 32, 29, 26, '#2f6a2a')
-    disc(f, 9, 40, 9, 8, '#2f6a2a')
-    disc(f, 55, 40, 9, 8, '#2f6a2a')
-    disc(f, 32, 54, 18, 6, '#2f6a2a')
-    disc(f, 18, 10, 10, 8, '#2f6a2a')
-    disc(f, 46, 10, 10, 8, '#2f6a2a')
-    disc(f, 29, 29, 25, 22, '#428a35')
-    disc(f, 12, 37, 6, 5, '#428a35')
-    disc(f, 26, 24, 18, 15, '#58a33f')
-    disc(f, 19, 11, 7, 5, '#58a33f')
-    disc(f, 21, 18, 8, 6, '#74bb52')
-    for (let i = 0; i < 70; i++) {
-      const lx = 6 + Math.floor(hash(i, variant, 1) * 52)
-      const ly = 6 + Math.floor(hash(variant, i, 2) * 50)
-      f(i % 3 ? '#346f2d' : '#6db34c', lx, ly, 2, 1)
+  return cachedCtx(`tree${variant}`, TREE_W, TREE_H, (c) => {
+    const f = pen(c)
+    const g = LEAVES[variant % LEAVES.length]
+    // Trunk with bark, and roots that spread into the grass.
+    f('#5a341b', 27, 46, 10, 31)
+    f('#7a4a26', 28, 46, 6, 31)
+    f('#94603a', 29, 50, 2, 24)
+    for (let y = 50; y < 76; y += 4) {
+      f('#5a341b', 30 + (y % 8 === 2 ? 2 : 0), y, 1, 2)
+      f('#a87348', 28, y + 1, 1, 1)
     }
-    if (variant === 2)
-      for (let i = 0; i < 12; i++) {
-        const ax = 10 + Math.floor(hash(i, 7) * 44)
-        const ay = 14 + Math.floor(hash(7, i) * 34)
-        f('#e8473d', ax, ay, 3, 3)
-        f('#ff8a7a', ax, ay, 1, 1)
+    f('#5a341b', 23, 74, 18, 3)
+    f('#7a4a26', 24, 74, 4, 2)
+    f('#5a341b', 20, 76, 5, 2)
+    f('#5a341b', 39, 76, 5, 2)
+    f('#7a4a26', 36, 74, 4, 2)
+    // Canopy: a deep-green mass, then clumps of leaves from the back (top) to the front.
+    disc(f, 32, 31, 28, 25, g.deep)
+    disc(f, 32, 52, 17, 6, g.deep)
+    const clumps: [number, number, number][] = []
+    for (let row = 0; row < 6; row++) {
+      const y = 9 + row * 8
+      const half = Math.sqrt(Math.max(0, 1 - ((y - 31) / 27) ** 2)) * 25
+      const n = Math.max(1, Math.round(half / 7))
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0.5 : i / (n - 1)
+        const x = 32 - half + 4 + t * (half * 2 - 8) + (hash(row, i, variant) - 0.5) * 4
+        clumps.push([x, y + (hash(i, row, variant + 9) - 0.5) * 3, 7 + hash(row, i, 77) * 2.5])
       }
+    }
+    clumps.forEach(([x, y, r], i) => leafClump(f, x, y, r, g, variant * 100 + i))
+    if (variant === 2)
+      for (let i = 0; i < 14; i++) {
+        const ax = 10 + Math.floor(hash(i, 7) * 44)
+        const ay = 12 + Math.floor(hash(7, i) * 36)
+        f('#a8202a', ax, ay + 1, 3, 2)
+        f('#e8473d', ax, ay, 3, 2)
+        f('#ffb0a0', ax, ay, 1, 1)
+      }
+    outlineCanvas(c, TREE_W, TREE_H)
+    // Shadow on the ground, under the outline.
+    c.globalCompositeOperation = 'destination-over'
+    pen(c)('rgba(0,0,0,0.22)', 14, 75, 36, 4)
+    c.globalCompositeOperation = 'source-over'
   })
 }
 
 function pineSprite(): HTMLCanvasElement {
-  return cached('pine', PINE_W, TREE_H, (f) => {
-    disc(f, 24, 77, 12, 3, 'rgba(0,0,0,0.18)')
-    f('#5c3920', 21, 64, 6, 15)
-    f('#7a4e2d', 22, 64, 3, 15)
+  return cachedCtx('pine', PINE_W, TREE_H, (c) => {
+    const f = pen(c)
+    f('#5a341b', 21, 62, 6, 15)
+    f('#7a4a26', 22, 62, 3, 15)
+    f('#5a341b', 18, 75, 12, 2)
+    // Five tiers of needles, each with a jagged hem, lit on the left.
     for (let i = 0; i < 5; i++) {
-      const top = 2 + i * 13
-      for (let r = 0; r < 18; r++) {
-        const half = Math.min(23, Math.floor(2 + (r + i * 3) * 0.85))
-        f(r < 4 ? '#3d7f3a' : '#2c6331', 24 - half, top + r, half * 2, 1)
-        f('#4d9446', 24 - half, top + r, Math.max(1, Math.floor(half * 0.55)), 1)
+      const top = 1 + i * 12
+      const rows = 19
+      for (let r = 0; r < rows; r++) {
+        const half = Math.min(22, Math.floor(3 + (r + i * 3) * 0.82))
+        const y = top + r
+        f('#1f5a2c', 24 - half, y, half * 2, 1)
+        f('#2f7a36', 24 - half, y, Math.floor(half * 1.3), 1)
+        f('#47993f', 24 - half + 1, y, Math.max(1, Math.floor(half * 0.6)), 1)
+        // Needle tufts.
+        if (r % 3 === 1)
+          for (let x = 24 - half + 2; x < 24 + half - 2; x += 4)
+            f(x < 24 ? '#6cbc4f' : '#2a6d33', x + (r % 2), y, 2, 1)
       }
-      f(
-        '#22502a',
-        24 - Math.min(23, Math.floor(2 + (17 + i * 3) * 0.85)),
-        top + 17,
-        Math.min(46, 2 * Math.floor(2 + (17 + i * 3) * 0.85)),
-        1,
-      )
+      // Jagged hem.
+      const half = Math.min(22, Math.floor(3 + (rows - 1 + i * 3) * 0.82))
+      for (let x = 24 - half; x < 24 + half; x += 3)
+        f('#1f5a2c', x, top + rows, 2, 1 + Math.floor(hash(x, i, 501) * 2))
     }
+    outlineCanvas(c, PINE_W, TREE_H)
+    c.globalCompositeOperation = 'destination-over'
+    pen(c)('rgba(0,0,0,0.22)', 12, 75, 24, 4)
+    c.globalCompositeOperation = 'source-over'
+  })
+}
+
+function bushSprite(berries: boolean): HTMLCanvasElement {
+  return cachedCtx(`bush${berries}`, 20, 18, (c) => {
+    const f = pen(c)
+    const g = LEAVES[1]
+    disc(f, 10, 10, 9, 7, g.deep)
+    leafClump(f, 6, 10, 5, g, 11)
+    leafClump(f, 14, 10, 5, g, 12)
+    leafClump(f, 10, 7, 5.5, g, 13)
+    if (berries)
+      for (const [dx, dy] of [
+        [5, 9],
+        [12, 6],
+        [14, 11],
+        [8, 12],
+      ]) {
+        f('#a3203f', dx, dy + 1, 2, 1)
+        f('#e2456a', dx, dy, 2, 1)
+      }
+    outlineCanvas(c, 20, 18)
+    c.globalCompositeOperation = 'destination-over'
+    pen(c)('rgba(0,0,0,0.2)', 3, 15, 14, 3)
+    c.globalCompositeOperation = 'source-over'
+  })
+}
+
+/** A picket fence post (16×22, drawn 6px above its tile) with rails towards its neighbours. */
+function fenceSprite(l: boolean, r: boolean, u: boolean, d: boolean): HTMLCanvasElement {
+  return cachedCtx(`fence${+l}${+r}${+u}${+d}`, 16, 22, (c) => {
+    const f = pen(c)
+    const rail = (x: number, y: number, w: number) => {
+      f('#a0703f', x, y, w, 3)
+      f('#c08a52', x, y, w, 1)
+      f('#7d5530', x, y + 2, w, 1)
+    }
+    // Rails run behind the post: left and right halves, or up and down.
+    if (l) {
+      rail(0, 10, 8)
+      rail(0, 15, 8)
+    }
+    if (r) {
+      rail(8, 10, 8)
+      rail(8, 15, 8)
+    }
+    if (u) {
+      f('#7d5530', 6, 0, 4, 10)
+      f('#a0703f', 7, 0, 2, 10)
+    }
+    if (d) {
+      f('#7d5530', 6, 14, 4, 8)
+      f('#a0703f', 7, 14, 2, 8)
+    }
+    // The post: a rounded top, lit left side, wood grain and a nail on each rail.
+    f('#b98450', 5, 3, 6, 17)
+    f('#d9a46c', 5, 3, 2, 17)
+    f('#8a5d34', 10, 3, 1, 17)
+    f('#b98450', 6, 2, 4, 1)
+    f('#e6b77e', 6, 2, 2, 1)
+    f('#8a5d34', 7, 8, 1, 3)
+    f('#8a5d34', 8, 14, 1, 2)
+    if (l || r) {
+      f('#4a3a30', 7, 11, 1, 1)
+      f('#4a3a30', 7, 16, 1, 1)
+    }
+    outlineCanvas(c, 16, 22, [0x4a, 0x2a, 0x14])
+    c.globalCompositeOperation = 'destination-over'
+    pen(c)('rgba(0,0,0,0.18)', 4, 20, 9, 2)
+    c.globalCompositeOperation = 'source-over'
+  })
+}
+
+/** A park bench, 32×24 (drawn 8px above its tiles): wooden slats on dark iron ends. */
+function benchSprite(): HTMLCanvasElement {
+  return cachedCtx('bench', 32, 24, (c) => {
+    const f = pen(c)
+    const slat = (y: number, h: number) => {
+      f('#9a6438', 2, y, 28, h)
+      f('#c48a52', 2, y, 28, 1)
+      f('#6e4424', 2, y + h - 1, 28, 1)
+      for (let x = 6; x < 28; x += 9) f('#83532d', x, y + 1, 3, 1)
+    }
+    // Iron ends with a little scroll.
+    for (const x of [1, 27]) {
+      f('#2e2c38', x, 2, 4, 20)
+      f('#4a4858', x, 2, 1, 20)
+      f('#2e2c38', x - 1, 20, 6, 2)
+      f('#4a4858', x + (x < 16 ? 3 : -1), 12, 2, 2)
+    }
+    // Backrest, then the seat.
+    slat(2, 3)
+    slat(6, 3)
+    f('#2e2c38', 2, 9, 28, 1)
+    slat(11, 4)
+    slat(15, 3)
+    outlineCanvas(c, 32, 24, [0x2a, 0x1a, 0x10])
+    c.globalCompositeOperation = 'destination-over'
+    pen(c)('rgba(0,0,0,0.2)', 2, 21, 29, 3)
+    c.globalCompositeOperation = 'source-over'
+  })
+}
+
+/** A Victorian lamp post, 16×60, its glass at LAMP_LIGHT_Y above the tile. */
+function lampSprite(): HTMLCanvasElement {
+  return cachedCtx('lamp', 16, 60, (c) => {
+    const f = pen(c)
+    const iron = '#2c3438'
+    const ironL = '#56646a'
+    // Base: stepped plinth.
+    f(iron, 3, 54, 10, 4)
+    f(ironL, 3, 54, 10, 1)
+    f(iron, 4, 51, 8, 3)
+    f(ironL, 4, 51, 1, 3)
+    f(iron, 5, 47, 6, 4)
+    // Fluted pole with a ring half way up.
+    f(iron, 7, 16, 3, 32)
+    f(ironL, 7, 16, 1, 32)
+    f(iron, 5, 30, 6, 2)
+    f(ironL, 5, 30, 6, 1)
+    // Crossbar with little scrolls.
+    f(iron, 3, 15, 10, 2)
+    f(ironL, 3, 15, 10, 1)
+    f(iron, 2, 13, 2, 2)
+    f(iron, 12, 13, 2, 2)
+    // Lantern: four panes of warm glass in a frame.
+    f(iron, 3, 5, 10, 10)
+    f('#fbe7a6', 4, 6, 8, 8)
+    f('#fff7d6', 4, 6, 3, 4)
+    f('#e8c66c', 9, 10, 3, 4)
+    f(iron, 7, 6, 2, 8)
+    f(iron, 4, 9, 8, 1)
+    // Cap and finial.
+    f(iron, 2, 3, 12, 2)
+    f(ironL, 2, 3, 12, 1)
+    f(iron, 4, 1, 8, 2)
+    f(iron, 7, 0, 2, 1)
+    outlineCanvas(c, 16, 60, [0x14, 0x18, 0x1c])
+    c.globalCompositeOperation = 'destination-over'
+    pen(c)('rgba(0,0,0,0.2)', 2, 57, 12, 3)
+    c.globalCompositeOperation = 'source-over'
   })
 }
 
@@ -639,70 +1119,43 @@ export function drawObject(
       c.drawImage(pineSprite(), px + 8 - PINE_W / 2, py + 16 - TREE_H)
       break
     case 'bush':
-      disc(f, px + 8, py + 13, 7, 2, 'rgba(0,0,0,0.18)')
-      disc(f, px + 8, py + 8, 8, 7, '#2f6a2a')
-      disc(f, px + 7, py + 7, 6, 5, '#4b9139')
-      f('#6db34c', px + 4, py + 4, 3, 2)
-      if (hash(o.x, o.y) < 0.5)
-        for (const [dx, dy] of [
-          [4, 8],
-          [10, 5],
-          [11, 10],
-        ])
-          f('#d94a6a', px + dx, py + dy, 2, 2)
+      c.drawImage(bushSprite(hash(o.x, o.y) < 0.5), px - 2, py - 3)
       break
     case 'fence': {
-      const h = fenceAt(o.x - 1, o.y) || fenceAt(o.x + 1, o.y)
-      const v = fenceAt(o.x, o.y - 1) || fenceAt(o.x, o.y + 1)
-      if (h) {
-        for (const side of [-1, 1]) {
-          if (!fenceAt(o.x + side, o.y)) continue
-          const rx = side < 0 ? px : px + 8
-          f('#a0703f', rx, py + 5, 8, 2)
-          f('#a0703f', rx, py + 10, 8, 2)
-        }
-        f('#7d5530', px, py + 7, 16, 1)
-        f('#7d5530', px, py + 12, 16, 1)
-      }
-      if (v) {
-        if (fenceAt(o.x, o.y - 1)) f('#a0703f', px + 6, py - 2, 4, 8)
-        if (fenceAt(o.x, o.y + 1)) f('#a0703f', px + 6, py + 8, 4, 8)
-      }
-      f('#6b4526', px + 5, py + 1, 6, 14)
-      f('#b98450', px + 6, py + 1, 4, 13)
-      f('#d3a06a', px + 6, py + 1, 4, 1)
+      const key = [
+        fenceAt(o.x - 1, o.y),
+        fenceAt(o.x + 1, o.y),
+        fenceAt(o.x, o.y - 1),
+        fenceAt(o.x, o.y + 1),
+      ]
+      c.drawImage(fenceSprite(key[0], key[1], key[2], key[3]), px, py - 6)
       break
     }
     case 'home':
-      drawHome(f, px, py, o.w!, o.h!)
+      c.drawImage(
+        cached(`home${o.w}x${o.h}`, o.w! * TS + PAD * 2, o.h! * TS + PAD_TOP, (g) =>
+          drawHome(g, PAD, PAD_TOP, o.w!, o.h!),
+        ),
+        px - PAD,
+        py - PAD_TOP,
+      )
       break
     case 'kitchen':
-      drawKitchen(f, px, py, o.w!, o.h!, time)
+      c.drawImage(
+        cached(`kitchen${o.w}x${o.h}`, o.w! * TS + PAD * 2, o.h! * TS + PAD_TOP, (g) =>
+          drawKitchen(g, PAD, PAD_TOP, o.w!, o.h!),
+        ),
+        px - PAD,
+        py - PAD_TOP,
+      )
+      kitchenSmoke(f, px, py, o.w!, time)
       break
     case 'bench':
-      f('rgba(0,0,0,0.15)', px + 1, py + 13, 30, 2)
-      f('#6b4526', px + 2, py + 9, 2, 5)
-      f('#6b4526', px + 28, py + 9, 2, 5)
-      f('#a0703f', px, py + 2, 32, 3)
-      f('#8a5d34', px, py + 5, 32, 1)
-      f('#b98450', px, py + 7, 32, 3)
-      f('#8a5d34', px, py + 10, 32, 1)
+      c.drawImage(benchSprite(), px, py - 8)
       break
     case 'lamp':
       // About twice a character's height. LAMP_LIGHT_Y is where the glass is.
-      f('rgba(0,0,0,0.18)', px + 3, py + 13, 10, 2)
-      f('#2f3b3a', px + 4, py + 11, 8, 4)
-      f('#2f3b3a', px + 6, py + 8, 4, 3)
-      f('#2f3b3a', px + 7, py - 28, 2, 37)
-      f('#46524f', px + 7, py - 28, 1, 37)
-      f('#2f3b3a', px + 6, py - 4, 4, 2)
-      f('#2f3b3a', px + 3, py - 29, 10, 2)
-      f('#f7e3a1', px + 4, py - 36, 8, 7)
-      f('#fff6cf', px + 5, py - 35, 2, 4)
-      f('#2f3b3a', px + 7, py - 36, 2, 7)
-      f('#2f3b3a', px + 3, py - 38, 10, 2)
-      f('#2f3b3a', px + 5, py - 40, 6, 2)
-      f('#2f3b3a', px + 7, py - 42, 2, 2)
+      c.drawImage(lampSprite(), px, py - 44)
       break
     case 'flowerbed':
       f('#7a4e2d', px, py + 7, 16, 8)
@@ -804,7 +1257,7 @@ export function drawObject(
         const a = -Math.PI / 2 + (i - 2.5) * 0.45
         for (let r = 0; r < 9; r++)
           f(
-            i % 2 ? '#3f8a3a' : '#58a33f',
+            i % 2 ? '#3f8a3a' : '#46a83a',
             px + 8 + Math.round(Math.cos(a) * r),
             py + 9 + Math.round(Math.sin(a) * r * 1.4),
           )
@@ -822,72 +1275,235 @@ export function drawObject(
   }
 }
 
+/** Room around a building sprite for overhangs and chimneys. */
+const PAD = 8
+const PAD_TOP = 18
+
+interface RoofColors {
+  base: string[]
+  dark: string
+  light: string
+  gap: string
+}
+
+/** Rows of overlapping shingles, each one shaded, with a little colour variation. */
+function shingles(
+  f: Pen,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  r: RoofColors,
+  seed: number,
+) {
+  f(r.gap, x0, y0, w, h)
+  for (let row = 0, y = y0; y < y0 + h; row++, y += 5) {
+    const off = row % 2 ? 4 : 0
+    for (let x = x0 - off; x < x0 + w; x += 8) {
+      const sx = Math.max(x0, x)
+      const sw = Math.min(x + 7, x0 + w) - sx
+      if (sw <= 0) continue
+      const col = r.base[Math.floor(hash(x, row, seed) * r.base.length)]
+      const sh = Math.min(5, y0 + h - y)
+      f(col, sx, y, sw, sh)
+      f(r.light, sx, y, sw, 1)
+      if (sh >= 4) f(r.dark, sx, y + sh - 1, sw, 1)
+      // Rounded bottom corners.
+      if (sh >= 4 && sw >= 6) {
+        f(r.gap, sx, y + sh - 1, 1, 1)
+        f(r.gap, sx + sw - 1, y + sh - 1, 1, 1)
+      }
+    }
+  }
+}
+
+function bricks(
+  f: Pen,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  cols: string[],
+  mortar: string,
+  seed: number,
+) {
+  f(mortar, x0, y0, w, h)
+  for (let row = 0, y = y0; y < y0 + h; row++, y += 4) {
+    const off = row % 2 ? 4 : 0
+    for (let x = x0 - off; x < x0 + w; x += 8) {
+      const bx = Math.max(x0, x)
+      const bw = Math.min(x + 7, x0 + w) - bx
+      if (bw <= 0) continue
+      const col = cols[Math.floor(hash(x, row, seed) * cols.length)]
+      const bh = Math.min(3, y0 + h - y)
+      f(col, bx, y, bw, bh)
+      f(shade(col, 0.07), bx, y, bw, 1)
+    }
+  }
+}
+
+function chimney(f: Pen, x: number, y: number, w: number, h: number) {
+  bricks(f, x, y + 3, w, h - 3, ['#a5452e', '#b6533a', '#954029'], '#6e2e1e', x)
+  f('#4b4644', x - 1, y, w + 2, 3)
+  f('#6c6562', x - 1, y, w + 2, 1)
+  f('#231c1c', x + 2, y + 1, w - 4, 1)
+  f('rgba(0,0,0,0.25)', x + w - 2, y + 3, 2, h - 3)
+}
+
 function drawHome(f: Pen, px: number, py: number, w: number, h: number) {
   const W = w * TS
   const roofH = 4 * TS
   const wallY = py + roofH
   const wallH = (h - 4) * TS
-  // Chimneys.
-  f('#8f3f2c', px + 40, py - 10, 12, 20)
-  f('#a6533b', px + 40, py - 12, 12, 3)
-  f('#8f3f2c', px + W - 56, py - 6, 12, 16)
-  f('#a6533b', px + W - 56, py - 8, 12, 3)
-  // Roof.
-  f('#7a3324', px - 4, py, W + 8, roofH + 2)
-  for (let r = 0; r < roofH; r += 5) {
-    f(r % 10 === 0 ? '#b4533a' : '#a9492f', px - 3, py + r + 1, W + 6, 4)
-    for (let x = r % 10 === 0 ? 0 : 4; x < W + 6; x += 8) f('#8f3f2c', px - 3 + x, py + r + 1, 1, 4)
-  }
-  f('#cc6a4c', px - 3, py + 1, W + 6, 1)
-  f('#5e2a1e', px - 4, py + roofH, W + 8, 2)
-  // Gable with the sign.
+  chimney(f, px + 40, py - 12, 12, 22)
+  chimney(f, px + W - 56, py - 8, 12, 18)
+  // Roof: terracotta shingles, a ridge cap and a fascia board with a shadow under it.
+  shingles(
+    f,
+    px - 4,
+    py + 2,
+    W + 8,
+    roofH - 2,
+    {
+      base: ['#b4533a', '#a9492f', '#bd5c40', '#a44730'],
+      dark: '#7a3324',
+      light: '#d77457',
+      gap: '#6a2a1c',
+    },
+    7,
+  )
+  f('#7a3324', px - 4, py, W + 8, 3)
+  f('#c9684b', px - 4, py, W + 8, 1)
+  f('#5e2a1e', px - 5, py + roofH, W + 10, 3)
+  f('#8a4a2c', px - 5, py + roofH, W + 10, 1)
+  // Gable sign board with a gold trim.
   const mid = px + W / 2
-  f('#6e4a2f', mid - 38, py + 26, 76, 16)
-  f('#c79a63', mid - 36, py + 28, 72, 12)
-  f('#f2b84b', mid - 36, py + 28, 72, 1)
-  // Walls.
-  f('#f1e4c6', px, wallY, W, wallH)
-  for (let y = 3; y < wallH; y += 4) f('#dccdaa', px, wallY + y, W, 1)
-  f('#c9b48f', px, wallY + wallH - 3, W, 3)
-  // Windows.
-  const door0 = (23 - 14) * TS
-  for (let x = 12; x < W - 12; x += 32) {
-    if (x > door0 - 28 && x < door0 + 40) continue
-    window2(f, px + x, wallY + 8)
+  f('#5a3a22', mid - 39, py + 24, 78, 18)
+  f('#c79a63', mid - 37, py + 26, 74, 14)
+  f('#dcb27a', mid - 37, py + 26, 74, 2)
+  f('#a87a48', mid - 37, py + 38, 74, 2)
+  f('#f2b84b', mid - 36, py + 27, 72, 1)
+  for (const sx of [mid - 35, mid + 33]) f('#8a6a3a', sx, py + 31, 2, 2)
+  // Walls: siding boards, each with a lit top edge and a shadow under it.
+  f('#f6d58e', px, wallY, W, wallH)
+  for (let y = 3; y < wallH - 6; y += 5) {
+    f('#fce6b0', px, wallY + y, W, 1)
+    f('#dfae63', px, wallY + y + 3, W, 1)
+    f('#e9c27c', px, wallY + y + 4, W, 1)
   }
-  // Porch roof and double door.
-  const dx = px + door0
-  f('#5e2a1e', dx - 6, wallY + 2, 44, 3)
-  f('#b4533a', dx - 6, wallY - 1, 44, 3)
-  f('#fff8ef', dx - 4, wallY + 5, 2, wallH - 5)
-  f('#fff8ef', dx + 34, wallY + 5, 2, wallH - 5)
-  f('#3e5e41', dx, wallY + 12, 32, wallH - 12)
-  f('#4f7a52', dx + 1, wallY + 13, 14, wallH - 13)
-  f('#4f7a52', dx + 17, wallY + 13, 14, wallH - 13)
-  f('#9fc7e6', dx + 4, wallY + 16, 8, 6)
-  f('#9fc7e6', dx + 20, wallY + 16, 8, 6)
-  f('#f2d07a', dx + 13, wallY + 32, 2, 2)
-  f('#f2d07a', dx + 17, wallY + 32, 2, 2)
-  f('#d8cfbd', dx - 4, wallY + wallH - 2, 40, 2)
+  // Shadow from the eaves.
+  f('rgba(80,40,10,0.22)', px, wallY + 3, W, 3)
+  // Corner and centre trim boards.
+  for (const tx of [px, px + W - 4, px + 108, px + W - 112]) {
+    f('#fff3d6', tx, wallY + 3, 4, wallH - 9)
+    f('#d9c39a', tx + 3, wallY + 3, 1, wallH - 9)
+  }
+  // Stone foundation.
+  f('#8c8170', px, wallY + wallH - 6, W, 6)
+  for (let x = 0; x < W; x += 6) {
+    const sx = px + x + (hash(x, 3, 601) < 0.5 ? 0 : 1)
+    f('#b3a893', sx, wallY + wallH - 5, 5, 2)
+    f('#a09580', sx + 2, wallY + wallH - 3, 4, 2)
+  }
+  // Windows.
+  for (const wx of homeWindows(W)) window2(f, px + wx, wallY + 8, true)
+  // Porch roof on posts, and a panelled double door with glass.
+  const dx = px + HOME_DOOR_PX
+  f('#5e2a1e', dx - 7, wallY + 1, 46, 4)
+  f('#b4533a', dx - 7, wallY - 2, 46, 3)
+  f('#d77457', dx - 7, wallY - 2, 46, 1)
+  for (const postX of [dx - 5, dx + 34]) {
+    f('#fff3d6', postX, wallY + 5, 3, wallH - 9)
+    f('#d9c39a', postX + 2, wallY + 5, 1, wallH - 9)
+  }
+  f('#2d4a33', dx - 1, wallY + 10, 34, wallH - 14)
+  for (const leaf of [dx, dx + 16]) {
+    f('#4f7a52', leaf, wallY + 11, 16, wallH - 15)
+    f('#5f8f62', leaf, wallY + 11, 16, 1)
+    f('#a6d4f2', leaf + 3, wallY + 14, 10, 8)
+    f('#d6eefc', leaf + 4, wallY + 15, 3, 2)
+    f('#2d4a33', leaf + 7, wallY + 14, 1, 8)
+    // Lower panels.
+    for (const py2 of [wallY + 26, wallY + 38]) {
+      f('#3e6442', leaf + 3, py2, 10, 9)
+      f('#6a9a6d', leaf + 3, py2, 10, 1)
+      f('#2d4a33', leaf + 3, py2 + 8, 10, 1)
+    }
+  }
+  f('#f2c94c', dx + 13, wallY + 32, 2, 2)
+  f('#f2c94c', dx + 17, wallY + 32, 2, 2)
+  // Doorstep.
+  f('#b3a893', dx - 3, wallY + wallH - 4, 38, 4)
+  f('#d2c8b2', dx - 3, wallY + wallH - 4, 38, 1)
 }
 
-function window2(f: Pen, x: number, y: number) {
+const HOME_DOOR_PX = (23 - 14) * TS
+
+/** x offsets (from the home's left edge) of its front windows. */
+function homeWindows(W: number): number[] {
+  const out: number[] = []
+  for (let x = 12; x < W - 12; x += 32) {
+    if (x > HOME_DOOR_PX - 28 && x < HOME_DOOR_PX + 40) continue
+    out.push(x)
+  }
+  return out
+}
+
+/**
+ * Window panes of a building, in buffer pixels relative to its top-left, so they can glow
+ * warmly at night (the home's lights).
+ */
+export function buildingWindows(o: Obj): { x: number; y: number; w: number; h: number }[] {
+  if (o.k === 'home')
+    return homeWindows(o.w! * TS).map((x) => ({ x: x + 2, y: 4 * TS + 10, w: 16, h: 16 }))
+  if (o.k === 'kitchen') {
+    const W = o.w! * TS
+    return [10, W - 30].map((x) => ({ x: x + 2, y: 3 * TS + 18, w: 16, h: 16 }))
+  }
+  return []
+}
+
+function window2(f: Pen, x: number, y: number, shutters = false) {
+  if (shutters) {
+    for (const sx of [x - 6, x + 21]) {
+      f('#245f40', sx, y, 5, 20)
+      f('#2f7a52', sx, y, 4, 20)
+      f('#3f9666', sx, y, 4, 1)
+      for (let r = 3; r < 19; r += 3) {
+        f('#245f40', sx + 1, y + r, 3, 1)
+        f('#3f9666', sx + 1, y + r - 1, 3, 1)
+      }
+    }
+  }
+  // Frame with a shadow on its lower right.
   f('#fff8ef', x, y, 20, 20)
-  f('#8ab4d8', x + 2, y + 2, 16, 16)
-  f('#b8d6ee', x + 3, y + 3, 5, 3)
+  f('#d8cbb0', x + 19, y + 1, 1, 19)
+  f('#d8cbb0', x + 1, y + 19, 19, 1)
+  // Glass: sky reflection with a diagonal glint, and curtains tied back.
+  f('#4f98d8', x + 2, y + 2, 16, 16)
+  f('#6fb2ea', x + 2, y + 2, 16, 6)
+  f('#c9e7fb', x + 4, y + 4, 2, 1)
+  f('#c9e7fb', x + 3, y + 5, 2, 1)
+  f('#c9e7fb', x + 12, y + 11, 2, 1)
+  f('#e88aa0', x + 2, y + 2, 3, 9)
+  f('#e88aa0', x + 15, y + 2, 3, 9)
+  f('#c9657e', x + 4, y + 2, 1, 9)
+  f('#c9657e', x + 15, y + 2, 1, 9)
   f('#fff8ef', x + 9, y + 2, 2, 16)
   f('#fff8ef', x + 2, y + 9, 16, 2)
-  f('#8a5a35', x - 1, y + 20, 22, 4)
-  for (let i = 0; i < 5; i++) f(FLOWER_COLORS[i], x + i * 4, y + 18, 3, 2)
+  // Sill and flower box.
+  f('#fff3d6', x - 2, y + 19, 24, 2)
+  f('#8a5a35', x - 1, y + 21, 22, 4)
+  f('#a8703f', x - 1, y + 21, 22, 1)
+  f('#6b4526', x - 1, y + 24, 22, 1)
+  for (let i = 0; i < 6; i++) {
+    f('#3f8f36', x + i * 3 + 1, y + 19, 1, 2)
+    f(FLOWER_COLORS[i % FLOWER_COLORS.length], x + i * 3, y + 18, 2, 2)
+  }
 }
 
-function drawKitchen(f: Pen, px: number, py: number, w: number, h: number, time: number) {
+function kitchenSmoke(f: Pen, px: number, py: number, w: number, time: number) {
   const W = w * TS
-  const roofH = 3 * TS
-  const wallY = py + roofH
-  const wallH = (h - 3) * TS
-  f('#6d6361', px + W - 30, py - 14, 12, 22)
-  // Smoke puffs.
   for (let i = 0; i < 3; i++) {
     const t = (time / 1400 + i / 3) % 1
     const s = 3 + Math.floor(t * 4)
@@ -899,30 +1515,68 @@ function drawKitchen(f: Pen, px: number, py: number, w: number, h: number, time:
       s,
     )
   }
-  f('#2f5a5b', px - 4, py, W + 8, roofH + 2)
-  for (let r = 0; r < roofH; r += 5) {
-    f(r % 10 === 0 ? '#4f8a8b' : '#467d7e', px - 3, py + r + 1, W + 6, 4)
-    for (let x = r % 10 === 0 ? 0 : 4; x < W + 6; x += 8) f('#386b6c', px - 3 + x, py + r + 1, 1, 4)
+}
+
+function drawKitchen(f: Pen, px: number, py: number, w: number, h: number) {
+  const W = w * TS
+  const roofH = 3 * TS
+  const wallY = py + roofH
+  const wallH = (h - 3) * TS
+  chimney(f, px + W - 30, py - 14, 12, 22)
+  shingles(
+    f,
+    px - 4,
+    py + 2,
+    W + 8,
+    roofH - 2,
+    {
+      base: ['#3f8a8c', '#478f90', '#377d80', '#4c9799'],
+      dark: '#245a5c',
+      light: '#6fb6b6',
+      gap: '#1d4547',
+    },
+    9,
+  )
+  f('#245a5c', px - 4, py, W + 8, 3)
+  f('#6fb6b6', px - 4, py, W + 8, 1)
+  f('#1f3f40', px - 5, py + roofH, W + 10, 3)
+  // Brick walls, each brick a little different.
+  bricks(
+    f,
+    px,
+    wallY,
+    W,
+    wallH,
+    ['#b5603f', '#c06a47', '#a95638', '#bb6444', '#9f4f33'],
+    '#7e3f2a',
+    3,
+  )
+  f('rgba(60,20,10,0.25)', px, wallY + 3, W, 2)
+  // Striped awning with a scalloped hem and a shadow under it.
+  f('rgba(60,20,10,0.3)', px + 2, wallY + 12, W - 4, 3)
+  for (let x = 0; x < W; x += 8) {
+    const red = x % 16 === 0
+    f(red ? '#d4423c' : '#fff6e6', px + x, wallY + 2, 8, 8)
+    f(red ? '#e8655e' : '#ffffff', px + x, wallY + 2, 8, 1)
+    f(red ? '#a8302c' : '#e6dcc6', px + x + 7, wallY + 3, 1, 7)
+    // Scallop.
+    f(red ? '#d4423c' : '#fff6e6', px + x + 1, wallY + 10, 6, 1)
+    f(red ? '#d4423c' : '#fff6e6', px + x + 2, wallY + 11, 4, 1)
   }
-  f('#1f3f40', px - 4, py + roofH, W + 8, 2)
-  // Brick walls.
-  f('#b5654a', px, wallY, W, wallH)
-  for (let y = 0; y < wallH; y += 4) {
-    f('#9a523c', px, wallY + y + 3, W, 1)
-    for (let x = y % 8 === 0 ? 0 : 4; x < W; x += 8) f('#9a523c', px + x, wallY + y, 1, 3)
-  }
-  // Striped awning.
-  for (let x = 0; x < W; x += 8) f(x % 16 === 0 ? '#c0504d' : '#fff6e6', px + x, wallY + 2, 8, 7)
-  for (let x = 0; x < W; x += 8)
-    f(x % 16 === 0 ? '#c0504d' : '#fff6e6', px + x + 1, wallY + 9, 6, 2)
   window2(f, px + 10, wallY + 16)
   window2(f, px + W - 30, wallY + 16)
+  // A panelled door with a little window and a brass handle.
   const dx = px + (40 - 36) * TS
-  f('#5b4030', dx - 1, wallY + 22, 18, wallH - 22)
-  f('#8a5a35', dx + 1, wallY + 24, 14, wallH - 24)
-  f('#9fc7e6', dx + 4, wallY + 26, 8, 5)
-  f('#f2d07a', dx + 12, wallY + 38, 2, 2)
-  f('#d8cfbd', dx - 2, wallY + wallH - 2, 20, 2)
+  f('#4a3020', dx - 2, wallY + 21, 20, wallH - 21)
+  f('#8a5a35', dx, wallY + 23, 16, wallH - 23)
+  f('#a06c40', dx, wallY + 23, 16, 1)
+  f('#a6d4f2', dx + 4, wallY + 26, 8, 6)
+  f('#d6eefc', dx + 5, wallY + 27, 2, 1)
+  f('#6b4526', dx + 3, wallY + 35, 10, 8)
+  f('#a06c40', dx + 3, wallY + 35, 10, 1)
+  f('#f2c94c', dx + 12, wallY + 38, 2, 2)
+  f('#b3a893', dx - 3, wallY + wallH - 3, 22, 3)
+  f('#d2c8b2', dx - 3, wallY + wallH - 3, 22, 1)
 }
 
 // --- furniture -----------------------------------------------------------------------------------
@@ -980,7 +1634,7 @@ export function drawFurniture(c: Ctx, k: string, px: number, py: number, time: n
         const a = -Math.PI / 2 + (i - 3) * 0.42
         for (let r = 0; r < 10; r++)
           f(
-            i % 2 ? '#3f8a3a' : '#6db34c',
+            i % 2 ? '#3f8a3a' : '#69c244',
             px + 8 + Math.round(Math.cos(a) * r),
             py + 8 + Math.round(Math.sin(a) * r * 1.2),
           )

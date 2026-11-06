@@ -169,16 +169,16 @@ export const FLOORS: Record<string, Finish> = {
 export const SKIN_TONES = ['#f7d7c0', '#eec1a0', '#d9a27a', '#b97d55', '#8d5a3b', '#5e3b26']
 export const HAIR_COLORS = ['#f4f1ea', '#d2d0cc', '#a9a8a6', '#c9c3e6', '#b9d3e8', '#6b6158']
 export const OUTFIT_COLORS = [
-  '#c0504d',
-  '#d8873f',
-  '#e0b84a',
-  '#6f9e4f',
-  '#4f8fa8',
-  '#5b6fb5',
-  '#8e62a8',
-  '#c56a9a',
+  '#d4423c',
+  '#e98131',
+  '#f0bc35',
+  '#5aa83c',
+  '#2f95b8',
+  '#4a66c8',
+  '#8e4fbb',
+  '#d85a9d',
 ]
-export const PANTS_COLORS = ['#4d4a5e', '#6b5640', '#3f5a73', '#7a7468', '#8a4f4f']
+export const PANTS_COLORS = ['#433f62', '#6e5232', '#2f5a80', '#77705f', '#94443f']
 export const BODIES = ['female', 'male'] as const
 export type Body = (typeof BODIES)[number]
 export const BODY_NAMES: Record<Body, string> = { female: 'Female', male: 'Male' }

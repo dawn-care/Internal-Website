@@ -9,6 +9,7 @@ import {
   ROOM_WALL,
 } from '../shared/catalog'
 import {
+  INTRO,
   MAX_CHAT_CHARS,
   MAX_ROOM_ITEMS,
   type ChatMsg,
@@ -24,11 +25,13 @@ import {
   FLAT_KINDS,
   LAMP_LIGHT_Y,
   TS,
+  buildingWindows,
   drawCrop,
   drawFurniture,
   drawObject,
   drawSoil,
   drawWaterGlints,
+  plotFrame,
   renderGround,
 } from './art'
 import { sfx } from './audio'
@@ -49,6 +52,7 @@ import {
   type Interact,
   type Npc,
 } from './maps'
+import * as intro from './intro'
 import { NetError, type Net } from './net'
 import { SPR_H, SPR_W, personSprite } from './people'
 import type { UI } from './ui'
@@ -145,6 +149,7 @@ export class Game {
     this.overlay.className = 'overlay'
     this.octx = this.overlay.getContext('2d')!
     this.save.slot = slot
+    this.view.style.filter = MOODS.property
     for (const o of getGrounds().objects) if (o.k === 'fence') this.fences.add(`${o.x},${o.y}`)
   }
 
@@ -168,6 +173,7 @@ export class Game {
     window.setInterval(() => this.saveTick(), 1000)
     window.setInterval(() => this.ui.renderChat(), 15_000)
     requestAnimationFrame((t) => this.frame(t))
+    this.startIntro()
   }
 
   // --- view -----------------------------------------------------------------------------------
@@ -209,6 +215,7 @@ export class Game {
     addEventListener('keydown', (e) => {
       if (this.typing()) return
       const k = e.key.toLowerCase()
+      if (!this.ui.panelOpen() && this.ui.dialogueKey(e)) return
       if (this.ui.panelOpen()) {
         if (k === 'escape') this.ui.closePanel()
         return
@@ -247,6 +254,7 @@ export class Game {
     })
     this.overlay.addEventListener('mousedown', (e) => {
       if (this.ui.panelOpen()) return
+      if (this.ui.dialogueOpen()) return this.ui.advanceDialogue()
       const t = this.tileAtScreen(e.clientX, e.clientY)
       if (this.decor.active) this.decorClick(t.x, t.y)
       else this.clickTile(t.x, t.y)
@@ -333,6 +341,8 @@ export class Game {
 
   private solid(tx: number, ty: number): boolean {
     if (!inBounds(this.map, tx, ty)) return true
+    if (this.introAdaHere() && tx === intro.INTRO_ADA_TILE.x && ty === intro.INTRO_ADA_TILE.y)
+      return true
     return this.map.solid[ty * this.map.w + tx] === 1
   }
 
@@ -396,7 +406,7 @@ export class Game {
   private update(dt: number) {
     let dx = 0
     let dy = 0
-    if (!this.typing() && !this.ui.panelOpen()) {
+    if (!this.typing() && !this.ui.panelOpen() && !this.ui.dialogueOpen()) {
       if (this.keys.has('arrowleft') || this.keys.has('a')) dx -= 1
       if (this.keys.has('arrowright') || this.keys.has('d')) dx += 1
       if (this.keys.has('arrowup') || this.keys.has('w')) dy -= 1
@@ -459,7 +469,17 @@ export class Game {
     const hour = gameHour(Date.now() + this.serverSkew)
     this.ui.setClock(clockText(hour))
     setAmbience(hour, this.map.outdoor ? 'outdoors' : 'indoors')
-    this.ui.setPrompt(this.decor.active ? null : this.promptText())
+    this.ui.setPrompt(this.decor.active || this.ui.dialogueOpen() ? null : this.promptText())
+    if (intro.isActive(this.save)) {
+      this.ui.renderQuest()
+      if (
+        this.introFinale &&
+        !this.ui.panelOpen() &&
+        !this.ui.dialogueOpen() &&
+        this.decor.held < 0
+      )
+        this.finishIntro()
+    }
   }
 
   /** Walking into a door goes through it. */
@@ -484,7 +504,169 @@ export class Game {
   }
 
   private interactAt(x: number, y: number): Interact | undefined {
+    if (this.introAdaHere() && x === intro.INTRO_ADA_TILE.x && y === intro.INTRO_ADA_TILE.y)
+      return { kind: 'nurse', x, y }
     return this.map.interacts.find((i) => i.x === x && i.y === y)
+  }
+
+  // --- Nurse Ada's introduction -----------------------------------------------------------------
+
+  /** Set once the last task is done; the goodbye waits until panels and placing are finished. */
+  private introFinale = false
+
+  /** Ada stands outside to greet you while your introduction is running. */
+  private introAdaHere(): boolean {
+    return this.mapId === 'grounds' && intro.isActive(this.save) && !this.introFinale
+  }
+
+  /** The people standing around this map: its own NPCs, plus Ada outside during the intro. */
+  private npcs(): Npc[] {
+    return this.introAdaHere() ? [...this.map.npcs, intro.INTRO_ADA] : this.map.npcs
+  }
+
+  introHint(): string {
+    return intro.hint(this.save, this.slot, this.mapId, this.login, Date.now(), this.nearMyPlot())
+  }
+
+  private startIntro() {
+    if (!intro.isActive(this.save)) return
+    // Without a garden plot (the home is full) there's nothing to plant: skip the tour.
+    if (this.slot < 0) {
+      delete this.save.intro
+      this.markDirty()
+      return
+    }
+    if (this.save.intro === INTRO.greet) window.setTimeout(() => this.greet(), 700)
+  }
+
+  private greet() {
+    if (this.save.intro !== INTRO.greet || this.ui.dialogueOpen()) return
+    this.ui.dialogue('Nurse Ada', intro.greeting(this.save.look.name), {
+      pitch: intro.ADA_VOICE,
+      look: intro.INTRO_ADA.look,
+      old: false,
+      choices: [
+        { label: 'Lead the way!', onPick: () => this.setIntro(INTRO.plant) },
+        {
+          label: 'I know my way around',
+          onPick: () => {
+            this.endIntro()
+            this.say('Nurse Ada: Of course, dear. You know where to find me.')
+          },
+        },
+      ],
+    })
+  }
+
+  private setIntro(step: (typeof INTRO)[keyof typeof INTRO]) {
+    if (step === INTRO.done) return this.endIntro()
+    this.save.intro = step
+    this.markDirty()
+    this.ui.refresh()
+  }
+
+  private endIntro() {
+    delete this.save.intro
+    this.introFinale = false
+    this.markDirty()
+    this.ui.refresh()
+  }
+
+  /** Something happened that may tick off the current task. */
+  private introEvent(what: 'plant' | 'sell' | 'buy') {
+    const step = this.save.intro
+    if (step === INTRO.plant && what === 'plant') {
+      this.setIntro(INTRO.sell)
+      this.say(intro.AFTER_PLANT)
+    } else if (step === INTRO.sell && what === 'sell') {
+      this.setIntro(INTRO.buy)
+      this.say(intro.AFTER_SELL)
+    } else if (step === INTRO.buy && what === 'buy') {
+      this.introFinale = true
+    }
+  }
+
+  private finishIntro() {
+    this.introFinale = false
+    const def = FURNITURE[intro.INTRO_GIFT]
+    let gift = def.name
+    if (this.save.room.items.length < MAX_ROOM_ITEMS) {
+      this.save.room.items.push({ k: def.id, x: -1, y: -1 })
+    } else {
+      // No room in storage: the same value in coins instead.
+      this.save.coins += def.price
+      gift = `${def.price} coins`
+    }
+    this.endIntro()
+    sfx('harvest')
+    this.ui.dialogue('Nurse Ada', intro.finale(this.save.look.name, gift), {
+      pitch: intro.ADA_VOICE,
+      look: intro.INTRO_ADA.look,
+      old: false,
+    })
+  }
+
+  private drawIntroArrow(ox: number, oy: number) {
+    if (!intro.isActive(this.save) || this.introFinale) return
+    const t = intro.arrowTarget(this.save, this.slot, this.login, this.map, this.nearMyPlot())
+    if (!t) return
+    const c = this.ctx
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const bob = reduce ? 0 : Math.round(Math.sin(this.time / 220) * 2)
+    const px = Math.round(t.x * TS + ox)
+    const py = Math.round(t.y * TS + oy) + bob
+    // The part of the view that isn't under the HUD (hotbar and chat at the bottom).
+    const l = 14
+    const r = this.vw - 14
+    const top = Math.ceil(70 / this.scale)
+    const bot = this.vh - Math.ceil(100 / this.scale)
+    if (px < l || py < top + 10 || px > r || py > bot) {
+      // Off screen: a pointer at the edge of the view, aimed at the target.
+      const cx = (l + r) / 2
+      const cy = (top + bot) / 2
+      const ang = Math.atan2(py - cy, px - cx)
+      const k = Math.min(
+        Math.abs((r - l) / 2 / (Math.cos(ang) || 1e-6)),
+        Math.abs((bot - top) / 2 / (Math.sin(ang) || 1e-6)),
+      )
+      const ex = cx + Math.cos(ang) * k
+      const ey = cy + Math.sin(ang) * k
+      const pulse = reduce ? 0 : Math.sin(this.time / 220) * 1.5
+      c.save()
+      c.translate(Math.round(ex), Math.round(ey))
+      c.rotate(ang)
+      for (const [col, grow] of [
+        ['#1e2140', 1.5],
+        ['#f2b84b', 0],
+      ] as const) {
+        c.fillStyle = col
+        c.beginPath()
+        c.moveTo(6 + grow + pulse, 0)
+        c.lineTo(-5 - grow + pulse, -6 - grow)
+        c.lineTo(-2 + pulse, 0)
+        c.lineTo(-5 - grow + pulse, 6 + grow)
+        c.closePath()
+        c.fill()
+      }
+      c.restore()
+      return
+    }
+    // A small gold arrow pointing down, outlined in night blue.
+    const rows: [number, number][] = [
+      [-2, 5],
+      [-2, 5],
+      [-2, 5],
+      [-5, 11],
+      [-4, 9],
+      [-3, 7],
+      [-2, 5],
+      [-1, 3],
+      [0, 1],
+    ]
+    c.fillStyle = '#1e2140'
+    rows.forEach(([x, w], i) => c.fillRect(px + x - 1, py - rows.length + i - 1, w + 2, 3))
+    c.fillStyle = '#f2b84b'
+    rows.forEach(([x, w], i) => c.fillRect(px + x, py - rows.length + i, w, 1))
   }
 
   // --- interaction ----------------------------------------------------------------------------
@@ -619,6 +801,14 @@ export class Game {
   }
 
   private talkToNurse() {
+    if (intro.isActive(this.save) && this.slot >= 0) {
+      if (this.save.intro === INTRO.greet) return this.greet()
+      return this.ui.dialogue('Nurse Ada', [`You're doing well, dear. ${this.introHint()}`], {
+        pitch: intro.ADA_VOICE,
+        look: intro.INTRO_ADA.look,
+        old: false,
+      })
+    }
     if (this.slot < 0) {
       this.say("Nurse Ada: The home is full, dear, but I've set up a cot for you. This way!")
       return this.warp(roomId(this.login), ROOM_DOOR_X + 0.5, 8.2, 3)
@@ -656,6 +846,7 @@ export class Game {
       garden.plant(tile, this.selectedSeed, now)
       if (garden.isWet(tile, now)) garden.settle(tile, now)
       sfx('plant')
+      this.introEvent('plant')
     } else if (garden.stage(tile, now) === 3) {
       const got = garden.harvest(tile, now)
       if (!got) return
@@ -834,6 +1025,7 @@ export class Game {
     this.save.room.items.push({ k, x: -1, y: -1 })
     sfx('coin')
     this.markDirty()
+    this.introEvent('buy')
     if (this.inOwnRoom()) {
       this.holdStored(this.save.room.items.length - 1)
       this.ui.toast(`${def.name} bought! Click a spot in your room to put it down.`)
@@ -876,6 +1068,7 @@ export class Game {
     this.save.stats.earned += earned
     sfx('coin')
     this.markDirty()
+    this.introEvent('sell')
     this.ui.refresh()
   }
 
@@ -1116,7 +1309,7 @@ export class Game {
     if (owner) this.collectRoom(list, owner, ox, oy)
     if (m.id === 'hall') this.drawHallPlates(ox, oy)
 
-    for (const n of m.npcs) list.push({ y: n.y * TS, draw: () => this.drawNpc(n, ox, oy) })
+    for (const n of this.npcs()) list.push({ y: n.y * TS, draw: () => this.drawNpc(n, ox, oy) })
     for (const r of this.others.values()) {
       if (r.p.map !== m.id) continue
       list.push({
@@ -1134,8 +1327,10 @@ export class Game {
     for (const d of list) d.draw()
 
     if (this.decor.active) this.drawDecorGhost(ox, oy)
-    if (!this.decor.active && !this.ui.panelOpen()) this.drawFacingCursor(ox, oy)
+    if (!this.decor.active && !this.ui.panelOpen() && !this.ui.dialogueOpen())
+      this.drawFacingCursor(ox, oy)
     if (m.outdoor) this.drawDaylight(ox, oy)
+    this.drawIntroArrow(ox, oy)
     if (this.fade > 0) {
       c.fillStyle = `rgba(20,16,28,${this.fade})`
       c.fillRect(0, 0, this.vw, this.vh)
@@ -1156,14 +1351,8 @@ export class Game {
       if (!visible(o.x - 1, o.y - 1, PLOT_W + 2, PLOT_H + 2)) continue
       const tiles = s === this.slot ? this.save.garden : this.profileInSlot(s)?.garden
       const mine = s === this.slot
-      // Wooden edging around the plot, golden for your own.
-      const ex = o.x * TS + ox - 1
-      const ey = o.y * TS + oy - 1
-      c.fillStyle = mine ? '#e0a83a' : '#8a5d34'
-      c.fillRect(ex, ey, PLOT_W * TS + 2, 1)
-      c.fillRect(ex, ey + PLOT_H * TS + 1, PLOT_W * TS + 2, 1)
-      c.fillRect(ex, ey, 1, PLOT_H * TS + 2)
-      c.fillRect(ex + PLOT_W * TS + 1, ey, 1, PLOT_H * TS + 2)
+      // A raised wooden bed round the plot, with brass caps on your own.
+      c.drawImage(plotFrame(PLOT_W, PLOT_H, mine), o.x * TS + ox - 4, o.y * TS + oy - 4)
       if (!tiles) continue
       tiles.forEach((tile, i) => {
         const tx = o.x + (i % PLOT_W)
@@ -1332,10 +1521,37 @@ export class Game {
     const dark = darkness(gameHour(Date.now() + this.serverSkew))
     if (dark <= 0) return
     const c = this.ctx
-    c.fillStyle = `rgba(24,26,70,${dark})`
+    // Multiply rather than paint over, so colours stay rich: warm at dusk/dawn, deep blue at night.
+    c.globalCompositeOperation = 'multiply'
+    c.fillStyle = nightTint(dark / NIGHT)
     c.fillRect(0, 0, this.vw, this.vh)
+    c.globalCompositeOperation = 'source-over'
     if (dark < 0.2) return
+    // Lit windows: the home is warm and awake after dark.
+    const k = Math.min(1, dark / NIGHT)
+    const panes: { x: number; y: number; w: number; h: number }[] = []
+    for (const o of this.map.objects)
+      for (const w of buildingWindows(o))
+        panes.push({ x: o.x * TS + ox + w.x, y: o.y * TS + oy + w.y, w: w.w, h: w.h })
+    for (const p of panes) {
+      c.fillStyle = `rgba(255,196,104,${0.9 * k})`
+      c.fillRect(p.x, p.y, p.w, p.h)
+      c.fillStyle = `rgba(255,236,170,${0.8 * k})`
+      c.fillRect(p.x + 1, p.y + 1, 5, 3)
+      c.fillStyle = `rgba(120,70,40,${0.9 * k})`
+      c.fillRect(p.x + 7, p.y, 2, p.h)
+      c.fillRect(p.x, p.y + 7, p.w, 2)
+    }
     c.globalCompositeOperation = 'lighter'
+    for (const p of panes) {
+      const cx = p.x + p.w / 2
+      const cy = p.y + p.h / 2
+      const g = c.createRadialGradient(cx, cy, 4, cx, cy, 24)
+      g.addColorStop(0, `rgba(255,170,80,${0.35 * k})`)
+      g.addColorStop(1, 'rgba(255,170,80,0)')
+      c.fillStyle = g
+      c.fillRect(cx - 24, cy - 24, 48, 48)
+    }
     for (const o of this.map.objects) {
       if (o.k !== 'lamp') continue
       const px = o.x * TS + 8 + ox
@@ -1413,7 +1629,7 @@ export class Game {
       y: this.me.y,
       me: true,
     })
-    for (const n of this.map.npcs)
+    for (const n of this.npcs())
       people.push({ login: `npc:${n.id}`, name: n.name, x: n.x, y: n.y, me: false })
     const now = Date.now()
     for (const p of people) {
@@ -1468,6 +1684,25 @@ export function gameHour(now: number): number {
   return ((now % DAY_MS) / DAY_MS) * 24
 }
 const NIGHT = 0.38
+const DUSK_RGB = [255, 196, 150]
+const NIGHT_RGB = [92, 108, 196]
+/** The multiply colour for how far into the night it is (0 day, 1 full night). */
+function nightTint(k: number): string {
+  const lerp = (a: number[], b: number[], t: number) =>
+    a.map((v, i) => Math.round(v + (b[i] - v) * t))
+  const rgb =
+    k < 0.4 ? lerp([255, 255, 255], DUSK_RGB, k / 0.4) : lerp(DUSK_RGB, NIGHT_RGB, (k - 0.4) / 0.6)
+  return `rgb(${rgb.join(',')})`
+}
+
+/**
+ * A colour grade over the whole scene, per area. The property is bright and lively; the forest
+ * (FOREST.md) will use a drained, darker grade, so the two halves of the game feel different.
+ */
+export const MOODS = {
+  property: 'saturate(1.18) contrast(1.06)',
+  forest: 'saturate(0.55) brightness(0.8) contrast(1.1)',
+} as const
 /** How dark the grounds are: dusk 18–21, night 21–4, dawn 4–6. */
 export function darkness(h: number): number {
   if (h >= 21 || h < 4) return NIGHT

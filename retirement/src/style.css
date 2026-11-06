@@ -167,6 +167,7 @@ kbd {
 .panelish,
 .hud-left,
 .hud-right .online,
+.quest,
 .prompt,
 .hotbar,
 .decorbar,
@@ -719,6 +720,179 @@ table.keys td {
   min-height: 1.2em;
 }
 
+/* --- Nurse Ada's introduction ------------------------------------------------------------ */
+
+.quest {
+  position: absolute;
+  left: 12px;
+  top: 104px;
+  width: min(240px, 60vw);
+  padding: 6px 10px 8px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.quest-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.quest-task {
+  font-weight: 800;
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.quest-hint {
+  margin-top: 2px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* The dialogue box: a carved wooden frame, the speaker's portrait panel on the left. */
+.dialogue {
+  --wood-hi: #eaa55a;
+  --wood-mid: #c4732f;
+  --wood-lo: #763a12;
+  --parch: #ffe6ad;
+  --parch-2: #f7c77d;
+  --parch-ink: #4a2612;
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  bottom: 84px;
+  width: min(760px, calc(100vw - 32px));
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: var(--wood-mid);
+  border: 3px solid var(--wood-lo);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 2px var(--wood-hi),
+    inset 0 0 0 4px var(--wood-lo),
+    0 4px 0 #3b1f0c,
+    0 10px 24px rgba(20, 10, 4, 0.35);
+  cursor: pointer;
+  animation: pop 0.2s ease-out;
+}
+
+.dialogue-side {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.dialogue-frame {
+  padding: 6px;
+  background: linear-gradient(#ffe0a0, #f0b766);
+  border: 3px solid var(--wood-lo);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 2px var(--wood-hi);
+  line-height: 0;
+}
+
+.dialogue-face {
+  width: 144px;
+  height: 144px;
+  image-rendering: pixelated;
+}
+
+.dialogue-name {
+  width: 100%;
+  padding: 3px 8px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  color: var(--parch-ink);
+  background: var(--parch);
+  border: 3px solid var(--wood-lo);
+  border-radius: 4px;
+  box-shadow: inset 0 -2px 0 var(--parch-2);
+}
+
+.dialogue-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 10px;
+  background: linear-gradient(var(--parch), var(--parch-2));
+  border: 3px solid var(--wood-lo);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 2px #fff0c8;
+  min-height: 150px;
+}
+
+.dialogue-who {
+  font-weight: 800;
+  color: var(--parch-ink);
+  margin-bottom: 4px;
+}
+
+.dialogue-text {
+  flex: 1;
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.5;
+  font-weight: 700;
+  color: var(--parch-ink);
+}
+
+.dialogue-more {
+  align-self: flex-end;
+  font-size: 13px;
+  font-weight: 800;
+  color: #8a4e22;
+  min-height: 1.2em;
+}
+
+.dialogue-choices {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (max-width: 560px) {
+  .dialogue {
+    bottom: 76px;
+  }
+  .dialogue-face {
+    width: 96px;
+    height: 96px;
+  }
+  .dialogue-text {
+    font-size: 16px;
+  }
+  .dialogue-body {
+    min-height: 120px;
+    padding: 10px 12px 8px;
+  }
+}
+
+.btn.glow {
+  animation: glow 1.4s ease-in-out infinite;
+  border-color: #b4533a;
+}
+
+@keyframes glow {
+  50% {
+    box-shadow:
+      0 2px 0 var(--wood-dark),
+      0 0 0 4px rgba(242, 184, 75, 0.85);
+  }
+}
+
 @media (max-width: 760px) {
   .chatlog {
     display: none;
@@ -738,7 +912,14 @@ table.keys td {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .toast {
+  .toast,
+  .dialogue {
     animation: none;
+  }
+  .btn.glow {
+    animation: none;
+    box-shadow:
+      0 2px 0 var(--wood-dark),
+      0 0 0 4px rgba(242, 184, 75, 0.85);
   }
 }

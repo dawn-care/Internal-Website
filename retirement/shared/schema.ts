@@ -73,6 +73,11 @@ export interface Save {
   garden: Tile[]
   room: Room
   stats: { harvested: number; earned: number }
+  /**
+   * Nurse Ada's introduction: the step you're on (see INTRO), or absent once it's finished.
+   * Saves from before the introduction existed have no field, so those players never see it.
+   */
+  intro?: IntroStep
   /** Garden plot and hallway door. Assigned by the server, never trusted from the client. */
   slot: number
   createdAt: number
@@ -87,6 +92,10 @@ export interface Profile {
   garden: Tile[]
   room: { wall: string; floor: string; items: RoomItem[] }
 }
+
+/** Nurse Ada's introduction, in order. `done` is never stored: a finished intro has no field. */
+export const INTRO = { greet: 0, plant: 1, sell: 2, buy: 3, done: 4 } as const
+export type IntroStep = 0 | 1 | 2 | 3
 
 export type MapId = 'grounds' | 'hall' | `room:${string}`
 export type Dir = 0 | 1 | 2 | 3 // down, left, right, up
@@ -157,6 +166,7 @@ export function newSave(look: Look, now: number): Save {
       floors: ['oak'],
     },
     stats: { harvested: 0, earned: 0 },
+    intro: INTRO.greet,
     slot: -1,
     createdAt: now,
     updatedAt: now,
@@ -307,6 +317,8 @@ export function validateSave(v: unknown): Save {
   const garden = arr(o.garden, 'garden', PLOT_W * PLOT_H).map(validateTile)
   if (garden.length !== PLOT_W * PLOT_H) throw new SaveError('garden has the wrong size.')
   const stats = obj(o.stats, 'stats')
+  const intro =
+    o.intro === undefined ? undefined : (int(o.intro, 'intro', 0, INTRO.done - 1) as IntroStep)
   return {
     v: 1,
     look: validateLook(o.look),
@@ -318,6 +330,7 @@ export function validateSave(v: unknown): Save {
       harvested: int(stats.harvested, 'stats.harvested', 0, 1e9),
       earned: int(stats.earned, 'stats.earned', 0, 1e12),
     },
+    ...(intro === undefined ? {} : { intro }),
     slot: int(o.slot ?? -1, 'slot', -1, MAX_SLOTS - 1),
     createdAt: num(o.createdAt, 'createdAt', 0, MAX_TIME),
     updatedAt: num(o.updatedAt, 'updatedAt', 0, MAX_TIME),

@@ -1,6 +1,6 @@
 # Community: cozy ideas for Sunset Acres
 
-Status: **ideas agreed, not built yet.** These are the additions that make the property worth
+Status: **being built, in the suggested order.** Built so far: the introduction, and a brighter look and feel. These are the additions that make the property worth
 coming back to (the forest, in FOREST.md, is the other half). Suggested order: build the
 introduction first, then the rest roughly in the order listed.
 
@@ -19,6 +19,73 @@ spend time with each other (benches, board games).
   2. sell it,
   3. buy one piece of furniture.
 - Goal: the first five minutes have a clear goal.
+
+**Built** (src/intro.ts, wired up in src/game.ts and src/ui.ts). How it works and the calls made:
+
+- **Who sees it:** new characters only. The save has an `intro` step (0 greet, 1 plant, 2 sell,
+  3 buy); a finished intro has no field, so saves from before the intro existed count as finished
+  and those players never see it. The server validates the step (0–3) like the rest of the save.
+- **Where Ada is:** while your intro runs, a second Nurse Ada stands on the plaza just west of
+  where you arrive (tile 21,11) and her greeting opens on its own. She stays put (no walking);
+  she's drawn only in your own game, so neighbours don't see her. The front-desk Ada is unchanged.
+  Talking to either Ada mid-intro repeats the current hint.
+- **Skipping:** Ada's greeting ends with "Lead the way!" or "I know my way around". Skipping
+  finishes the intro straight away, without the gift.
+- **The list:** a small card under the HUD ("Nurse Ada's list · 1 of 3 done") shows the current
+  task and a hint that follows what you're doing (dig, plant, water, wait, pick, take it to Rosa;
+  go in, find your door, press Catalog).
+- **The arrow:** a bobbing gold arrow over where to go next (Ada, your plot, Chef Rosa, the front
+  door, your hallway door, your room's way out). If the target is off screen, a pointer at the edge
+  of the view aims at it. At your plot the arrow hides so it doesn't cover your seedlings. In your
+  room the Catalog button glows instead.
+- **Order is strict:** a task only counts while it's the current one (e.g. a fern bought before
+  you've planted doesn't tick off "buy"). Simple, and the intro is short enough that it's fine.
+- **Gift:** finishing gives a Flower painting (worth 30) into room storage, or 30 coins if storage
+  is full. Ada's goodbye waits until you've closed the Catalog and put down what you bought.
+- **No plot, no tour:** if the home is full (no garden slot), the intro is skipped.
+- **Dialogue box:** a reusable speech box (`ui.dialogue(speaker, lines, { look, old, pitch,
+choices })`) in a carved wooden frame. The speaker's **portrait is on the left** with their name
+  plate under it, and the text is on parchment to the right. Text types out with a soft
+  synthesized blip per letter (`voice()` in src/audio.ts, a pitch per speaker) while the portrait's
+  mouth moves; the portrait blinks now and then. E, Space, Enter or a click finishes the line or
+  goes on; Esc skips to the end; arrow keys move between choices. With reduced motion the text
+  appears at once and the portrait holds still. FOREST.md's encounter dialogue builds on it.
+- Replaces the two welcome pop-ups new players used to get.
+
+## Look and feel (done)
+
+The property should feel bright and warm, in the spirit of classic farming games; the forest is
+where things go grey (FOREST.md).
+
+- **Richer palette:** deeper, more saturated grass with yellow-green highlights, warm orange paths
+  and dirt, warmer cobbles, bluer water, brighter flowers and outfit colours, a butter-yellow home
+  with green shutters.
+- **More detailed scenery:** trees are built from clumps of leaves (shaded mounds with individual
+  leaves, back to front, dark-outlined, three greens, apples on some); pines have tiers of needles
+  with jagged hems; bushes are leaf clumps too. The plaza is real cobblestones (irregular stones of
+  slightly different colours, lit from the top left, dark grout with the odd bit of moss). The
+  home has shingles, a ridge and fascia, siding boards with shadows, trim boards, a stone
+  foundation, brick chimneys, curtains and window glints, louvred shutters, a porch on posts and a
+  panelled glass door; the kitchen has tiled roof, varied bricks and a scalloped awning. Buildings
+  are rendered once into cached sprites, so the extra detail costs nothing per frame.
+- **Grass, fences, benches, lamps, plots, pond:** the lawn has soft patches of three greens,
+  tufts of blades and the odd clover instead of a flat colour. Fences are picket posts with
+  rounded tops, grain and nailed rails; benches have wooden slats on iron ends; lamp posts are
+  Victorian (stepped base, ringed pole, crossbar, four-pane lantern, finial). Garden plots sit in
+  raised wooden beds with corner posts (brass caps on yours), and tilled soil has raised rows and
+  clods, glistening when watered. The pond goes from light shallows to deep blue, with an earth
+  bank, foam at the shore, wet sand, pebbles, reeds and cattails, and lily pads with pink flowers.
+  All of these are cached sprites or part of the once-rendered ground.
+- **Colour grade per area:** `MOODS` in src/game.ts is a filter over the whole scene. The property
+  uses `property` (a little more saturation and contrast); the forest will switch to `forest`
+  (drained and dark). One line to change the mood of an area.
+- **Lighting:** dusk and dawn tint the scene warm orange, night deep blue, by multiplying rather
+  than painting grey over everything, so colours stay rich. After dark the home's and kitchen's
+  windows glow warm, next to the lamp-post pools of light.
+- **Portraits:** src/portraits.ts draws a detailed 48×48 bust from any Look (shaded face, eyes with
+  whites and a glint, brows, nose, lips, rosy cheeks, smile lines for residents, every hairstyle
+  and accessory), shown at 3× in dialogue, with talking and blinking frames. Eye colour isn't part
+  of a Look, so it's picked steadily from the character's name.
 
 ## Pets
 

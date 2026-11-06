@@ -100,3 +100,14 @@ export function sfx(kind: Sfx) {
       return tone(200, 0.15, 'square', 0.04, 0, -80)
   }
 }
+
+/**
+ * One soft "voice" blip for dialogue that types out a letter at a time. Each speaker has their own
+ * pitch; a little random wobble keeps it from sounding mechanical. (The forest's distorted voices
+ * can build on this with a lower pitch and a rougher wave.)
+ */
+export function voice(pitch: number, wave: OscillatorType = 'triangle') {
+  if (muted) return
+  if (!audioContext()) return
+  tone(pitch * (0.94 + Math.random() * 0.12), 0.045, wave, 0.035)
+}

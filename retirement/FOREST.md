@@ -157,6 +157,13 @@ only way back. The sadness of turning away a real relative is deliberate.
 
 ### Refusing a fake: the transformation
 
+_Groundwork on the property (built with the introduction):_ the dialogue box already shows the
+speaker's portrait on the left, and portraits (src/portraits.ts) are drawn from a `Face`
+description (skin, hair, outfit and eye colours, blink, talk) one feature at a time. The
+transformation stages below are meant to be done by tampering with that Face and the drawn
+canvas (drain the colours, black eyes, stop blinking, tilt and stretch the head) rather than with
+new art. The forest's grey, dark mood is `MOODS.forest` in src/game.ts.
+
 Each refusal (they ask again) pushes it a stage further:
 
 - The text types **slower**, the beep **drops in pitch** and gets **more distorted**; letters

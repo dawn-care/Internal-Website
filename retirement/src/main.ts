@@ -103,16 +103,9 @@ async function boot() {
     onDone: (look) => {
       const save = newSave(look, Date.now())
       const game = start(save)
-      const ui = game.ui
       game.markDirty()
       void game.flushSave()
-      ui.toast(
-        `Welcome, ${look.name}! Your plot is in the Community Garden, just south of the home.`,
-      )
-      setTimeout(
-        () => ui.toast('Press E to till, plant, water and harvest. Press Enter to chat.'),
-        1500,
-      )
+      // Nurse Ada takes it from here (src/intro.ts).
     },
   })
   const wrap = document.createElement('div')

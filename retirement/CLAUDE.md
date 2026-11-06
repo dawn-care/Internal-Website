@@ -22,7 +22,11 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an
   auto outline), src/game.ts (loop, movement, interaction, decorating, sync, rendering),
   src/ui.ts (HUD, hotbar, chat, Kitchen / Catalog / Wardrobe / Help panels),
-  src/garden.ts (growth), src/audio.ts (synth sfx).
+  src/garden.ts (growth), src/audio.ts (synth sfx and the dialogue voice blip),
+  src/intro.ts (Nurse Ada's introduction for new players: steps, hints, guide arrow targets;
+  see COMMUNITY.md), src/portraits.ts (detailed dialogue portraits drawn from a Look).
+- Look: the property is bright and saturated; `MOODS` in src/game.ts sets a colour grade per area
+  (the forest will be drained and dark). Night is a multiply tint, not a grey overlay.
 
 ## Rules
 - Crops grow in real time only while watered (WATER_MS per watering), computed from

@@ -151,6 +151,29 @@ describe('/api/retirement', () => {
     expect((await call({ method: 'POST', op: 'save', body: { save: odd } })).statusCode).toBe(400)
   })
 
+  it("starts new characters on Nurse Ada's introduction and keeps their step", async () => {
+    expect(save().intro).toBe(0)
+    const s = save()
+    s.intro = 2
+    expect((await call({ method: 'POST', op: 'save', body: { save: s } })).statusCode).toBe(200)
+    expect((await call({ method: 'GET', op: 'me' })).body).toMatchObject({ save: { intro: 2 } })
+  })
+
+  it('treats saves without an introduction step as finished', async () => {
+    const old = save() as unknown as Record<string, unknown>
+    delete old.intro
+    expect((await call({ method: 'POST', op: 'save', body: { save: old } })).statusCode).toBe(200)
+    const me = (await call({ method: 'GET', op: 'me' })).body as { save: Record<string, unknown> }
+    expect('intro' in me.save).toBe(false)
+  })
+
+  it('refuses introduction steps that do not exist', async () => {
+    for (const intro of [-1, 4, 1.5, '1', null]) {
+      const bad = { ...save(), intro }
+      expect((await call({ method: 'POST', op: 'save', body: { save: bad } })).statusCode).toBe(400)
+    }
+  })
+
   it('rejects cross-site writes', async () => {
     const res = await call({
       method: 'POST',
