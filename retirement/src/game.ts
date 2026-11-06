@@ -56,9 +56,11 @@ import {
   plotAt,
   plotOrigin,
   roomId,
+  seatsOf,
   type GameMap,
   type Interact,
   type Npc,
+  type Seat,
 } from './maps'
 import { HOUSE_CAT, Wildlife, eggDay, eggsLeft, houseCat } from './animals'
 import { gameHour } from './clock'
@@ -75,7 +77,7 @@ import {
   pickGift,
   type PetPose,
 } from './pets'
-import { SPR_H, SPR_W, personSprite } from './people'
+import { SPR_H, SPR_W, personSprite, seatedSprite } from './people'
 import type { UI } from './ui'
 
 const SPEED = 3.3
@@ -340,6 +342,7 @@ export class Game {
     this.me.x = x
     this.me.y = y
     this.me.dir = dir
+    this.seat = null
     if (this.petOut) this.myPet.reset(x, y)
     this.remotePets.clear()
     this.resize()
@@ -438,6 +441,13 @@ export class Game {
       if (this.keys.has('arrowright') || this.keys.has('d')) dx += 1
       if (this.keys.has('arrowup') || this.keys.has('w')) dy -= 1
       if (this.keys.has('arrowdown') || this.keys.has('s')) dy += 1
+    }
+    if (this.seat) {
+      // Any movement key gets you up; otherwise you stay put (and doze off after a while).
+      if (dx || dy) this.standUp()
+      else this.seatedFor += dt
+      dx = 0
+      dy = 0
     }
     const moving = dx !== 0 || dy !== 0
     if (moving) {
@@ -739,9 +749,12 @@ export class Game {
   }
 
   private promptText(): string | null {
+    if (this.seat) return '[WASD] Get up'
     const pet = this.petInFront()
     if (pet) return this.petPrompt(pet)
     const t = this.facingTile()
+    const seat = this.seatAtTile(t.x, t.y)
+    if (seat) return seat.free ? 'Sit down' : 'No room here'
     const it = this.interactAt(t.x, t.y)
     if (it) {
       switch (it.kind) {
@@ -800,7 +813,7 @@ export class Game {
   }
 
   interact() {
-    if (this.decor.active) return
+    if (this.decor.active || this.seat) return
     const pet = this.petInFront()
     if (pet) return this.petPet(pet)
     const t = this.facingTile()
@@ -819,8 +832,14 @@ export class Game {
   }
 
   private actOn(x: number, y: number) {
+    if (this.seat) return
     const pet = this.petAt(x, y)
     if (pet) return this.petPet(pet)
+    const seat = this.seatAtTile(x, y)
+    if (seat) {
+      if (seat.free) return this.sitDown(seat.free)
+      return this.say("There's no room here just now. Maybe the next bench along?")
+    }
     const it = this.interactAt(x, y)
     if (it) {
       switch (it.kind) {
@@ -904,6 +923,119 @@ export class Game {
     })
   }
 
+  // --- sitting ---------------------------------------------------------------------------------
+
+  /** The seat you're on (benches, hallway chairs, armchairs and rocking chairs). */
+  seat: Seat | null = null
+  private seatAt = 0
+  private seatedFor = 0
+
+  private seatsHere(): Seat[] {
+    const owner = this.ownerOf(this.mapId)
+    return seatsOf(this.map, owner ? this.roomOf(owner)?.items : undefined)
+  }
+
+  private seatTakenBy(seat: Seat): boolean {
+    for (const r of this.others.values())
+      if (r.p.map === this.mapId && r.p.sit === seat.id) return true
+    return false
+  }
+
+  /**
+   * The seat you'd get by facing tile (x, y): the place on that tile, or another free one on the
+   * same bench. `free` is null if the bench is full. Null if there's nothing to sit on there.
+   */
+  private seatAtTile(x: number, y: number): { free: Seat | null } | null {
+    if (this.decor.active) return null
+    const seats = this.seatsHere()
+    const here = seats.find((s) => s.tx === x && s.ty === y)
+    if (!here) return null
+    if (!this.seatTakenBy(here)) return { free: here }
+    const other = seats.find((s) => s.group === here.group && !this.seatTakenBy(s))
+    return { free: other ?? null }
+  }
+
+  private sitDown(seat: Seat) {
+    this.seat = seat
+    this.seatAt = Date.now()
+    this.seatedFor = 0
+    this.me.x = seat.x
+    this.me.y = seat.y
+    this.me.dir = 0
+    this.me.moving = false
+    this.me.anim = 0
+    this.keys.clear()
+    this.myPet.retrail()
+    sfx('blip')
+    this.scheduleSync(30)
+  }
+
+  /** Back on your feet, just in front of the seat. */
+  standUp() {
+    const s = this.seat
+    if (!s) return
+    this.seat = null
+    // Step out in front if there's room, else above or to a side (chairs against a wall).
+    const spot = this.freeNear(s.x, s.y, [
+      [0, 0.75],
+      [0, 1.1],
+      [0, -1.15],
+      [-1, 0.6],
+      [1, 0.6],
+    ])
+    if (spot) {
+      this.me.x = spot.x
+      this.me.y = spot.y
+    }
+    this.me.dir = 0
+    this.myPet.retrail()
+    this.scheduleSync(30)
+  }
+
+  /** The first of the offsets from (x, y) you could stand on, if any. */
+  private freeNear(x: number, y: number, offsets: number[][]): { x: number; y: number } | null {
+    for (const [dx, dy] of offsets)
+      if (!this.blocked(x + dx, y + dy)) return { x: x + dx, y: y + dy }
+    return null
+  }
+
+  /** Where a pet settles while its owner sits: by their feet, wherever there's floor. */
+  private feetSpot(x: number, y: number): { x: number; y: number } {
+    return (
+      this.freeNear(x, y, [
+        [1.05, 0.95],
+        [-1.05, 0.95],
+        [0, 1.15],
+        [1.1, 0.2],
+        [-1.1, 0.2],
+        [1.15, -0.9],
+        [-1.15, -0.9],
+        [0, -1.1],
+      ]) ?? { x, y: y + 0.95 }
+    )
+  }
+
+  /** Dozing off: after half a minute sitting still. */
+  private dozing(sitAt: number | undefined, now: number): boolean {
+    return sitAt !== undefined && now - sitAt > 30_000
+  }
+
+  private drawSeated(look: Look, x: number, y: number, doze: boolean, ox: number, oy: number) {
+    const c = this.ctx
+    const px = Math.round(x * TS + ox)
+    const py = Math.round(y * TS + oy)
+    c.drawImage(seatedSprite(look, doze), px - SPR_W / 2, py - SPR_H + 1)
+    if (doze) {
+      const t = (this.time / 1800) % 1
+      c.fillStyle = `rgba(59,63,128,${0.9 * (1 - t)})`
+      const zx = px + 5 + Math.round(t * 4)
+      const zy = py - 22 - Math.round(t * 8)
+      c.fillRect(zx, zy, 3, 1)
+      c.fillRect(zx + 1, zy + 1, 1, 1)
+      c.fillRect(zx, zy + 2, 3, 1)
+    }
+  }
+
   // --- animals --------------------------------------------------------------------------------
 
   private wild = new Wildlife(getGrounds())
@@ -982,7 +1114,10 @@ export class Game {
     if (!out && this.petOut) this.scheduleSync(50)
     this.petOut = out
     if (out) {
-      this.myPet.update(dt, this.me.x, this.me.y, (x, y) => this.blocked(x, y))
+      if (this.seat) {
+        const spot = this.feetSpot(this.seat.x, this.seat.y)
+        this.myPet.settle(dt, spot.x, spot.y)
+      } else this.myPet.update(dt, this.me.x, this.me.y, (x, y) => this.blocked(x, y))
       this.petOutFor += dt
       if (!this.giftChecked && this.petOutFor > 4) {
         this.giftChecked = true
@@ -1001,7 +1136,10 @@ export class Game {
         fl.reset(r.rx, r.ry)
         this.remotePets.set(login, fl)
       }
-      fl.update(dt, r.rx, r.ry, (x, y) => this.blocked(x, y))
+      if (r.p.sit) {
+        const spot = this.feetSpot(r.p.x, r.p.y)
+        fl.settle(dt, spot.x, spot.y)
+      } else fl.update(dt, r.rx, r.ry, (x, y) => this.blocked(x, y))
     }
     for (const login of this.remotePets.keys())
       if (!this.others.has(login)) this.remotePets.delete(login)
@@ -1644,12 +1782,17 @@ export class Game {
           dir: this.me.dir,
           moving: this.me.moving,
           ...(this.petOut && this.save.pet ? { pet: petLook(this.save.pet) } : {}),
+          ...(this.seat ? { sit: this.seat.id, sitAt: this.seatAt } : {}),
         },
         look: this.save.look,
         msg: msg ?? undefined,
         since: this.chatSince,
       })
       this.serverSkew = res.now - Date.now()
+      if (res.seatTaken && this.seat) {
+        this.standUp()
+        this.ui.toast('Someone sat down there just before you. There are other seats!')
+      }
       if (msg && !res.sent) this.ui.toast('Slow down a little, dear. Try again in a moment.')
       this.applyPlayers(res.players)
       this.applyChat(res.chat)
@@ -1793,16 +1936,31 @@ export class Game {
       })
     for (const r of this.others.values()) {
       if (r.p.map !== m.id) continue
+      if (r.p.sit) {
+        const doze = this.dozing(r.p.sitAt, Date.now())
+        list.push({
+          y: r.ry * TS + 6,
+          draw: () => this.drawSeated(r.p.look, r.rx, r.ry, doze, ox, oy),
+        })
+        continue
+      }
       list.push({
         y: r.ry * TS,
         draw: () => this.drawPerson(r.p.look, r.rx, r.ry, r.p.dir, r.anim, ox, oy),
       })
     }
-    list.push({
-      y: this.me.y * TS,
-      draw: () =>
-        this.drawPerson(this.save.look, this.me.x, this.me.y, this.me.dir, this.me.anim, ox, oy),
-    })
+    if (this.seat) {
+      const doze = this.seatedFor > 30
+      list.push({
+        y: this.me.y * TS + 6,
+        draw: () => this.drawSeated(this.save.look, this.me.x, this.me.y, doze, ox, oy),
+      })
+    } else
+      list.push({
+        y: this.me.y * TS,
+        draw: () =>
+          this.drawPerson(this.save.look, this.me.x, this.me.y, this.me.dir, this.me.anim, ox, oy),
+      })
 
     list.sort((a, b) => a.y - b.y)
     for (const d of list) d.draw()

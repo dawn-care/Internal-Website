@@ -37,6 +37,8 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
   timestamps, so they grow while you're away and everyone sees the same plot.
 - Day/night is a shared game clock (one day per 24 real minutes, from the timestamp), not
   the viewer's wall clock.
+- Sitting is presence (`sit` + `sitAt`), checked on the server (shared/schema.ts validSeat,
+  seatTaken: whoever sat first keeps a seat).
 - Eggs: each hen lays once per game day at LAY_HOUR; each player collects their own share
   (save.coop records the egg day and how many were taken).
 - Plot/door slot is assigned by the server (first free of MAX_SLOTS) and never trusted from

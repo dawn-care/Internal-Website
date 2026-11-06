@@ -282,7 +282,20 @@ export class Follower {
   moving = false
   /** Seconds since it last moved; it sits down after a moment. */
   still = 0
+  /** Settled at its owner's feet (they're sitting): curls up after a while. */
+  private curl = false
   private trail: { x: number; y: number }[] = []
+
+  /** Forget the owner's path (they sat down or got up), starting afresh from here. */
+  retrail() {
+    this.trail = [{ x: this.x, y: this.y }]
+  }
+
+  /** Trots to a spot (its owner's feet) and settles there: sits, then curls up. */
+  settle(dt: number, tx: number, ty: number) {
+    this.curl = true
+    this.walkTo(dt, tx, ty)
+  }
 
   reset(x: number, y: number) {
     this.x = x
@@ -294,6 +307,7 @@ export class Follower {
 
   /** `blocked` says whether a spot is solid, so stepping aside never goes into a wall. */
   update(dt: number, ox: number, oy: number, blocked?: (x: number, y: number) => boolean) {
+    this.curl = false
     const last = this.trail[this.trail.length - 1]
     if (!last || Math.hypot(ox - last.x, oy - last.y) > 0.12) this.trail.push({ x: ox, y: oy })
     // The point FOLLOW_GAP back along the owner's path.
@@ -347,6 +361,10 @@ export class Follower {
         ty = this.y
       }
     }
+    this.walkTo(dt, tx, ty)
+  }
+
+  private walkTo(dt: number, tx: number, ty: number) {
     const dx = tx - this.x
     const dy = ty - this.y
     const d = Math.hypot(dx, dy)
@@ -370,7 +388,8 @@ export class Follower {
   }
 
   pose(): PetPose {
-    return this.moving || this.still < 0.6 ? 'walk' : 'sit'
+    if (this.moving || this.still < 0.6) return 'walk'
+    return this.curl && this.still > 6 ? 'sleep' : 'sit'
   }
 }
 

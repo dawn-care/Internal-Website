@@ -7,7 +7,7 @@ import {
   ROOM_H,
   ROOM_W,
 } from '../shared/catalog'
-import type { Dir, MapId, Room } from '../shared/schema'
+import { seatId, type Dir, type MapId, type Room } from '../shared/schema'
 
 /*
  * The three kinds of place: the outdoor grounds (home, kitchen, community garden, pond), the
@@ -137,6 +137,50 @@ function rect(m: GameMap, x0: number, y0: number, x1: number, y1: number, t: num
 }
 function solidRect(m: GameMap, x0: number, y0: number, x1: number, y1: number) {
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) setSolid(m, x, y)
+}
+
+/** A place to sit: where you sit (x, y at the feet), and the tile you face to sit there. */
+export interface Seat {
+  id: string
+  x: number
+  y: number
+  tx: number
+  ty: number
+  /** Seats on the same bench or row of chairs share a group. */
+  group: string
+}
+
+/**
+ * Every seat on a map: two per bench, one per hallway chair, and the armchairs and rocking
+ * chairs placed in a room (pass the room's items).
+ */
+export function seatsOf(m: GameMap, items?: { k: string; x: number; y: number }[]): Seat[] {
+  const out: Seat[] = []
+  for (const o of m.objects) {
+    if (o.k !== 'bench' && o.k !== 'chairs') continue
+    const n = o.k === 'bench' ? 2 : (o.w ?? 3)
+    for (let i = 0; i < n; i++)
+      out.push({
+        id: seatId(o.k, o.x, o.y, i),
+        x: o.x + i + 0.5,
+        y: o.y + (o.k === 'bench' ? 0.7 : 0.75),
+        tx: o.x + i,
+        ty: o.y,
+        group: `${o.k}:${o.x},${o.y}`,
+      })
+  }
+  for (const it of items ?? []) {
+    if ((it.k !== 'armchair' && it.k !== 'rocker') || it.x < 0) continue
+    out.push({
+      id: seatId(it.k, it.x, it.y, 0),
+      x: it.x + 0.5,
+      y: it.y + 0.75,
+      tx: it.x,
+      ty: it.y,
+      group: `${it.k}:${it.x},${it.y}`,
+    })
+  }
+  return out
 }
 
 /** Deterministic noise so every player sees the same trees and flowers. */

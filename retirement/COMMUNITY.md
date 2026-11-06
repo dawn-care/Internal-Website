@@ -1,6 +1,7 @@
 # Community: cozy ideas for Sunset Acres
 
-Status: **being built, in the suggested order.** Built so far: the introduction, a brighter look and feel, pets, and animals on the property. These are the additions that make the property worth
+Status: **being built, in the suggested order.** Built so far: the introduction, a brighter look and feel, pets, animals on the property, and
+benches. These are the additions that make the property worth
 coming back to (the forest, in FOREST.md, is the other half). Suggested order: build the
 introduction first, then the rest roughly in the order listed.
 
@@ -189,6 +190,29 @@ nothing synced; only eggs touch the save. How it works and the calls made:
   together**, with speech bubbles going back and forth.
 
 Notes: "sitting" is a pose sent with presence. The grounds already have five benches.
+
+**Built** (seats in src/maps.ts `seatsOf`, sitting in src/game.ts, seated frames in
+src/people.ts, the seat check in shared/schema.ts). How it works and the calls made:
+
+- **Seats:** the five benches on the grounds (two places each, so neighbours sit side by side),
+  the three hallway chairs, and any armchair or rocking chair placed in a room (yours or one
+  you're visiting). Face one and press E: "Sit down". If that place is taken you get the other
+  half of the bench; if it's full, "There's no room here just now". The hallway chairs back onto
+  the wall, so you sit on them from the front (above).
+- **Sitting:** you sit facing out, hands in your lap. Any movement key (WASD/arrows) gets you up;
+  the prompt says "WASD Get up". You step out in front, or above or to the side if that's a wall.
+  After 30 seconds you doze off (eyes closed, z's), and so do neighbours, worked out from when
+  they sat down. No rewards: it's for sitting together and chatting (speech bubbles work as
+  usual).
+- **Your pet** trots to your feet (beside you if there's a wall there), sits, and curls up after
+  a few seconds. Neighbours' pets do the same at theirs.
+- **Presence:** `sit` (the seat id, e.g. `bench:19,14:0`) and `sitAt` (when you sat). The server
+  checks the id's format and that the kind of seat belongs to where you are (benches on the
+  grounds, chairs in the hallway, armchairs and rockers in rooms). If two people claim the same
+  place, whoever sat first keeps it and the other gets `seatTaken` and stands up with a friendly
+  note. This is worked out from the presence list, so it's the same on every store backend.
+- **Offline:** Grandpa Walt now and then walks to one of the plaza benches, sits 20–60 seconds
+  (long enough to doze off) and chats from there.
 
 ## Board-game tables
 

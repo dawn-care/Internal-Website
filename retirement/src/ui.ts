@@ -551,8 +551,14 @@ export class UI {
     if (text === this.lastPrompt) return
     this.lastPrompt = text
     this.prompt.hidden = !text
-    if (text)
-      this.prompt.replaceChildren(el('kbd', { text: 'E' }), document.createTextNode(` ${text}`))
+    if (text) {
+      // "[Key] text" names a key other than E.
+      const m = /^\[(.+?)\] (.*)$/.exec(text)
+      this.prompt.replaceChildren(
+        el('kbd', { text: m ? m[1] : 'E' }),
+        document.createTextNode(` ${m ? m[2] : text}`),
+      )
+    }
   }
 
   setClock(text: string) {
@@ -1108,6 +1114,7 @@ export class UI {
       ['1–6', 'Choose which seeds to plant'],
       ['Enter', 'Chat (shows as a speech bubble)'],
       ['F', 'Give your pet a treat (face it and press E to pet it)'],
+      ['E at a bench or chair', 'Sit down (walk to get up)'],
       ['Esc', 'Close a window, stop decorating'],
     ]
     this.showPanel(

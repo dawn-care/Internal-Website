@@ -48,6 +48,21 @@ export function personSprite(look: Look, dir: Dir, frame: number): HTMLCanvasEle
   return cv
 }
 
+/** Sitting down, facing you (benches, chairs). `doze`: eyes closed. Same 16×24 frame. */
+export function seatedSprite(look: Look, doze: boolean): HTMLCanvasElement {
+  const key = `${lookKey(look)}|sit|${doze}`
+  let cv = cache.get(key)
+  if (cv) return cv
+  cv = document.createElement('canvas')
+  cv.width = SPR_W
+  cv.height = SPR_H
+  const c = cv.getContext('2d')!
+  drawPerson(c, look, 0, 0, true, doze)
+  outline(c)
+  cache.set(key, cv)
+  return cv
+}
+
 function outline(c: CanvasRenderingContext2D) {
   const img = c.getImageData(0, 0, SPR_W, SPR_H)
   const d = img.data
@@ -69,7 +84,14 @@ function outline(c: CanvasRenderingContext2D) {
   c.putImageData(img, 0, 0)
 }
 
-function drawPerson(c: CanvasRenderingContext2D, look: Look, dir: Dir, frame: number) {
+function drawPerson(
+  c: CanvasRenderingContext2D,
+  look: Look,
+  dir: Dir,
+  frame: number,
+  sit = false,
+  doze = false,
+) {
   const f = pen(c)
   const skin = SKIN_TONES[look.skin] ?? SKIN_TONES[0]
   const skinD = shade(skin, -0.12)
@@ -88,8 +110,13 @@ function drawPerson(c: CanvasRenderingContext2D, look: Look, dir: Dir, frame: nu
   // Under a skirt the legs are stockings.
   const legs = skirt ? '#e6d6c2' : pants
 
-  // Legs and shoes (they don't bob).
-  if (side) {
+  // Legs and shoes (they don't bob). Sitting: shins and shoes below the lap.
+  if (sit) {
+    f(legs, 5, 21, 2, 1)
+    f(legs, 9, 21, 2, 1)
+    f(shoe, 4, 22, 3, 2)
+    f(shoe, 9, 22, 3, 2)
+  } else if (side) {
     const fwd = frame === 1 ? 2 : frame === 3 ? -2 : 0
     f(legs, 6 + Math.max(0, -fwd) / 2, 18, 3, 3)
     f(legs, 7 + fwd / 2, 18, 3, 3)
@@ -104,7 +131,8 @@ function drawPerson(c: CanvasRenderingContext2D, look: Look, dir: Dir, frame: nu
     f(shoe, 8, 21 + r, 3, 2)
   }
 
-  const y0 = -bob // everything above the legs bobs up on a step
+  // Everything above the legs bobs up on a step; sitting, it sinks a little.
+  const y0 = sit ? 2 : -bob
 
   // Body: a cardigan.
   if (side) {
@@ -120,8 +148,10 @@ function drawPerson(c: CanvasRenderingContext2D, look: Look, dir: Dir, frame: nu
     f(topD, 4, 17 + y0, 8, 1)
     f(topD, 3, 12 + y0, 1, 5)
     f(topD, 12, 12 + y0, 1, 5)
-    f(skin, 3, 17 + y0, 1, 2)
-    f(skin, 12, 17 + y0, 1, 2)
+    if (!sit) {
+      f(skin, 3, 17 + y0, 1, 2)
+      f(skin, 12, 17 + y0, 1, 2)
+    }
     if (!back) {
       f('#fff8ef', 7, 11 + y0, 2, 2)
       f(topD, 8, 13 + y0, 1, 5)
@@ -132,8 +162,16 @@ function drawPerson(c: CanvasRenderingContext2D, look: Look, dir: Dir, frame: nu
     }
   }
 
+  // Sitting: the lap (skirt or trousers) with the hands folded on it.
+  if (sit) {
+    f(pants, 3, 19, 10, 2)
+    f(shade(pants, -0.15), 3, 20, 10, 1)
+    f(skin, 5, 19, 2, 1)
+    f(skin, 9, 19, 2, 1)
+  }
+
   // A skirt over the top of the legs, flaring at the hem.
-  if (skirt) {
+  if (skirt && !sit) {
     const hem = shade(pants, -0.15)
     if (side) {
       f(pants, 5, 17 + y0, 7, 2)
@@ -151,8 +189,13 @@ function drawPerson(c: CanvasRenderingContext2D, look: Look, dir: Dir, frame: nu
   f(skin, hx, 3 + y0, 8, 8)
   f(skinD, hx, 10 + y0, 8, 1)
   if (dir === 0) {
-    f('#2b1d22', 6, 7 + y0)
-    f('#2b1d22', 9, 7 + y0)
+    if (doze) {
+      f('#2b1d22', 5, 7 + y0, 2, 1)
+      f('#2b1d22', 9, 7 + y0, 2, 1)
+    } else {
+      f('#2b1d22', 6, 7 + y0)
+      f('#2b1d22', 9, 7 + y0)
+    }
     if (skirt) {
       f('#f0a0a0', 5, 8 + y0)
       f('#f0a0a0', 10, 8 + y0)
@@ -200,7 +243,7 @@ function drawPerson(c: CanvasRenderingContext2D, look: Look, dir: Dir, frame: nu
       f('#f4e4b4', 5, 0 + y0, 4, 1)
       break
     case 'cane':
-      if (!back) {
+      if (!back && !sit) {
         const cx = side ? 12 : 13
         f('#7a4e2d', cx, 14 + y0, 1, 9 + bob)
         f('#7a4e2d', cx - 1, 13 + y0, 2, 1)

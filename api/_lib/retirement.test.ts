@@ -230,6 +230,52 @@ describe('/api/retirement', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  describe('sitting', () => {
+    const sync = (login: string, p: Record<string, unknown>) =>
+      call({ method: 'POST', op: 'sync', login, body: { p, look: defaultLook(login), since: 0 } })
+
+    it('shares where people sit', async () => {
+      await sync('ada', { ...presence, sit: 'bench:19,14:0', sitAt: 100 })
+      const res = await sync('grace', presence)
+      const players = (res.body as { players: Record<string, unknown>[] }).players
+      expect(players[0]).toMatchObject({ login: 'ada', sit: 'bench:19,14:0', sitAt: 100 })
+    })
+
+    it('only accepts real kinds of seat in the right kind of place', async () => {
+      const room = { ...presence, map: 'room:ada' }
+      const hall = { ...presence, map: 'hall' }
+      const cases: [Record<string, unknown>, boolean][] = [
+        [{ ...presence, sit: 'bench:7,15:1', sitAt: 1 }, true],
+        [{ ...hall, sit: 'chairs:20,7:2', sitAt: 1 }, true],
+        [{ ...room, sit: 'rocker:6,4:0', sitAt: 1 }, true],
+        [{ ...presence, sit: 'chairs:20,7:0', sitAt: 1 }, false],
+        [{ ...hall, sit: 'bench:7,15:0', sitAt: 1 }, false],
+        [{ ...room, sit: 'bench:7,15:0', sitAt: 1 }, false],
+        [{ ...presence, sit: 'throne:1,1:0', sitAt: 1 }, false],
+        [{ ...presence, sit: 'bench:7,15:5', sitAt: 1 }, false],
+        [{ ...presence, sit: 'bench:500,1:0', sitAt: 1 }, false],
+        [{ ...presence, sit: 'bench:7,15:0' }, false],
+        [{ ...presence, sit: 42, sitAt: 1 }, false],
+      ]
+      for (const [p, ok] of cases) {
+        const res = await sync('ada', p)
+        expect(res.statusCode, JSON.stringify(p)).toBe(ok ? 200 : 400)
+      }
+    })
+
+    it('keeps a seat for whoever sat first', async () => {
+      const seat = { ...presence, sit: 'bench:19,14:1' }
+      await sync('ada', { ...seat, sitAt: 100 })
+      const grace = await sync('grace', { ...seat, sitAt: 200 })
+      expect(grace.body).toMatchObject({ seatTaken: true })
+      const ada = await sync('ada', { ...seat, sitAt: 100 })
+      expect((ada.body as Record<string, unknown>).seatTaken).toBeUndefined()
+      // The other half of the bench is free.
+      const other = await sync('grace', { ...presence, sit: 'bench:19,14:0', sitAt: 300 })
+      expect((other.body as Record<string, unknown>).seatTaken).toBeUndefined()
+    })
+  })
+
   describe('eggs', () => {
     it('keeps eggs and the henhouse record, and loads saves without them', async () => {
       const s = { ...save(), coop: { day: 1234, taken: 2 }, inv: { egg: 5 } }

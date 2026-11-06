@@ -140,6 +140,9 @@ export interface PresenceIn {
   moving: boolean
   /** Your pet, sent only while it's following you (it isn't at night or in your own room). */
   pet?: PetLook
+  /** The seat you're sitting on (see seatId), and when you sat down (to settle who was first). */
+  sit?: string
+  sitAt?: number
 }
 
 export interface Player extends PresenceIn {
@@ -427,6 +430,34 @@ export function isMapId(v: unknown): v is MapId {
   )
 }
 
+// --- seats -----------------------------------------------------------------------------------
+
+/** Things you can sit on, and the kind of place each is found in. */
+export const SEAT_KINDS = {
+  bench: 'grounds',
+  chairs: 'hall',
+  armchair: 'room',
+  rocker: 'room',
+} as const
+export type SeatKind = keyof typeof SEAT_KINDS
+
+/** A seat: the object's kind, its tile, and which place on it (a bench has two, chairs three). */
+export function seatId(kind: SeatKind, x: number, y: number, place: number): string {
+  return `${kind}:${x},${y}:${place}`
+}
+
+const SEAT_RE = /^(bench|chairs|armchair|rocker):(\d{1,3}),(\d{1,3}):([0-2])$/
+
+/** Checks a seat id is well-formed and belongs to the kind of place you're in. */
+export function validSeat(seat: unknown, map: MapId): seat is string {
+  if (typeof seat !== 'string') return false
+  const m = SEAT_RE.exec(seat)
+  if (!m) return false
+  const where = SEAT_KINDS[m[1] as SeatKind]
+  if (Number(m[2]) > 199 || Number(m[3]) > 199) return false
+  return where === 'room' ? map.startsWith('room:') : where === map
+}
+
 export function validatePresence(v: unknown): PresenceIn {
   const o = obj(v, 'presence')
   if (!isMapId(o.map)) throw new SaveError('presence.map is not a place.')
@@ -439,5 +470,30 @@ export function validatePresence(v: unknown): PresenceIn {
     ...(o.pet === undefined || o.pet === null
       ? {}
       : { pet: validatePetLook(o.pet, 'presence.pet') }),
+    ...(o.sit === undefined || o.sit === null ? {} : validateSit(o, o.map)),
   }
+}
+
+function validateSit(o: Obj, map: MapId): { sit: string; sitAt: number } {
+  if (!validSeat(o.sit, map)) throw new SaveError('presence.sit is not a seat here.')
+  return { sit: o.sit, sitAt: num(o.sitAt, 'presence.sitAt', 0, MAX_TIME) }
+}
+
+/**
+ * Whether someone else on the same map was already sitting on `me`'s seat (the earlier sitAt
+ * keeps it; a tie goes to the alphabetically first login).
+ */
+export function seatTaken(
+  me: { login: string; map: MapId; sit?: string; sitAt?: number },
+  others: { login: string; map: MapId; sit?: string; sitAt?: number }[],
+): boolean {
+  if (!me.sit) return false
+  return others.some(
+    (p) =>
+      p.login !== me.login &&
+      p.map === me.map &&
+      p.sit === me.sit &&
+      ((p.sitAt ?? 0) < (me.sitAt ?? 0) ||
+        ((p.sitAt ?? 0) === (me.sitAt ?? 0) && p.login < me.login)),
+  )
 }

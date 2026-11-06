@@ -182,7 +182,7 @@ const BEDS: Record<Bed, string> = {
   day: 'amb-day-birds',
   night: 'amb-night-crickets',
 }
-const AMBIENCE_VOLUME = 0.55
+const AMBIENCE_VOLUME = 0.50
 /** Indoors you still hear the outside, faintly, through the windows. */
 const INDOOR_LEVEL = 0.18
 const CHANGE_MS = 6000

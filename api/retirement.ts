@@ -9,6 +9,7 @@ import {
   toProfile,
   validateLook,
   validatePresence,
+  seatTaken,
   validateSave,
   type ChatMsg,
 } from '../retirement/shared/schema.js'
@@ -127,5 +128,7 @@ async function sync(req: VercelRequest, res: VercelResponse): Promise<void> {
       }
     : null
   const result = await getStore().sync({ ...presence, login: user.login, look, t: now }, msg, since)
-  sendJson(res, 200, { ...result, now })
+  // Two people can't share a seat: whoever sat down first keeps it.
+  const taken = seatTaken({ ...presence, login: user.login }, result.players)
+  sendJson(res, 200, { ...result, ...(taken ? { seatTaken: true } : {}), now })
 }

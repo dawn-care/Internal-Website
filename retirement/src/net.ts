@@ -1,4 +1,5 @@
 import { PLOT_H, PLOT_W } from '../shared/catalog'
+import { getGrounds, seatsOf, type Seat } from './maps'
 import { petBedtime } from './pets'
 import {
   defaultLook,
@@ -39,6 +40,8 @@ export interface SyncResult {
   chat: ChatMsg[]
   sent: boolean
   now: number
+  /** Someone else was already sitting on the seat you sent. */
+  seatTaken?: boolean
 }
 
 export interface Net {
@@ -125,6 +128,10 @@ interface Bot {
   garden: Profile['garden']
   /** Her pet; `out` means it follows her around (else it's asleep in its bed at home). */
   pet?: PetLook & { out: boolean }
+  /** Likes a sit-down on a bench now and then. */
+  sitter?: boolean
+  /** On the way to a seat, or sitting on it until `until`. */
+  bench?: { seat: Seat; at: number; until: number; sitting: boolean }
 }
 
 const BOT_LINES = [
@@ -169,6 +176,7 @@ export class LocalNet implements Net {
         ty: 15,
         dir: 0,
         slot: 1,
+        sitter: true,
         garden: garden('pumpkin'),
         pet: { kind: 'dog', coat: 0, name: 'Duke', out: false },
       },
@@ -250,21 +258,7 @@ export class LocalNet implements Net {
         text: body.msg,
         t: now,
       })
-    for (const b of this.bots) {
-      const dx = b.tx - b.x
-      const dy = b.ty - b.y
-      const d = Math.hypot(dx, dy)
-      if (d < 0.1) {
-        if (Math.random() < 0.3) {
-          b.tx = 12 + Math.random() * 22
-          b.ty = 14 + Math.random() * 4.5
-        }
-      } else {
-        const s = Math.min(d, 2.2 * dt)
-        b.x += (dx / d) * s
-        b.y += (dy / d) * s
-        b.dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0
-      }
+    const chatMaybe = (b: Bot) => {
       if (Math.random() < 0.012) {
         const text = BOT_LINES[Math.floor(Math.random() * BOT_LINES.length)]
         this.chat.push({
@@ -277,6 +271,58 @@ export class LocalNet implements Net {
         })
       }
     }
+    for (const b of this.bots) {
+      // Walt's bench breaks: walk up to a free seat on the plaza, sit 20–60s, get up again.
+      if (b.bench?.sitting) {
+        if (now < b.bench.until) {
+          chatMaybe(b)
+          continue
+        }
+        b.y = b.bench.seat.y + 0.8
+        b.tx = b.x
+        b.ty = b.y
+        b.bench = undefined
+      }
+      const dx = b.tx - b.x
+      const dy = b.ty - b.y
+      const d = Math.hypot(dx, dy)
+      if (d < 0.1 && b.bench) {
+        b.x = b.bench.seat.x
+        b.y = b.bench.seat.y
+        b.dir = 0
+        b.bench = {
+          ...b.bench,
+          sitting: true,
+          at: now,
+          until: now + 20_000 + Math.random() * 40_000,
+        }
+        continue
+      }
+      if (d < 0.1) {
+        if (b.sitter && Math.random() < 0.25) {
+          const seats = seatsOf(getGrounds()).filter(
+            (s) => s.y < 16 && s.x > 15 && s.x < 32 && s.id !== body.p.sit,
+          )
+          const seat = seats[Math.floor(Math.random() * seats.length)]
+          if (seat) {
+            b.bench = { seat, at: 0, until: 0, sitting: false }
+            b.tx = seat.x
+            b.ty = seat.y + 0.8
+            continue
+          }
+        }
+        if (Math.random() < 0.3) {
+          b.tx = 12 + Math.random() * 22
+          b.ty = 14 + Math.random() * 4.5
+        }
+      } else {
+        const s = Math.min(d, 2.2 * dt)
+        b.x += (dx / d) * s
+        b.y += (dy / d) * s
+        b.dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0
+      }
+      chatMaybe(b)
+    }
     if (this.chat.length > 50) this.chat.splice(0, this.chat.length - 50)
     const players: Player[] = this.bots.map((b) => ({
       login: b.login,
@@ -285,7 +331,8 @@ export class LocalNet implements Net {
       x: b.x,
       y: b.y,
       dir: b.dir,
-      moving: Math.hypot(b.tx - b.x, b.ty - b.y) > 0.1,
+      moving: !b.bench?.sitting && Math.hypot(b.tx - b.x, b.ty - b.y) > 0.1,
+      ...(b.bench?.sitting ? { sit: b.bench.seat.id, sitAt: b.bench.at } : {}),
       // Like real players' pets, hers stays home in bed at night (9 pm–6 am, game clock).
       ...(b.pet?.out && !petBedtime(((now % 1_440_000) / 1_440_000) * 24)
         ? { pet: { kind: b.pet.kind, coat: b.pet.coat, name: b.pet.name } }
