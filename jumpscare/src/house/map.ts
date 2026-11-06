@@ -1,4 +1,4 @@
-import { DOORS, PAINTINGS } from "./story";
+import { DOORS, JOURNALS, PAINTINGS } from "./story";
 import {
   BOOKSHELF,
   CLAWED,
@@ -24,31 +24,33 @@ import {
 //           D locked door (never opens)   1-9 door that opens with a riddle (see DOORS);
 //           the same digit twice side by side is a double door
 //   Floor:  . floor   S where you wake up (facing east)   F where the figure can stand
-//           H where the floating head starts   P where the pale thing starts
-//           L a lamp swinging from the ceiling
+//           A where the statue stands   P where the pale thing starts
+//           L a lamp swinging from the ceiling   N a cobweb you have to push through
 //           T table with a candle   C chair   Y rocking chair   K grandfather clock
+//           J a journal (see JOURNALS in story.ts)   E dresser   Q bed   H coat rack
+//           O boxes   I mannequin   U vase on a stand   Z barrel
 //   Outside: , open ground in the fog   ~ fog you can't walk through
 // The left 24 columns are the house you wake up in. Door 1, in the corridor's north wall,
-// leads down to the basement, where the head lives. Door 2, at the corridor's east end, leads
+// leads down to the basement, where the statue stands. Door 2, at the corridor's east end, leads
 // to the east wing, where the pale thing lives. The double door 3 leads outside.
 const HOUSE = [
   "###X####X#####X####X#######X#####X##",
-  "#TC....#..CC.....K#.Y..#..Y........#",
+  "#TC..JU#..CC...E.K#.Y.Q#..Y......E.#",
   "#..S...a..TT......R....#.......P...k",
   "b......#..CCF.....#..F.#.....L.....#",
-  "X......M..........#....#.........T.#",
+  "X......M........U.#..JE#.I.......T.#",
   "###..##1WW..WWWW###.#######.####W###",
-  "#..........L...........2...........#",
-  "R......................R...........R",
+  "#..........L...........2........H..#",
+  "R....H............I....R...........R",
   "####.#M#M#D##..#####.#####BB##.##B##",
-  "B......#.....#.#.......##..........#",
+  "BO.....#E....#.#......Q##........J.#",
   "#..F...c...Y.#.d...F...#h..TC......g",
-  "e....C.#.....#.#.......M#..........#",
-  "B....T.#..F..#.#.....CT#####.##M#M##",
-  "###.####.....#.###.######..........#",
-  "#......................##....L.....#",
+  "e....C.#.....#.#.......M#O.........#",
+  "B....T.#..F.I#.#O....CT#####.##M#M##",
+  "###.####.....#.###.######E.........#",
+  "#O.....................##....L.....#",
   "#..F...M.....R......F..##..........i",
-  "#......................##..........#",
+  "#.....O...........J...U##.........O#",
   "#####X####33##X##############j##X###",
 ];
 
@@ -62,18 +64,18 @@ const OUTSIDE = Array.from({ length: OUTSIDE_ROWS }, (_, row) =>
 // below the outside, behind solid walls. Nothing follows you up or down.
 const BASEMENT = [
   "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-  "GGGGGGG.......GGG...........GGGGGGGG",
-  "G^.....L......GGG..G..H..G..GGGGGGGG",
-  "GGGGGGG.......GGG...........lGGGGGGG",
-  "GGGGGGG.......GGG..G.....G..GGGGGGGG",
-  "GGGGGGGGG.GGGGGGG...........GGGGGGGG",
-  "GGGGGGGGG.GGGGGGGGGGG.GGGGGGGGGGGGGG",
-  "GGGGGG.......................GGGGGGG",
-  "GGGGGG..........L............GGGGGGG",
-  "GGGGGGGGGG.GGGGGGGGGGGGG.GGGGGGGGGGG",
-  "GGGGGG........GGGGGG.........GGGGGGG",
+  "GGGGGGG....O.NGGGN..........GGGGGGGG",
+  "G^..N..L......GGG..G..J..G..GGGGGGGG",
+  "GGGGGGG....Z..GGG...........lGGGGGGG",
+  "GGGGGGGN......GGG..G.....G..GGGGGGGG",
+  "GGGGGGGGG.GGGGGGG..........NGGGGGGGG",
+  "GGGGGGGGGNGGGGGGGGGGGNGGGGGGGGGGGGGG",
+  "GGGGGG..........A...........NGGGGGGG",
+  "GGGGGGN.........L............GGGGGGG",
+  "GGGGGGGGGGNGGGGGGGGGGGGGNGGGGGGGGGGG",
+  "GGGGGG.Z......GGGGGG......Z..GGGGGGG",
   "GGGGGD........GGGGGG.........fGGGGGG",
-  "GGGGGG...C.T..GGGGGG....C.T..GGGGGGG",
+  "GGGGGGO..C.T..GGGGGGN...C.T.JGGGGGGG",
   "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
 ];
 
@@ -92,10 +94,36 @@ const WALLS: Record<string, number> = {
 
 export type Point = { x: number; y: number };
 
-export type PropKind = "table" | "chair" | "rocker" | "clock";
-const PROPS: Record<string, PropKind> = { T: "table", C: "chair", Y: "rocker", K: "clock" };
+export type PropKind =
+  | "table"
+  | "chair"
+  | "rocker"
+  | "clock"
+  | "journal"
+  | "dresser"
+  | "bed"
+  | "coatrack"
+  | "boxes"
+  | "mannequin"
+  | "vase"
+  | "barrel"
+  | "web";
+const PROPS: Record<string, PropKind> = {
+  T: "table",
+  C: "chair",
+  Y: "rocker",
+  K: "clock",
+  J: "journal",
+  E: "dresser",
+  Q: "bed",
+  H: "coatrack",
+  O: "boxes",
+  I: "mannequin",
+  U: "vase",
+  Z: "barrel",
+};
 
-export type Prop = Point & { kind: PropKind };
+export type Prop = Point & { kind: PropKind; key?: string }; // a journal's key is its page
 
 // Something that gives off light: a swinging lamp, or the candle on a table.
 export type Light = Point & { kind: "lamp" | "candle" };
@@ -114,12 +142,14 @@ export type World = {
   cells: Uint8Array; // wall texture per cell, 0 for floor
   outdoors: Uint8Array; // 1 for cells outside the house
   spawn: Point;
-  headHome: Point;
+  statueHome: Point;
   paleHome: Point;
   figureSpots: Point[];
   lights: Light[];
   props: Prop[];
   propAt: Map<number, Prop>; // cell index → the furniture standing there
+  journals: Prop[];
+  webs: Set<number>; // cell indexes with a cobweb, which slows you down but doesn't stop you
   paintings: Map<number, string>; // cell index → painting key
   doors: Map<number, string>; // cell index → riddle door key, while it's still shut
   openDoors: Map<number, OpenDoor>; // cell index → the door standing open there
@@ -159,12 +189,14 @@ export function createWorld(): World {
     cells: new Uint8Array(width * height),
     outdoors: new Uint8Array(width * height),
     spawn: { x: 1.5, y: 1.5 },
-    headHome: { x: 1.5, y: 1.5 },
+    statueHome: { x: 1.5, y: 1.5 },
     paleHome: { x: 1.5, y: 1.5 },
     figureSpots: [],
     lights: [],
     props: [],
     propAt: new Map(),
+    journals: [],
+    webs: new Set(),
     paintings: new Map(),
     doors: new Map(),
     openDoors: new Map(),
@@ -199,8 +231,11 @@ export function createWorld(): World {
         cell = WRITING + (messages++ % MESSAGES.length);
       } else if (char === "S") {
         world.spawn = center;
-      } else if (char === "H") {
-        world.headHome = center;
+      } else if (char === "A") {
+        world.statueHome = center;
+      } else if (char === "N") {
+        world.props.push({ ...center, kind: "web" });
+        world.webs.add(index);
       } else if (char === "P") {
         world.paleHome = center;
       } else if (char === "F") {
@@ -210,7 +245,12 @@ export function createWorld(): World {
       } else if (char === "," || char === "~") {
         world.outdoors[index] = 1;
       } else if (PROPS[char]) {
-        const prop = { ...center, kind: PROPS[char] };
+        const prop: Prop = { ...center, kind: PROPS[char] };
+        if (char === "J") {
+          prop.key = String(world.journals.length);
+          if (!JOURNALS[world.journals.length]) throw new Error("The house map has more journals than story.ts");
+          world.journals.push(prop);
+        }
         world.props.push(prop);
         world.propAt.set(index, prop);
         if (char === "T") world.lights.push({ ...center, kind: "candle" });
@@ -258,9 +298,10 @@ export function lineOfSight(world: World, ax: number, ay: number, bx: number, by
   return true;
 }
 
-// Breadth-first search over floor cells from (x, y). `previous` links each reached cell back
-// toward the start; `steps` is how far each one is (-1 if it can't be reached).
-function search(world: World, x: number, y: number) {
+// Breadth-first search over floor cells from (x, y), around furniture unless it's standing on
+// the `goal` cell. `previous` links each reached cell back toward the start; `steps` is how far
+// each one is (-1 if it can't be reached).
+function search(world: World, x: number, y: number, goal = -1) {
   const size = world.width * world.height;
   const previous = new Int32Array(size).fill(-1);
   const steps = new Int32Array(size).fill(-1);
@@ -274,6 +315,7 @@ function search(world: World, x: number, y: number) {
     for (const [dx, dy] of DIRECTIONS) {
       const next = (cy + dy) * world.width + cx + dx;
       if (cellAt(world, cx + dx, cy + dy) !== 0 || steps[next] !== -1) continue;
+      if (next !== goal && world.propAt.has(next)) continue;
       steps[next] = steps[index] + 1;
       previous[next] = index;
       queue.push(next);
@@ -289,8 +331,8 @@ function centerOf(world: World, index: number): Point {
 
 // Cell centers to walk through to get from one point to another, or [] if there's no way.
 export function findPath(world: World, from: Point, to: Point): Point[] {
-  const { previous, steps } = search(world, from.x, from.y);
   let index = Math.floor(to.y) * world.width + Math.floor(to.x);
+  const { previous, steps } = search(world, from.x, from.y, index);
   if (index < 0 || index >= steps.length || steps[index] <= 0) return [];
   const path: Point[] = [];
   while (steps[index] > 0) {

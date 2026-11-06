@@ -39,7 +39,7 @@ export const PAINTINGS: Record<string, Painting> = {
     memory:
       "My mom scared me so bad one time when she hid in my room. But what I'm looking at isn't her.",
   },
-  // In the basement behind door 1, where the head lives. Its memory opens door 2.
+  // In the basement behind door 1, past the statue. Its memory opens door 2.
   f: {
     stone: true,
     image: "Goblin_shark.png",
@@ -103,8 +103,16 @@ export const DOORS: Record<string, RiddleDoor> = {
   },
 };
 
-// The floating head that lives in the basement.
-export const HEAD_IMAGE = "fzi0qw3ahctc1.jpg";
+// One page each, on the J cells of the map, in order reading left to right, top to bottom.
+// All placeholder for now.
+export const JOURNALS = [
+  "I found this notebook on the table. The handwriting is mine, I think. It says I've been here before. It says not to trust the clock.\n\nI can't remember writing any of it.",
+  "Someone has been rocking in that chair. I lie awake and listen to it. In the morning it's still, and I can't remember whose chair it was.\n\nThere's a dent in the bed that isn't mine.",
+  "The windows only ever show the fog and the water. I asked the man in the hallway how long I've been here. He didn't answer.\n\nI don't think there's a man in the hallway.",
+  "I tried the big doors again. Someone carved a question into them, and it's meant for me, and I don't know the answer.\n\nI used to know what she called me. I'll write it here when I remember.\n\n\n",
+  "She was praying when I came down here. She's always praying. I turned around to look for the stairs, and when I turned back she wasn't praying anymore.\n\nKeep the light on her. Do not look away from her.",
+  "The webs hold you back. They don't hold her back.\n\nGrandma said there was nothing down here to be scared of. If the flashlight goes, run. If you can hear her running, she isn't where you're looking.",
+];
 
 export const LOCKED_MESSAGE = "It's locked. It won't budge.";
 export const WRONG_ANSWER = "No... that isn't it.";

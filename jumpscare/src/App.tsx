@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchQuestion, type Question } from "./trivia";
+import { useEffect, useState } from "react";
+import { createQuiz } from "./quiz";
 import { randomImage, randomSound } from "./media";
 import { startHeartbeat, unlockAudio } from "./audio";
 import House from "./house/House";
 
 const JUMPSCARE_MS = 3000;
-// After this many real questions, the quiz stops being a quiz.
-const TRIVIA_QUESTIONS = 5;
 // How long "Wrong." stays up before the next question.
 const LIFE_WRONG_MS = 3000;
 // How long the unanswerable question stays up before you wake up in the house.
@@ -14,46 +12,25 @@ const MATTER_MS = 5000;
 const BLACKOUT_MS = 1500;
 const BLANK_ANSWERS = 4;
 
-// trivia: real questions. life: "Can you remember your life?", where every (blank) answer is
+// quiz: real questions. life: "Can you remember your life?", where every (blank) answer is
 // wrong. matter: "Can you remember why you matter?", where nothing can be clicked. house: walk.
-type Phase = "trivia" | "life" | "matter" | "house";
+type Phase = "quiz" | "life" | "matter" | "house";
 
 // In dev, localhost:5173/game/#house skips straight to the house.
-const START_PHASE: Phase = import.meta.env.DEV && location.hash === "#house" ? "house" : "trivia";
+const START_PHASE: Phase = import.meta.env.DEV && location.hash === "#house" ? "house" : "quiz";
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>(START_PHASE);
-  const [answered, setAnswered] = useState(0);
-  const [question, setQuestion] = useState<Question | null>(null);
+  const [quiz] = useState(createQuiz);
+  const [questionIndex, setQuestionIndex] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [lifeChoice, setLifeChoice] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
   // Only the house has jumpscares. undefined: none showing. A null image or sound means its
   // folder is empty.
   const [jumpscare, setJumpscare] = useState<
     { image: string | null; sound: string | null } | undefined
   >(undefined);
-  const loading = useRef(false);
-
-  const loadQuestion = useCallback(async () => {
-    // Guards against double loads (React dev mode, fast clicks), which the API rate-limits.
-    if (loading.current) return;
-    loading.current = true;
-    setQuestion(null);
-    setSelected(null);
-    setError(null);
-    try {
-      setQuestion(await fetchQuestion());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load a question");
-    } finally {
-      loading.current = false;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (START_PHASE === "trivia") loadQuestion();
-  }, [loadQuestion]);
+  const question = quiz[questionIndex];
 
   useEffect(() => {
     if (jumpscare === undefined) return;
@@ -61,9 +38,9 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [jumpscare]);
 
-  // The page slowly goes dark once the questions stop being trivia.
+  // The page slowly goes dark once the questions stop having answers.
   useEffect(() => {
-    document.body.classList.toggle("forgetting", phase !== "trivia");
+    document.body.classList.toggle("forgetting", phase !== "quiz");
   }, [phase]);
 
   useEffect(() => {
@@ -83,15 +60,18 @@ export default function App() {
   }, [phase]);
 
   function answer(choice: string) {
-    if (!question || selected) return;
+    if (selected) return;
     unlockAudio();
     setSelected(choice);
-    setAnswered((count) => count + 1);
   }
 
   function next() {
-    if (answered >= TRIVIA_QUESTIONS) setPhase("life");
-    else loadQuestion();
+    if (questionIndex + 1 >= quiz.length) {
+      setPhase("life");
+      return;
+    }
+    setQuestionIndex(questionIndex + 1);
+    setSelected(null);
   }
 
   function answerLife(choice: number) {
@@ -101,7 +81,7 @@ export default function App() {
   }
 
   function answerClass(choice: string) {
-    if (!selected || !question) return "answer";
+    if (!selected) return "answer";
     if (choice === question.correctAnswer) return "answer correct";
     if (choice === selected) return "answer wrong";
     return "answer";
@@ -130,18 +110,9 @@ export default function App() {
 
   return (
     <main>
-      <h1>Computer Trivia</h1>
+      <h1>Memory Quiz</h1>
 
-      {phase === "trivia" && error && (
-        <div className="card">
-          <p>{error}</p>
-          <button onClick={loadQuestion}>Try again</button>
-        </div>
-      )}
-
-      {phase === "trivia" && !error && !question && <p>Loading question...</p>}
-
-      {phase === "trivia" && question && (
+      {phase === "quiz" && (
         <div className="card">
           <p className="question">{question.question}</p>
           <div className="answers">

@@ -67,8 +67,9 @@ export function createFrame(w: number, h: number): Frame {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const r = Math.hypot(x - w / 2, y - h / 2) / radius;
-      const t = Math.min(1, Math.max(0, (r - 0.35) / 0.75));
-      spot[y * w + x] = 0.2 + 0.8 * (1 - t * t * (3 - 2 * t));
+      // A real beam: bright in the middle, and past its edge next to nothing.
+      const t = Math.min(1, Math.max(0, (r - 0.3) / 0.7));
+      spot[y * w + x] = 0.03 + 0.97 * (1 - t * t * (3 - 2 * t));
     }
   }
   return {
@@ -89,11 +90,11 @@ export function planeLength(frame: Frame) {
 }
 
 // The textures are dark to begin with, so the flashlight can brighten them past their colors.
-const FLASHLIGHT = 1.7;
-const LAMP_REACH = 4.5;
+const FLASHLIGHT = 2;
+const LAMP_REACH = 3.5;
 
 function falloff(distance: number) {
-  return FLASHLIGHT / (1 + 0.12 * distance * distance);
+  return FLASHLIGHT / (1 + 0.16 * distance * distance);
 }
 
 // The index of the map cell at (x, y), or -1 if it's off the map.
@@ -182,7 +183,10 @@ function fogAmount(view: View, distance: number, haze = 1) {
 }
 
 // How bright the open ground is outside, with no flashlight on it.
-const OUTDOOR_AMBIENT = 0.1;
+const OUTDOOR_AMBIENT = 0.04;
+
+// How much of the fog's light comes in through the windows.
+const WINDOW_LIGHT = 0.55;
 
 // What you see through a window: drifting fog over a dark sea, forever. `below` is how far
 // under the horizon the pixel is, as a fraction of the screen height (negative above it).
@@ -355,7 +359,7 @@ export function render(
       const color = texture[((ty | 0) & MASK) * TEX + tx];
       const lighted =
         color >>> 24 === OUTSIDE
-          ? outsideColor(rayAngle, (y + 0.5 - horizon) / h, view.time, view.outside)
+          ? outsideColor(rayAngle, (y + 0.5 - horizon) / h, view.time, view.outside * WINDOW_LIGHT)
           : shade(color, lit * spot[i] + ambient, warm);
       pixels[i] = hidden > 0 ? mix(lighted, fog, hidden) : lighted;
       ty += step;

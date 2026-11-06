@@ -374,13 +374,14 @@ Rules (both themes):
 - Color is never the only signal: every badge/tag also has a text label.
 
 ## /game (jumpscare)
-- jumpscare/ is a standalone trivia game, unrelated to D.A.W.N. After 5 questions it turns
+- jumpscare/ is a standalone game, unrelated to D.A.W.N. It starts as a local memory quiz
+  (jumpscare/src/quiz.ts, no API). After 5 questions it turns
   into a first-person walk through a house (jumpscare/src/house: a canvas raycaster with
   drawn textures; its ambient sound is synthesized with Web Audio, no new dependencies). The
-  trivia itself has no jumpscares; the house does, each with a random image from
+  quiz itself has no jumpscares; the house does, each with a random image from
   jumpscare/media and a random sound from jumpscare/sounds. Memories (paintings) and door riddles live
   in jumpscare/src/house/story.ts and are placed by key in the map in map.ts. Door 1 leads down
-  to a basement (the floating head), door 2 to the east wing (the pale thing), and the double
+  to a basement (a statue that only moves when unseen, spiders, cobwebs), door 2 to the east wing (the pale thing), and the double
   door, whose answer is in the east wing, leads outside to the fog and a giant; reaching you
   there is the (current) ending. jumpscare/CLAUDE.md has more on the game itself. It is
   not part of the React app (no nav link, no Layout, no design tokens). vite.game.config.ts builds it

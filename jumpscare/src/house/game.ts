@@ -4,21 +4,24 @@ import {
   playDoorOpen,
   playDoorSlam,
   playEnding,
-  playFade,
+  playBite,
+  playDrip,
   playFootstep,
   playGiantStep,
   playGrowl,
   playRunningBehind,
   playShriek,
+  playSkitter,
   playSniff,
   playStairs,
+  playStatueStep,
   playSting,
+  playStoneGrind,
   playTick,
+  playWebRustle,
   startAmbience,
-  startWheeze,
   unlockAudio,
 } from "../audio";
-import { imageByName } from "../media";
 import {
   createWorld,
   findPath,
@@ -28,10 +31,10 @@ import {
   lineOfSight,
   randomDestination,
   type Point,
+  type PropKind,
   type World,
 } from "./map";
 import { createFrame, planeLength, render, type Frame, type Lamp, type Sprite } from "./raycaster";
-import { HEAD_IMAGE } from "./story";
 import {
   createTextures,
   DOOR,
@@ -40,6 +43,7 @@ import {
   FOG_WALL,
   STAIRS_DOWN,
   STAIRS_UP,
+  type Texture,
 } from "./textures";
 
 const HEIGHT = 200; // render height in pixels; the canvas scales it up
@@ -56,7 +60,9 @@ const FADE_IN_SECONDS = 3;
 const STAIRS_HOLD_MS = 1100; // in the dark, on the way up or down
 const STAIRS_FADE_SECONDS = 0.8;
 const REACH = 1.6; // how close you need to be to a painting or door to use it
-const AMBIENT = 0.045; // how much you can see outside the flashlight's beam
+// How much you can see outside the flashlight's beam: nearly nothing, and less downstairs.
+const AMBIENT = 0.012;
+const BASEMENT_AMBIENT = 0.004;
 
 // The figure vanishes if you walk up to it. Stare at it from afar for too long and it doesn't.
 const VANISH_DISTANCE = 3.5;
@@ -65,20 +71,40 @@ const STARE_SECONDS = 2.5;
 const FIRST_FIGURE_SECONDS = 8;
 const MIN_FIGURE_DISTANCE = 7;
 
-// The floating head drifts slower than you walk. It chases you while it can see you (or hear
-// you running nearby), searches where it last saw you, then gives up and wanders. Holding
-// your flashlight on it makes it fade away, for a while.
-const HEAD_WANDER_SPEED = 0.5;
-const HEAD_CHASE_SPEED = 1.05;
-const HEAD_SIGHT = 9;
-const HEAD_HEARING = 4; // running this close gives you away, wall or not
-const HEAD_SEARCH_SECONDS = 6;
-const HEAD_CATCH = 0.5;
-const HEAD_BEAM = 0.22; // radians either side of straight ahead that the flashlight covers
-const HEAD_BEAM_RANGE = 7;
-const HEAD_FADE_SECONDS = 2; // of steady light to make it disappear
-const HEAD_RETURN_SECONDS = 2.5; // to fade back in, once out of the light
 const CAUGHT_HOLD_MS = 3000;
+
+// The statue in the basement looks like a woman praying, and stays that way until the first
+// time you look away. After that it only ever moves when you can't see it, but when it moves it
+// sprints: faster than you walk, slower than you run. You can see it if it's in your flashlight's
+// beam, or standing in a lamp's light on your screen, so when the flashlight flickers it moves.
+const STATUE_SPEED = 1.9;
+const STATUE_STRIDE = 0.55; // cells per footstep
+const STATUE_BEAM = 0.45; // radians either side of straight ahead
+const STATUE_RANGE = 9; // beyond this your flashlight doesn't reach it
+const STATUE_REPATH_SECONDS = 0.4;
+const STATUE_CATCH = 0.7;
+const STATUE_SIZE = 0.35; // you can't walk through it
+const STATUE_LUNGE_DISTANCE = 2.5; // closer than this, you catch it in its worst pose
+const STATUE_SCALE = 0.95;
+const STATUE_CLEARANCE = 7; // coming back downstairs, it's at least this far from the stairs
+
+// Spiders in the basement scatter from the flashlight and creep up on you in the dark. Cobwebs
+// and bites both slow you down.
+const SPIDER_COUNT = 14;
+const SPIDER_SCALE = 0.28;
+const SPIDER_FLEE_SPEED = 2.4;
+const SPIDER_CREEP_SPEED = 0.8;
+const SPIDER_WANDER_SPEED = 0.5;
+const SPIDER_SIGHT = 6;
+const SPIDER_BEAM = 0.6;
+const SPIDER_BITE = 0.35;
+const SPIDER_DRAW_RANGE = 9;
+const BITE_SECONDS = 2;
+const BITE_SLOW = 0.6;
+const BITE_COOLDOWN = 4;
+const WEB_SLOW = 0.35;
+const WEB_OPACITY = 0.55;
+const JOURNAL_ANGLE = 0.4; // how directly you need to be facing a journal to pick it up
 
 // The pale thing behind door 2 is an animal, not a hunter. It wanders with its nose to the
 // floor until it catches your scent, then follows you, slower than you walk and in fits and
@@ -112,8 +138,8 @@ const GIANT_LEASH = 15; // farther than this and it reappears ahead of you
 const GIANT_AHEAD = 11;
 const GIANT_HAZE = 0.4; // the fog hides it less than it would something smaller
 
-const LAMP_POWER = 1.3;
-const CANDLE_POWER = 0.5;
+const LAMP_POWER = 0.8;
+const CANDLE_POWER = 0.28;
 const LAMP_SWING = 0.1; // cells either side
 const LAMP_LIGHT_SWING = 2.5; // the pool of light on the floor swings further than the bulb
 const LIGHT_RANGE = 9; // lights farther than this aren't drawn or heard
@@ -138,6 +164,7 @@ export type Focus =
   | { kind: "painting"; key: string }
   | { kind: "door"; key: string | null }
   | { kind: "stairs"; key: "down" | "up" }
+  | { kind: "journal"; key: string }
   | { kind: "fog"; key?: undefined };
 
 export type GameEvents = {
@@ -146,11 +173,12 @@ export type GameEvents = {
   onFocus: (focus: Focus | null) => void;
   onInteract: (focus: Focus) => void;
   onEnding: () => void;
+  onPauseKey: () => void; // P or Esc, or Esc already let go of the mouse
 };
 
 export type Game = {
   stop(): void;
-  pause(): void; // freezes the house while a memory or riddle is open
+  pause(): void; // freezes the house while you read something or the pause menu is open
   resume(): void;
   interact(): void; // the same as pressing E
   openDoor(key: string): void;
@@ -194,24 +222,27 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
   const ctx = canvas.getContext("2d")!;
   const world = createWorld();
   const textures = createTextures();
-  const headImage = imageByName(HEAD_IMAGE);
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const ambience = startAmbience();
-  const wheeze = startWheeze();
 
   let frame: Frame = resize();
   const player = { x: world.spawn.x, y: world.spawn.y, angle: 0 };
   const figure = { x: 0, y: 0, visible: false, respawnAt: FIRST_FIGURE_SECONDS, stare: 0 };
-  const head = {
-    x: world.headHome.x,
-    y: world.headHome.y,
-    state: "wander" as "wander" | "chase" | "search",
+  const statue = {
+    x: world.statueHome.x,
+    y: world.statueHome.y,
+    seen: false, // you've looked at it
+    awake: false, // and then looked away
     path: [] as Point[],
-    lastSeen: { x: 0, y: 0 },
-    searchUntil: 0,
-    opacity: 1,
-    goneUntil: 0, // while time is before this, it has faded away
+    nextPath: 0,
+    stride: 0,
+    pose: "reaching" as "reaching" | "lunging",
   };
+  const basementStart = { x: 2.5, y: world.basementTop + 2.5 };
+  const spiders = Array.from({ length: SPIDER_COUNT }, () => {
+    const spot = randomDestination(world, basementStart, 6, 200) ?? basementStart;
+    return { ...spot, heading: rand(0, Math.PI * 2), nextTurn: 0, moving: false };
+  });
   const pale = {
     x: world.paleHome.x,
     y: world.paleHome.y,
@@ -240,7 +271,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     .filter((prop) => prop.kind === "rocker")
     .map((prop) => ({ prop, phase: rand(0, Math.PI * 2), forward: true }));
   // In dev, the browser console can move things around: __house.player.x = 22.
-  if (import.meta.env.DEV) Object.assign(window, { __house: { player, head, pale, giant, world, openDoor } });
+  if (import.meta.env.DEV) Object.assign(window, { __house: { player, statue, spiders, pale, giant, world, openDoor } });
   const keys = new Set<string>();
   let look = 0; // radians of mouse or touch turning since the last frame
   let walkTouch: { id: number; startX: number; startY: number; x: number; y: number } | null =
@@ -252,7 +283,9 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
   let fadeSeconds = FADE_IN_SECONDS;
   let paused = false;
   let ended = false;
-  let lockedBeforePause = false;
+  let relock = false; // capture the mouse again when the game picks back up
+  let releasing = false; // the game is letting go of the mouse itself, not the player
+  let wasLocked = false;
   let holdUntil = 0; // performance.now() until which nothing moves, after being caught
   let stride = 0; // distance since the last footstep
   let foot = 1; // which foot lands next: -1 left, 1 right
@@ -265,6 +298,11 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
   let flickerUntil = 0;
   let blackoutUntil = 0;
   let nextRunBehind = rand(40, 80);
+  let nextDrip = 0;
+  let nextSkitter = 0;
+  let bittenUntil = 0;
+  let nextBite = 0;
+  let lastCell = -1;
   let nextTick = 1;
   let tock = false;
   let outside = false;
@@ -280,15 +318,27 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     return createFrame(canvas.width, HEIGHT);
   }
 
+  function inBasement() {
+    return player.y >= world.basementTop;
+  }
+
+  // Walls, furniture and the statue.
+  function blocked(x: number, y: number) {
+    return (
+      isSolid(world, x, y) ||
+      (y >= world.basementTop && Math.hypot(x - statue.x, y - statue.y) < STATUE_SIZE)
+    );
+  }
+
   function tryMove(dx: number, dy: number) {
     const nx = player.x + dx;
     const edgeX = nx + Math.sign(dx) * RADIUS;
-    if (!isSolid(world, edgeX, player.y - RADIUS) && !isSolid(world, edgeX, player.y + RADIUS)) {
+    if (!blocked(edgeX, player.y - RADIUS) && !blocked(edgeX, player.y + RADIUS)) {
       player.x = nx;
     }
     const ny = player.y + dy;
     const edgeY = ny + Math.sign(dy) * RADIUS;
-    if (!isSolid(world, player.x - RADIUS, edgeY) && !isSolid(world, player.x + RADIUS, edgeY)) {
+    if (!blocked(player.x - RADIUS, edgeY) && !blocked(player.x + RADIUS, edgeY)) {
       player.y = ny;
     }
   }
@@ -353,13 +403,6 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     return false;
   }
 
-  function sendHeadHome() {
-    head.x = world.headHome.x;
-    head.y = world.headHome.y;
-    head.state = "wander";
-    head.path = [];
-  }
-
   // After it's had you, it leaves you alone for a while.
   function sendPaleHome() {
     pale.x = world.paleHome.x;
@@ -371,6 +414,15 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     pale.boredUntil = time + rand(20, 30);
   }
 
+  // Back on its plinth, praying, as if nothing happened.
+  function sendStatueHome() {
+    statue.x = world.statueHome.x;
+    statue.y = world.statueHome.y;
+    statue.seen = false;
+    statue.awake = false;
+    statue.path = [];
+  }
+
   // A null image picks a random one.
   function caught(image: string | null) {
     events.onJumpscare(image);
@@ -378,7 +430,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     player.x = world.spawn.x;
     player.y = world.spawn.y;
     player.angle = 0;
-    sendHeadHome();
+    sendStatueHome();
     sendPaleHome();
     vanishFigure(rand(20, 35));
     wokeAt = time;
@@ -392,88 +444,134 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     player.x = landing.x;
     player.y = landing.y;
     player.angle = landing.angle;
+    // It doesn't get to wait for you at the bottom of the stairs.
+    if (inBasement() && statue.awake) {
+      const distance = Math.hypot(player.x - statue.x, player.y - statue.y);
+      if (distance < STATUE_CLEARANCE) {
+        const spot = randomDestination(world, player, STATUE_CLEARANCE + 3, 200);
+        if (spot) Object.assign(statue, spot, { path: [] });
+      }
+    }
     holdUntil = performance.now() + STAIRS_HOLD_MS;
     wokeAt = time;
     fadeSeconds = STAIRS_FADE_SECONDS;
   }
 
-  // The head comes back somewhere you can't see it, well away from you.
-  function returnHead() {
-    head.goneUntil = 0;
-    head.opacity = 0;
-    sendHeadHome();
-    for (let attempt = 0; attempt < 12; attempt++) {
-      const spot = randomDestination(world, world.headHome, 0, 40);
-      if (
-        spot &&
-        Math.hypot(spot.x - player.x, spot.y - player.y) > 8 &&
-        !lineOfSight(world, spot.x, spot.y, player.x, player.y)
-      ) {
-        head.x = spot.x;
-        head.y = spot.y;
-        return;
-      }
-    }
+  // Whether you can see the statue right now: on your screen, not behind a wall, and either in
+  // your flashlight's beam or standing in a lamp's light.
+  function statueWatched(distance: number) {
+    if (!lineOfSight(world, player.x, player.y, statue.x, statue.y)) return false;
+    const off = offCenter(Math.atan2(statue.y - player.y, statue.x - player.x) - player.angle);
+    const width = Math.atan2(STATUE_SIZE, Math.max(distance, 0.1)); // it's not just a point
+    if (off > Math.atan(planeLength(frame)) + width) return false;
+    if (flashlight > 0.5 && distance < STATUE_RANGE && off < STATUE_BEAM + width) return true;
+    const cell = Math.floor(statue.y) * world.width + Math.floor(statue.x);
+    return lights.some(
+      (light) =>
+        light.kind === "lamp" &&
+        time >= blackoutUntil &&
+        light.lit[cell] === 1 &&
+        Math.hypot(light.x - statue.x, light.y - statue.y) < 3,
+    );
   }
 
-  function updateHead(dt: number) {
-    if (head.goneUntil > 0) {
-      if (time > head.goneUntil) returnHead();
+  function updateStatue(dt: number) {
+    if (!inBasement()) return;
+    const dx = player.x - statue.x;
+    const dy = player.y - statue.y;
+    const distance = Math.hypot(dx, dy);
+    const watched = statueWatched(distance);
+
+    if (!statue.awake) {
+      if (watched) {
+        statue.seen = true;
+      } else if (statue.seen) {
+        statue.awake = true;
+        const sound = hear(statue.x, statue.y, 0.03);
+        playStoneGrind(sound.volume, sound.pan, sound.muffled);
+      }
       return;
     }
+    if (watched) return;
 
-    const distance = Math.hypot(player.x - head.x, player.y - head.y);
-    const visible = lineOfSight(world, head.x, head.y, player.x, player.y);
-    const seen = distance < HEAD_SIGHT && visible;
-    const heard = running && distance < HEAD_HEARING;
-    if (seen || heard) {
-      head.state = "chase";
-      head.lastSeen = { x: player.x, y: player.y };
-      head.path = [];
-    }
-
-    // In the flashlight's beam it slows, and fades.
-    const turn = Math.atan2(head.y - player.y, head.x - player.x) - player.angle;
-    const inBeam =
-      flashlight > 0.5 && visible && distance < HEAD_BEAM_RANGE && offCenter(turn) < HEAD_BEAM;
-    if (inBeam) {
-      head.opacity -= dt / HEAD_FADE_SECONDS;
-      if (head.opacity <= 0) {
-        head.goneUntil = time + rand(12, 20);
-        playFade();
-        return;
-      }
+    const speed = STATUE_SPEED * dt;
+    const fromX = statue.x;
+    const fromY = statue.y;
+    if (distance < 1.5 && lineOfSight(world, statue.x, statue.y, player.x, player.y)) {
+      statue.x += (dx / distance) * Math.min(speed, distance);
+      statue.y += (dy / distance) * Math.min(speed, distance);
     } else {
-      head.opacity = Math.min(1, head.opacity + dt / HEAD_RETURN_SECONDS);
-    }
-    const slow = inBeam ? 0.4 : 1;
-
-    if (head.state === "chase") {
-      if (seen) {
-        const step = Math.min(distance, HEAD_CHASE_SPEED * slow * dt);
-        head.x += ((player.x - head.x) / distance) * step;
-        head.y += ((player.y - head.y) / distance) * step;
-      } else {
-        if (head.path.length === 0) head.path = findPath(world, head, head.lastSeen);
-        if (!followPath(head, HEAD_CHASE_SPEED * slow * dt)) {
-          head.state = "search";
-          head.searchUntil = time + HEAD_SEARCH_SECONDS;
-        }
+      if (time > statue.nextPath) {
+        statue.nextPath = time + STATUE_REPATH_SECONDS;
+        statue.path = findPath(world, statue, player);
       }
-    } else {
-      const searching = head.state === "search";
-      if (searching && time > head.searchUntil) head.state = "wander";
-      if (!followPath(head, HEAD_WANDER_SPEED * slow * dt)) {
-        const destination = searching
-          ? randomDestination(world, head, 1, 3)
-          : randomDestination(world, head, 3, 12);
-        if (destination) head.path = findPath(world, head, destination);
+      followPath(statue, speed);
+    }
+    statue.pose = distance < STATUE_LUNGE_DISTANCE ? "lunging" : "reaching";
+
+    statue.stride += Math.hypot(statue.x - fromX, statue.y - fromY);
+    if (statue.stride >= STATUE_STRIDE) {
+      statue.stride -= STATUE_STRIDE;
+      const sound = hear(statue.x, statue.y, 0.03);
+      playStatueStep(sound.volume, sound.pan, sound.muffled);
+    }
+    if (Math.hypot(player.x - statue.x, player.y - statue.y) < STATUE_CATCH) caught(null);
+  }
+
+  function updateSpiders(dt: number) {
+    if (!inBasement()) return;
+    let closest = Infinity;
+    let closestSpider: (typeof spiders)[number] | null = null;
+    for (const spider of spiders) {
+      const dx = player.x - spider.x;
+      const dy = player.y - spider.y;
+      const distance = Math.hypot(dx, dy);
+      const toYou = Math.atan2(dy, dx);
+      const near = distance < SPIDER_SIGHT && lineOfSight(world, spider.x, spider.y, player.x, player.y);
+      const lit =
+        near && flashlight > 0.5 && offCenter(toYou + Math.PI - player.angle) < SPIDER_BEAM;
+
+      let speed = SPIDER_WANDER_SPEED;
+      if (lit) {
+        spider.heading = toYou + Math.PI + rand(-0.5, 0.5);
+        speed = SPIDER_FLEE_SPEED;
+      } else if (near) {
+        spider.heading = toYou + rand(-0.4, 0.4);
+        speed = SPIDER_CREEP_SPEED;
+      } else if (time > spider.nextTurn) {
+        spider.nextTurn = time + rand(0.6, 2.5);
+        spider.heading = rand(0, Math.PI * 2);
+        spider.moving = Math.random() < 0.6;
+        if (!spider.moving) speed = 0;
+      } else if (!spider.moving) {
+        speed = 0;
+      }
+
+      const nx = spider.x + Math.cos(spider.heading) * speed * dt;
+      const ny = spider.y + Math.sin(spider.heading) * speed * dt;
+      if (isSolid(world, nx, ny)) spider.heading += Math.PI / 2 + rand(0, Math.PI);
+      else {
+        spider.x = nx;
+        spider.y = ny;
+      }
+      if (speed > SPIDER_WANDER_SPEED && distance < closest) {
+        closest = distance;
+        closestSpider = spider;
+      }
+      if (distance < SPIDER_BITE && time > nextBite) {
+        nextBite = time + BITE_COOLDOWN;
+        bittenUntil = time + BITE_SECONDS;
+        playBite();
       }
     }
-
-    // Too faded to hurt you.
-    if (head.opacity > 0.5 && Math.hypot(player.x - head.x, player.y - head.y) < HEAD_CATCH) {
-      caught(headImage);
+    if (closestSpider && time > nextSkitter) {
+      nextSkitter = time + rand(0.8, 1.8);
+      const sound = hear(closestSpider.x, closestSpider.y, 0.2);
+      playSkitter(sound.volume, sound.pan, sound.muffled);
+    }
+    if (time > nextDrip) {
+      nextDrip = time + rand(2.5, 8);
+      playDrip(rand(0.2, 0.7), rand(-0.8, 0.8));
     }
   }
 
@@ -640,7 +738,6 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     keys.clear();
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     ambience.stop();
-    wheeze.stop();
     playEnding();
     events.onEnding();
   }
@@ -714,7 +811,15 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     }
 
     const hurrying = keys.has("ShiftLeft") || keys.has("ShiftRight");
-    const speed = (hurrying ? RUN_SPEED : WALK_SPEED) * dt;
+    const cell = Math.floor(player.y) * world.width + Math.floor(player.x);
+    const inWeb = world.webs.has(cell);
+    if (inWeb && cell !== lastCell) playWebRustle();
+    lastCell = cell;
+    const speed =
+      (hurrying ? RUN_SPEED : WALK_SPEED) *
+      (inWeb ? WEB_SLOW : 1) *
+      (time < bittenUntil ? BITE_SLOW : 1) *
+      dt;
     const cos = Math.cos(player.angle);
     const sin = Math.sin(player.angle);
     const before = { x: player.x, y: player.y };
@@ -766,7 +871,9 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
       figure.visible = false;
     }
 
-    updateHead(dt);
+    updateStatue(dt);
+    if (performance.now() < holdUntil) return; // it caught you
+    updateSpiders(dt);
     updatePale(dt);
     updateOutside(dt);
     if (ended) return;
@@ -804,7 +911,9 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
       nextRunBehind = time + rand(45, 110);
     }
 
-    if (!reducedMotion && time > flickerUntil && Math.random() < dt * 0.05) {
+    // The flashlight's nerves are worse downstairs, and that's when the statue moves.
+    const flickers = inBasement() ? 0.12 : 0.05;
+    if (!reducedMotion && time > flickerUntil && Math.random() < dt * flickers) {
       flickerUntil = time + rand(0.3, 1.2);
     }
   }
@@ -842,28 +951,46 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     for (const prop of world.props) {
       if (Math.hypot(prop.x - player.x, prop.y - player.y) > LIGHT_RANGE + 4) continue;
       let x = prop.x;
-      let texture = textures.table;
-      if (prop.kind === "chair") texture = textures.chair;
-      if (prop.kind === "clock") texture = textures.clock[tock ? 1 : 0];
+      const texture = propTextures[prop.kind];
       if (prop.kind === "rocker") {
-        texture = textures.rocker;
         const rocker = rockers.find((r) => r.prop === prop)!;
         x += Math.sin(time * 1.6 + rocker.phase) * ROCK_SWING;
       }
-      sprites.push({ x, y: prop.y, texture, scale: 1, lift: 0 });
+      sprites.push({
+        x,
+        y: prop.y,
+        texture: prop.kind === "clock" ? textures.clock[tock ? 1 : 0] : texture,
+        scale: 1,
+        lift: 0,
+        opacity: prop.kind === "web" ? WEB_OPACITY : 1,
+      });
     }
     if (figure.visible) {
       sprites.push({ x: figure.x, y: figure.y, texture: textures.figure, scale: 1, lift: 0 });
     }
-    if (head.goneUntil === 0) {
+    if (inBasement()) {
+      const { praying, plinth, reaching, lunging } = textures.statue;
+      if (statue.awake) {
+        sprites.push({ ...world.statueHome, texture: plinth, scale: 1, lift: 0 });
+      }
       sprites.push({
-        x: head.x,
-        y: head.y,
-        texture: textures.head,
-        scale: 0.5,
-        lift: 0.06 + Math.sin(time * 1.7) * 0.05,
-        opacity: head.opacity,
+        x: statue.x,
+        y: statue.y,
+        texture: !statue.awake ? praying : statue.pose === "lunging" ? lunging : reaching,
+        scale: statue.awake ? STATUE_SCALE : 1,
+        lift: statue.awake ? (STATUE_SCALE - 1) / 2 : 0, // feet on the ground
       });
+      const frameNow = Math.floor(time * 10) % 2;
+      for (const spider of spiders) {
+        if (Math.hypot(spider.x - player.x, spider.y - player.y) > SPIDER_DRAW_RANGE) continue;
+        sprites.push({
+          x: spider.x,
+          y: spider.y,
+          texture: textures.spider[frameNow],
+          scale: SPIDER_SCALE,
+          lift: (SPIDER_SCALE - 1) / 2,
+        });
+      }
     }
     if (!outside) sprites.push(paleSprite());
     if (giant.active) {
@@ -887,7 +1014,7 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
         angle: player.angle,
         bob,
         light,
-        ambient: AMBIENT * fadeIn,
+        ambient: (inBasement() ? BASEMENT_AMBIENT : AMBIENT) * fadeIn,
         outside: brightness,
         time,
         lamps: viewLights,
@@ -899,16 +1026,16 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     );
     ctx.putImageData(frame.image, 0, 0);
 
-    if (!ended) {
-      const sound = hear(head.x, head.y);
-      const present = head.goneUntil === 0 ? head.opacity : 0;
-      const chasing = head.state === "chase";
-      wheeze.update(sound.volume * present * (chasing ? 1.4 : 1), sound.pan, sound.muffled, chasing);
-    }
-
     const center = frame.center;
     let next: Focus | null = null;
-    if (!paused && !ended && center.distance < REACH) {
+    const journalAhead = paused || ended ? undefined : world.journals.find((book) => {
+      const distance = Math.hypot(book.x - player.x, book.y - player.y);
+      const turn = Math.atan2(book.y - player.y, book.x - player.x) - player.angle;
+      return distance < REACH && offCenter(turn) < JOURNAL_ANGLE;
+    });
+    if (journalAhead) {
+      next = { kind: "journal", key: journalAhead.key! };
+    } else if (!paused && !ended && center.distance < REACH) {
       const painting = world.paintings.get(center.index);
       const door = world.doors.get(center.index);
       if (painting) next = { kind: "painting", key: painting };
@@ -924,6 +1051,22 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
       events.onFocus(focus);
     }
   }
+
+  const propTextures: Record<PropKind, Texture> = {
+    table: textures.table,
+    chair: textures.chair,
+    rocker: textures.rocker,
+    clock: textures.clock[0],
+    journal: textures.journal,
+    dresser: textures.dresser,
+    bed: textures.bed,
+    coatrack: textures.coatrack,
+    boxes: textures.boxes,
+    mannequin: textures.mannequin,
+    vase: textures.vase,
+    barrel: textures.barrel,
+    web: textures.web,
+  };
 
   let last = performance.now();
   let raf = requestAnimationFrame(function tick(now) {
@@ -969,7 +1112,12 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
 
   function onKeyDown(e: KeyboardEvent) {
     unlockAudio();
-    if (paused || ended) return;
+    if (ended) return;
+    if (e.code === "KeyP" || e.code === "Escape") {
+      events.onPauseKey();
+      return;
+    }
+    if (paused) return;
     if (e.code === "KeyE") {
       e.preventDefault(); // or the E lands in the riddle box that opens
       interact();
@@ -1021,12 +1169,24 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
   function onResize() {
     frame = resize();
   }
+  // Esc lets go of the mouse before any key event reaches the page, so this is how the game
+  // finds out. Letting go of it for any other reason isn't the player asking to pause.
+  function onPointerLockChange() {
+    const locked = document.pointerLockElement === canvas;
+    if (!locked && wasLocked && !releasing && !paused && !ended) {
+      relock = true;
+      events.onPauseKey();
+    }
+    wasLocked = locked;
+    releasing = false;
+  }
 
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("blur", onBlur);
   window.addEventListener("resize", onResize);
   document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("pointerlockchange", onPointerLockChange);
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
@@ -1035,15 +1195,13 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
   return {
     stop() {
       cancelAnimationFrame(raf);
-      if (!ended) {
-        ambience.stop();
-        wheeze.stop();
-      }
+      if (!ended) ambience.stop();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("pointerlockchange", onPointerLockChange);
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);
@@ -1053,14 +1211,20 @@ export function startGame(canvas: HTMLCanvasElement, events: GameEvents): Game {
     pause() {
       paused = true;
       onBlur();
-      lockedBeforePause = document.pointerLockElement === canvas;
-      if (lockedBeforePause) document.exitPointerLock();
+      if (document.pointerLockElement === canvas) {
+        relock = true;
+        releasing = true;
+        document.exitPointerLock();
+      }
     },
     // Call from a click or key handler, so the browser lets the mouse be captured again.
     resume() {
       paused = false;
       last = performance.now();
-      if (lockedBeforePause) lockPointer();
+      if (relock) {
+        relock = false;
+        lockPointer();
+      }
     },
     interact,
     openDoor,
