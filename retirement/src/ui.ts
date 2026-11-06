@@ -5,6 +5,7 @@ import {
   BODY_NAMES,
   CROPS,
   CROP_IDS,
+  EGG_PRICE,
   FLOORS,
   FURNITURE,
   FURNITURE_IDS,
@@ -27,6 +28,7 @@ import { isMuted, setMuted, sfx, voice } from './audio'
 import { isMusicOn, setMusicOn } from './music'
 import { fmt, type Game } from './game'
 import { INTRO_TASKS, isActive as introActive } from './intro'
+import { eggIcon } from './animals'
 import { petSprite, treatIcon } from './pets'
 import { personSprite } from './people'
 import { PORTRAIT, portrait } from './portraits'
@@ -494,6 +496,16 @@ export class UI {
         el('span', { text: `×${g.save.inv[`crop:${id}`]}` }),
       ),
     )
+    const eggs = g.save.inv.egg ?? 0
+    if (eggs)
+      produce.push(
+        el(
+          'span',
+          { class: 'produce', title: 'Eggs (Chef Rosa buys them)' },
+          eggIcon(22),
+          el('span', { text: `×${eggs}` }),
+        ),
+      )
     const treats = g.save.inv.treat ?? 0
     if (treats)
       produce.push(
@@ -799,6 +811,35 @@ export class UI {
                 button('Buy 5', () => (g.buySeeds(id, 5), render('seeds')), 'btn primary'),
               )
             })
+      const eggs = g.save.inv.egg ?? 0
+      if (tab === 'sell')
+        rows.push(
+          el(
+            'div',
+            { class: `shop-row${eggs ? '' : ' dim'}` },
+            eggIcon(30),
+            el(
+              'div',
+              { class: 'grow' },
+              el('strong', { text: 'Eggs' }),
+              el('div', { class: 'muted', text: `You have ${eggs} · from the henhouse` }),
+            ),
+            el(
+              'div',
+              { class: 'price' },
+              coinIcon(),
+              document.createTextNode(` ${EGG_PRICE} each`),
+            ),
+            eggs ? button('Sell 1', () => (g.sellEggs(1), render('sell'))) : null,
+            eggs > 1
+              ? button(
+                  `Sell all (${eggs * EGG_PRICE})`,
+                  () => (g.sellEggs(eggs), render('sell')),
+                  'btn primary',
+                )
+              : null,
+          ),
+        )
       if (tab === 'seeds' && g.save.pet)
         rows.push(
           el(

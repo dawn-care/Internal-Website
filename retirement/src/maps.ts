@@ -53,6 +53,7 @@ export type ObjKind =
   | 'chairs'
   | 'cart'
   | 'hallRug'
+  | 'coop'
 
 export interface Obj {
   k: ObjKind
@@ -70,6 +71,7 @@ export type Interact =
   | { kind: 'kitchen'; x: number; y: number }
   | { kind: 'nurse'; x: number; y: number }
   | { kind: 'sign'; x: number; y: number; text: string }
+  | { kind: 'nest'; x: number; y: number }
 
 export interface Label {
   x: number
@@ -149,6 +151,17 @@ export function hash(x: number, y: number, seed = 0): number {
 export const GARDEN = { x0: 3, y0: 20, x1: 29, y1: 34, gateX: 16 } as const
 export const HOME_DOOR = { x: 23, y: 9 } as const
 export const KITCHEN_DOOR = { x: 40, y: 15 } as const
+/**
+ * The henhouse in the north-west corner: a fenced dirt run (fence on its edge tiles, a gate in the
+ * bottom side) with the coop building along the top. The nest boxes are on the coop's front.
+ */
+export const HENHOUSE = {
+  run: { x0: 3, y0: 4, x1: 11, y1: 11 },
+  coop: { x: 4, y: 3, w: 4, h: 4 },
+  gateX: 7,
+  /** Where the hens wander (inside the run, below the coop). */
+  yard: { x0: 4.3, y0: 7.6, x1: 10.7, y1: 10.8 },
+} as const
 
 /** Top-left tile of the garden plot for `slot`. */
 export function plotOrigin(slot: number): { x: number; y: number } {
@@ -281,13 +294,37 @@ function buildGrounds(): GameMap {
       } else if (d < 1.45) setGround(m, x, y, T.SAND)
     }
 
+  // The henhouse: a dirt run with a picket fence, the coop along the top, a gate and a path.
+  const run = HENHOUSE.run
+  const coop = HENHOUSE.coop
+  rect(m, run.x0 + 1, run.y0 + 1, run.x1 - 1, run.y1 - 1, T.DIRT)
+  rect(m, HENHOUSE.gateX, run.y1, HENHOUSE.gateX, 16, T.PATH)
+  for (let x: number = run.x0; x <= run.x1; x++)
+    for (const y of [run.y0, run.y1]) {
+      if (y === run.y1 && x === HENHOUSE.gateX) continue
+      if (y === run.y0 && x >= coop.x && x < coop.x + coop.w) continue
+      m.objects.push({ k: 'fence', x, y })
+      setSolid(m, x, y)
+    }
+  for (let y: number = run.y0 + 1; y < run.y1; y++)
+    for (const x of [run.x0, run.x1]) {
+      m.objects.push({ k: 'fence', x, y })
+      setSolid(m, x, y)
+    }
+  solidRect(m, coop.x, coop.y, coop.x + coop.w - 1, coop.y + coop.h - 1)
+  m.objects.push({ k: 'coop', x: coop.x, y: coop.y, w: coop.w, h: coop.h })
+  // The nest boxes: face the front of the coop from inside the run.
+  for (let x: number = coop.x; x < coop.x + coop.w; x++)
+    m.interacts.push({ kind: 'nest', x, y: coop.y + coop.h - 1 })
+  m.labels.push({ x: coop.x + coop.w / 2, y: coop.y - 0.6, text: 'Henhouse', near: 7 })
+
   // Benches, lamps, mailbox.
   const benches: [number, number][] = [
     [19, 14],
     [27, 14],
     [38, 24],
     [43, 34],
-    [7, 15],
+    [11, 14],
   ]
   for (const [x, y] of benches) {
     m.objects.push({ k: 'bench', x, y, w: 2 })
@@ -340,6 +377,8 @@ function buildGrounds(): GameMap {
   for (let y = 2; y < H - 2; y++)
     for (let x = 2; x < W - 2; x++) {
       const r = hash(x, y, 3)
+      const henhouse = x >= 1 && x <= 13 && y >= 1 && y <= 13
+      if (henhouse) continue
       if (r < 0.07 && open(x, y) && !(y > 9 && y < 21 && x > 12 && x < 36)) {
         tree(x, y, hash(x, y, 5) < 0.4 ? 'pine' : 'tree')
       } else if (r > 0.975 && open(x, y)) {

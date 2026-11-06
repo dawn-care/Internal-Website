@@ -88,63 +88,90 @@ export function footstep(surface: Surface, volume = 1, pan = 0) {
   src.start()
 }
 
-/** Starts decoding the footsteps and pet sounds early so the first one isn't silent. */
+/** Starts decoding the footsteps and other recordings early so the first one isn't silent. */
 export function preloadFootsteps() {
   const ctx = audioContext()
   if (ctx) {
     void loadSteps(ctx)
-    void loadPets(ctx)
+    void loadClips(ctx)
   }
 }
 
-// --- pets ---------------------------------------------------------------------------------------
+// --- recorded one-shots: pets and animals ---------------------------------------------------
 
-/** Pet recordings (pet-*.mp3, cut and levelled with scripts/cut-sfx.sh) and how loud each plays. */
-const PET_SOUNDS = {
-  bark: { file: 'pet-bark', gain: 0.32 },
-  whine: { file: 'pet-whine', gain: 0.3 },
-  pant: { file: 'pet-pant', gain: 0.36 },
-  meow: { file: 'pet-meow', gain: 0.34 },
-  purr: { file: 'pet-purr', gain: 0.45 },
+/**
+ * One-shot recordings (cut and levelled with scripts/cut-sfx.sh): each sound has one or more
+ * takes (a random one plays, never the same twice running) and a loudness.
+ */
+const CLIPS = {
+  // Pets.
+  bark: { files: ['pet-bark'], gain: 0.32 },
+  whine: { files: ['pet-whine'], gain: 0.3 },
+  pant: { files: ['pet-pant'], gain: 0.36 },
+  meow: { files: ['pet-meow'], gain: 0.34 },
+  purr: { files: ['pet-purr'], gain: 0.45 },
+  // Animals on the property.
+  cluck: { files: ['hen-cluck-1', 'hen-cluck-2', 'hen-cluck-3', 'hen-cluck-4'], gain: 0.3 },
+  quack: { files: ['duck-quack-1', 'duck-quack-2', 'duck-quack-3', 'duck-quack-4'], gain: 0.3 },
+  rooster: { files: ['rooster'], gain: 0.3 },
+  chitter: { files: ['squirrel-chitter'], gain: 0.32 },
 }
-export type PetSound = keyof typeof PET_SOUNDS
+export type Clip = keyof typeof CLIPS
+export type PetSound = 'bark' | 'whine' | 'pant' | 'meow' | 'purr'
 
-const petBuffers = new Map<string, AudioBuffer>()
-let petLoading: Promise<void> | null = null
+const clipBuffers = new Map<string, AudioBuffer>()
+const lastTake = new Map<Clip, string>()
+let clipLoading: Promise<void> | null = null
 
-function loadPets(ctx: AudioContext): Promise<void> {
-  petLoading ??= Promise.all(
-    Object.values(PET_SOUNDS).map(async ({ file }) => {
-      const src = url(file)
-      if (!src) return
-      const data = await (await fetch(src)).arrayBuffer()
-      petBuffers.set(file, await ctx.decodeAudioData(data))
-    }),
+function loadClips(ctx: AudioContext): Promise<void> {
+  clipLoading ??= Promise.all(
+    Object.values(CLIPS)
+      .flatMap((c) => c.files)
+      .map(async (file) => {
+        const src = url(file)
+        if (!src) return
+        const data = await (await fetch(src)).arrayBuffer()
+        clipBuffers.set(file, await ctx.decodeAudioData(data))
+      }),
   ).then(
     () => undefined,
     () => undefined,
   )
-  return petLoading
+  return clipLoading
 }
 
-/** Plays one pet sound (follows "Sound: on/off"), a touch higher or lower each time. */
-export function petSound(sound: PetSound, volume = 1) {
-  if (isMuted()) return
+/**
+ * Plays a recorded sound (follows "Sound: on/off"), a touch higher or lower each time.
+ * `volume` scales it (e.g. by distance), `pan` places it from -1 (left) to 1 (right).
+ */
+export function playClip(name: Clip, volume = 1, pan = 0) {
+  if (isMuted() || volume <= 0.01) return
   const ctx = audioContext()
   if (!ctx) return
-  const s = PET_SOUNDS[sound]
-  const buf = petBuffers.get(s.file)
-  if (!buf) {
-    void loadPets(ctx)
+  const clip = CLIPS[name]
+  const takes = clip.files.filter((f) => clipBuffers.has(f))
+  if (!takes.length) {
+    void loadClips(ctx)
     return
   }
+  let file = takes[Math.floor(Math.random() * takes.length)]
+  if (takes.length > 1 && file === lastTake.get(name))
+    file = takes[(takes.indexOf(file) + 1) % takes.length]
+  lastTake.set(name, file)
   const src = ctx.createBufferSource()
-  src.buffer = buf
+  src.buffer = clipBuffers.get(file)!
   src.playbackRate.value = 0.95 + Math.random() * 0.1
   const gain = ctx.createGain()
-  gain.gain.value = s.gain * volume
-  src.connect(gain).connect(ctx.destination)
+  gain.gain.value = clip.gain * volume
+  const panner = ctx.createStereoPanner()
+  panner.pan.value = Math.max(-1, Math.min(1, pan))
+  src.connect(gain).connect(panner).connect(ctx.destination)
   src.start()
+}
+
+/** A pet's sound, right where you are. */
+export function petSound(sound: PetSound, volume = 1) {
+  playClip(sound, volume)
 }
 
 // --- ambience -----------------------------------------------------------------------------------

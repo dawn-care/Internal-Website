@@ -230,6 +230,31 @@ describe('/api/retirement', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  describe('eggs', () => {
+    it('keeps eggs and the henhouse record, and loads saves without them', async () => {
+      const s = { ...save(), coop: { day: 1234, taken: 2 }, inv: { egg: 5 } }
+      expect((await call({ method: 'POST', op: 'save', body: { save: s } })).statusCode).toBe(200)
+      expect((await call({ method: 'GET', op: 'me' })).body).toMatchObject({
+        save: { coop: { day: 1234, taken: 2 }, inv: { egg: 5 } },
+      })
+      expect(save().coop).toBeUndefined()
+    })
+
+    it('refuses henhouse records that are not well-formed', async () => {
+      for (const coop of [
+        { day: 1, taken: 4 },
+        { day: 1, taken: -1 },
+        { day: -1, taken: 0 },
+        { day: 1.5, taken: 0 },
+        { taken: 1 },
+        'today',
+      ]) {
+        const res = await call({ method: 'POST', op: 'save', body: { save: { ...save(), coop } } })
+        expect(res.statusCode, JSON.stringify(coop)).toBe(400)
+      }
+    })
+  })
+
   describe('pets', () => {
     const pet = {
       kind: 'dog',

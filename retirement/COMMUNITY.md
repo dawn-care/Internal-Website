@@ -1,6 +1,6 @@
 # Community: cozy ideas for Sunset Acres
 
-Status: **being built, in the suggested order.** Built so far: the introduction, a brighter look and feel, and pets. These are the additions that make the property worth
+Status: **being built, in the suggested order.** Built so far: the introduction, a brighter look and feel, pets, and animals on the property. These are the additions that make the property worth
 coming back to (the forest, in FOREST.md, is the other half). Suggested order: build the
 introduction first, then the rest roughly in the order listed.
 
@@ -130,7 +130,8 @@ drawing; the adoption panel in src/ui.ts). How it works and the calls made:
   petting makes a dog pant and a cat purr; a treat, a gift, adoption and your pet trotting out of
   the front door get a bark or a meow; begging for a treat you can't give gets a whine (dog) or a
   meow (cat). Only the treat crunch is synthesized.
-- **Coming next (forest):** near the edge of the grounds a dog growls and a cat hisses at the
+- **Coming next (forest):** the grounds grow a wide band of outskirts that fade (colours, music,
+  grass) as you walk out; near the treeline beyond them, a dog growls and a cat hisses at the
   trees, warning you that the forest is dangerous. Designed in FOREST.md ("Your pet"), not
   built yet; it needs growl and hiss recordings.
 - **Offline:** in LocalNet, Nana June walks with Pickles (a calico) and Grandpa Walt's dog Duke
@@ -146,6 +147,41 @@ drawing; the adoption panel in src/ui.ts). How it works and the calls made:
 Notes: ambient animals can run in each browser (no syncing needed). Eggs need to work the same way
 for everyone, e.g. a coop that gives each player a few eggs per in-game day, like crops grow from
 timestamps.
+
+**Built** (src/animals.ts; the henhouse in src/maps.ts and src/art.ts; wired up in src/game.ts).
+Every animal's position comes from the shared game clock, so everyone sees the same thing with
+nothing synced; only eggs touch the save. How it works and the calls made:
+
+- **Henhouse** in the north-west corner, west of the home: a fenced dirt run (picket fence, a
+  gate at the bottom, a path down to the main path) with a red-roofed coop along the top. The
+  bench that stood at (7,15) moved to (11,14) to make room for the path. Random trees stay out of
+  that corner.
+- **Hens:** three (white, brown, speckled grey) wander the run from 6 am to 8 pm, stopping to peck;
+  overnight they're in the coop.
+- **Eggs:** each hen lays one egg a game day at 7 am (`LAY_HOUR`), so up to 3 per player per game
+  day (every 24 real minutes). **Everyone collects their own**: the nest boxes show your share,
+  and taking them never empties a neighbour's. Face the nest boxes from inside the run and press E
+  to take them all. The save keeps `coop: { day, taken }` (the egg day, counted from 7 am, and how
+  many you took), validated on the server. Eggs (`egg` in the inventory) go in your basket; Chef
+  Rosa buys them for 15 coins each (Sell produce tab). They'll be a cooking ingredient later.
+- **Ducks:** a mother and three ducklings paddle a slow loop on the pond (a minute per lap), with
+  a little wake and the odd head dip; from 9 pm to 6 am they sleep in a huddle on the west shore.
+- **Mittens, the house cat** (orange tabby): naps in the sun in a spot that moves through the day
+  (the plaza from 7, the path by the garden gate from 10, outside the Kitchen from 2 pm, the front
+  step from 6 pm) and strolls over in the first half game hour of each; from 9 pm she sleeps in
+  the hallway. You can stroke her (she purrs). She walks in a straight line between spots, so she
+  can pass over a bench or the cart for a moment. The "Cat (with bed)" furniture's text no longer
+  calls its cat Mittens.
+- **Squirrels:** three, each by a leafy tree, hopping about its base by day; when anyone (or any
+  pet) comes within 2.5 tiles one darts up its trunk and peeks out for 6 seconds. That bit is
+  worked out in each browser.
+- **Butterflies:** nine, each over its own flower patch, 7 am to 7 pm. **Fireflies:** eighteen
+  over the pond and the garden at night, glowing through the dark.
+- **Sound** (recordings, see CLAUDE.md "Music and sound"): hens cluck now and then while you're
+  near the run (and when you take their eggs), the ducks quack by day when you're near the pond,
+  the rooster crows once at 6 am as the hens come out (you hear it across the grounds, and
+  faintly indoors), and a squirrel chitters as it darts up its tree. All quieter with distance and
+  panned to where they are. Mittens uses the cat purr recording.
 
 ## Benches
 

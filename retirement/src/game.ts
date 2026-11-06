@@ -1,7 +1,9 @@
 import {
   CROPS,
+  EGG_PRICE,
   FURNITURE,
   GIFT_HEARTS,
+  HENS,
   TREAT_PACK,
   HEARTS_MAX,
   MAX_SLOTS,
@@ -40,7 +42,7 @@ import {
   renderGround,
 } from './art'
 import { sfx } from './audio'
-import { footstep, petSound, setAmbience, type Surface } from './soundscape'
+import { footstep, petSound, playClip, setAmbience, type Surface } from './soundscape'
 import * as garden from './garden'
 import {
   HOME_DOOR,
@@ -58,6 +60,8 @@ import {
   type Interact,
   type Npc,
 } from './maps'
+import { HOUSE_CAT, Wildlife, eggDay, eggsLeft, houseCat } from './animals'
+import { gameHour } from './clock'
 import * as intro from './intro'
 import { NetError, type Net } from './net'
 import {
@@ -489,6 +493,23 @@ export class Game {
       r.frame = r.anim > 0 ? Math.floor(r.anim) % 4 : 0
     }
     this.updatePets(dt)
+    if (this.mapId === 'grounds') {
+      const threats = [{ x: this.me.x, y: this.me.y }]
+      if (this.petOut) threats.push({ x: this.myPet.x, y: this.myPet.y })
+      for (const r of this.others.values())
+        if (r.p.map === 'grounds') threats.push({ x: r.rx, y: r.ry })
+      for (const f of this.remotePets.values()) threats.push({ x: f.x, y: f.y })
+      this.wild.update(this.gameNow(), threats, playClip)
+    }
+    {
+      const now = this.gameNow()
+      this.wild.sounds(
+        now,
+        gameHour(now),
+        this.mapId === 'grounds' ? { x: this.me.x, y: this.me.y } : null,
+        playClip,
+      )
+    }
     this.fade = Math.max(0, this.fade - dt * 3)
     const hour = gameHour(Date.now() + this.serverSkew)
     this.ui.setClock(clockText(hour))
@@ -741,6 +762,10 @@ export class Game {
           return 'Talk to Nurse Ada'
         case 'sign':
           return 'Read'
+        case 'nest': {
+          const n = eggsLeft(this.save, this.gameNow())
+          return n ? `Collect ${n} egg${n > 1 ? 's' : ''}` : 'Nest boxes · fresh eggs at 7:00 am'
+        }
       }
     }
     if (this.mapId === 'grounds') {
@@ -810,6 +835,8 @@ export class Game {
           return this.talkToNurse()
         case 'sign':
           return this.say(it.text)
+        case 'nest':
+          return this.collectEggs()
       }
     }
     if (this.mapId === 'grounds') {
@@ -875,6 +902,44 @@ export class Game {
         { label: `Rename ${pet.name}`, onPick: () => this.ui.openAdoption('rename') },
       ],
     })
+  }
+
+  // --- animals --------------------------------------------------------------------------------
+
+  private wild = new Wildlife(getGrounds())
+
+  /** The shared game clock's "now" (server time). */
+  gameNow(): number {
+    return Date.now() + this.serverSkew
+  }
+
+  /** The nest boxes: take this game day's eggs (everyone collects their own). */
+  private collectEggs() {
+    const now = this.gameNow()
+    const n = eggsLeft(this.save, now)
+    if (!n) return this.say("The nests are empty. The hens lay again at 7 o'clock in the morning.")
+    this.save.inv.egg = (this.save.inv.egg ?? 0) + n
+    this.save.coop = { day: eggDay(now), taken: HENS }
+    sfx('harvest')
+    playClip('cluck', 0.8)
+    this.markDirty()
+    this.ui.refresh()
+    this.say(`+${n} egg${n > 1 ? 's' : ''}, still warm. Chef Rosa buys them at the Kitchen.`)
+  }
+
+  sellEggs(count: number) {
+    const have = this.save.inv.egg ?? 0
+    const n = Math.min(have, count)
+    if (n <= 0) return
+    const earned = n * EGG_PRICE
+    this.save.inv.egg = have - n
+    if (!this.save.inv.egg) delete this.save.inv.egg
+    this.save.coins += earned
+    this.save.stats.earned += earned
+    sfx('coin')
+    this.markDirty()
+    this.introEvent('sell')
+    this.ui.refresh()
   }
 
   // --- pets -----------------------------------------------------------------------------------
@@ -971,6 +1036,8 @@ export class Game {
       })
     }
     if (pet && this.petOut) follower(pet, this.login, this.myPet, true)
+    const cat = houseCat(this.gameNow(), gameHour(this.gameNow()))
+    if (cat.map === this.mapId) out.push({ look: HOUSE_CAT, mine: false, owner: 'house', ...cat })
     for (const [login, f] of this.remotePets) {
       const look = this.others.get(login)?.p.pet
       if (look) follower(look, login, f, false)
@@ -1040,6 +1107,12 @@ export class Game {
     this.petFx.push({ x: p.x, y: p.y, t0: this.time })
     if (p.pose === 'sleep') petSound(dog ? 'pant' : 'purr', 0.5)
     else petSound(dog ? 'pant' : 'purr')
+    if (p.owner === 'house')
+      return this.say(
+        p.pose === 'sleep'
+          ? 'Mittens stretches in the sun and purrs. Prrrrt.'
+          : 'Mittens winds round your ankles.',
+      )
     if (!p.mine) {
       const name = p.look.name
       return this.say(
@@ -1702,7 +1775,11 @@ export class Game {
       })
     }
 
-    if (m.id === 'grounds') this.collectGarden(list, ox, oy, visible)
+    if (m.id === 'grounds') {
+      this.collectGarden(list, ox, oy, visible)
+      const now = this.gameNow()
+      this.wild.collect(list, c, ox, oy, now, gameHour(now), eggsLeft(this.save, now))
+    }
     const owner = this.ownerOf(m.id)
     if (owner) this.collectRoom(list, owner, ox, oy)
     if (m.id === 'hall') this.drawHallPlates(ox, oy)
@@ -1948,6 +2025,7 @@ export class Game {
       c.fillRect(p.x, p.y + 7, p.w, 2)
     }
     c.globalCompositeOperation = 'lighter'
+    if (this.mapId === 'grounds') this.wild.glow(c, ox, oy, this.gameNow(), k)
     for (const p of panes) {
       const cx = p.x + p.w / 2
       const cy = p.y + p.h / 2
@@ -2057,7 +2135,7 @@ const FLAVOR: Record<string, string> = {
   rocker: 'Creak... creak... creak. Lovely.',
   record: 'A little Glenn Miller fills the room.',
   tv: 'The game show is on. You know all the answers.',
-  catbed: 'Mittens purrs and stretches. Prrrrt.',
+  catbed: 'The cat purrs and stretches. Prrrrt.',
   petbed: 'A soft, well-loved bed, with a little dent where someone curls up.',
   fishtank: 'The fish blow you little bubbles.',
   clock: 'Tick... tock... Right on time, as always.',
@@ -2081,14 +2159,7 @@ function round2(v: number) {
   return Math.round(v * 100) / 100
 }
 
-/*
- * The world's clock: one in-game day every DAY_MS (a game hour is a real minute), worked out
- * from the timestamp so every player shares the same time of day.
- */
-export const DAY_MS = 24 * 60_000
-export function gameHour(now: number): number {
-  return ((now % DAY_MS) / DAY_MS) * 24
-}
+export { DAY_MS, gameHour } from './clock'
 const NIGHT = 0.38
 const DUSK_RGB = [255, 196, 150]
 const NIGHT_RGB = [92, 108, 196]

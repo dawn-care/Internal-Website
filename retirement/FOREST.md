@@ -30,15 +30,40 @@ in to piece together a story, and you only keep what you learned if you make it 
 
 ## Getting there
 
+### The outskirts: a long walk out
+
+- **The grounds get bigger.** Around the established community (the home, the Kitchen, the
+  garden, the henhouse, the pond: everything with buildings and paths) there's a wide band of
+  **outskirts**, so reaching the forest's edge takes **a bit of walking**. Nothing is out there
+  but open country: grass, the odd tree or fence post, a path that peters out. _(tune: about 20–30
+  tiles from the last building to the treeline on each side.)_
+- **The world fades as you walk out.** The further you get from the established area, the more:
+  - **the colours desaturate**: the property's bright colour grade (`MOODS.property` in
+    src/game.ts) eases step by step towards a drained, greyer one, and only reaches the forest's
+    full `MOODS.forest` inside the forest;
+  - **the music fades into the distance** (`setMusicLevel` in src/music.ts, down to barely
+    audible near the treeline), and the birdsong thins out with it;
+  - **the grass gets sparser and greyer**: fewer tufts and flowers, more bare earth, and a duller,
+    yellow-grey green.
+    It's gradual, worked out from your distance to the established area, so it never feels like a
+    line you crossed. Walking back in brings everything back the same way.
+- Nothing stops you or tells you anything: no sign, no text. The fading is the warning.
+- **Only once you're close to the forest's edge does your pet react** (growling or hissing, see
+  "Your pet" below). Out in the outskirts it still follows you, a little more slowly and closer
+  than usual.
+
+### The treeline
+
 - The trees around the edge of the grounds are a solid wall today. A few **gaps that look like
   ordinary undergrowth** let you push through into the forest. Nothing marks them.
 - Crossing over: the music fades out (`setMusicLevel` in src/music.ts), the light closes in, the
   bird/cricket ambience fades and creepy forest ambience fades up.
 - **Each visit is a different forest**, generated fresh (seeded per visit), so nobody can memorize
   the way.
-- **Your pet knows.** When you get really close to the edge of the grounds with your pet out
-  with you, **a dog growls and a cat hisses** at the trees (see "Your pet" below). It's the first
-  hint that the forest is dangerous.
+- **Your pet knows.** When you've crossed the outskirts and get really close to the treeline
+  with your pet out with you, **a dog growls and a cat hisses** at the trees (see "Your pet"
+  below). After the slow fade of the walk out, it's the clearest hint that the forest is
+  dangerous.
 
 ## Getting lost for real
 
@@ -201,8 +226,8 @@ Each refusal (they ask again) pushes it a stage further:
 
 ### At the edge of the grounds: growling and hissing
 
-- When you come **really close to the community's bounds** (the treeline round the grounds)
-  with your pet following you, it stops, faces the trees, and **a dog growls / a cat hisses**,
+- When you come **really close to the community's bounds** (the treeline beyond the outskirts,
+  not the edge of the established area) with your pet following you, it stops, faces the trees, and **a dog growls / a cat hisses**,
   with a short animation (hackles up, ears back, tail puffed). This tells you, in the world, that
   the forest is dangerous, before you ever find a way in.
 - It's a **warning, never a wall**: it doesn't block you, take you back or show any text box. If
@@ -415,7 +440,8 @@ found."_
 
 Each stage is playable before the next:
 
-1. **The forest itself:** treeline exits; a freshly generated, effectively endless forest each
+1. **The forest itself:** the bigger grounds with the outskirts (the gradual desaturation, music
+   fade and sparser, greyer grass as you walk out); treeline exits; a freshly generated, effectively endless forest each
    visit; darkness, fog, forest ambience and footsteps, music fade; being alone (hidden presence,
    quiet chat, "wandered off…"); walking back before you're lost; the point of no return; the
    collapse safety net and the infirmary wake-up; your pet growling or hissing at the treeline and
@@ -435,6 +461,13 @@ Each stage is playable before the next:
 
 ## Technical notes
 
+- **The outskirts** are part of the grounds map (it grows), so presence, chat and other players
+  work there as normal. "How far out you are" is one number (distance from the established
+  area's outline, 0 inside it, 1 at the treeline) that drives the colour grade, the music level,
+  the ambience level and which grass tiles are drawn (sparse, grey variants baked into the ground
+  layer by distance). The server's presence bounds (x, y up to 200) already allow a much larger
+  map. Plot upgrades (COMMUNITY.md) will want room for a bigger garden; keep it inside the
+  established area.
 - The forest is a **client-only map**, generated in the browser from a per-visit seed (e.g. in
   chunks around the player, so it can be effectively endless). Nothing about a particular forest is
   stored on the server.
@@ -459,6 +492,8 @@ Each stage is playable before the next:
 - The full story text: the story above is a first version that will be revised as we go; more
   fragments and events still need writing, consistent with the story bible.
 - Pocket size (how many slots) and the cost or wait for a photo reprint from Nurse Ada.
+- How wide the outskirts are, how quickly things fade across them, and whether the camera or
+  lighting changes too (e.g. a slight vignette near the treeline).
 - The pet's growl/hiss at the treeline: only near the hidden gaps, or along the whole edge
   (stronger near gaps); the trigger distance and cooldown. Needs a growl and a hiss recording.
 - Who can reach the game. The site belongs to a dementia-care project. The forest's horror comes

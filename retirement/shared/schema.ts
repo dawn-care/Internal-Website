@@ -6,6 +6,7 @@ import {
   FURNITURE,
   HAIR_COLORS,
   HEARTS_MAX,
+  HENS,
   PET_COATS,
   PET_KINDS,
   PET_NAME_MAX,
@@ -102,6 +103,11 @@ export interface Save {
   intro?: IntroStep
   /** Your dog or cat, once you've adopted one from Nurse Ada. */
   pet?: Pet
+  /**
+   * Eggs you've collected from the henhouse: the egg day (game days since the epoch, counted from
+   * LAY_HOUR) and how many of that day's eggs you took. Everyone collects their own eggs.
+   */
+  coop?: { day: number; taken: number }
   /** Garden plot and hallway door. Assigned by the server, never trusted from the client. */
   slot: number
   createdAt: number
@@ -283,6 +289,7 @@ export function validateLook(v: unknown): Look {
 const INV_KEYS = new Set([
   ...Object.keys(CROPS).flatMap((c) => [`seed:${c}`, `crop:${c}`]),
   'treat',
+  'egg',
 ])
 const MAX_TIME = 8_640_000_000_000_000 // the largest valid Date
 
@@ -320,6 +327,11 @@ function validatePet(v: unknown): Pet {
   if (fed) pet.fedOn = fed
   if (gift) pet.giftOn = gift
   return pet
+}
+
+function validateCoop(v: unknown): { day: number; taken: number } {
+  const o = obj(v, 'coop')
+  return { day: int(o.day, 'coop.day', 0, 1e9), taken: int(o.taken, 'coop.taken', 0, HENS) }
 }
 
 function validateTile(v: unknown, i: number): Tile {
@@ -400,6 +412,7 @@ export function validateSave(v: unknown): Save {
     },
     ...(intro === undefined ? {} : { intro }),
     ...(o.pet === undefined ? {} : { pet: validatePet(o.pet) }),
+    ...(o.coop === undefined ? {} : { coop: validateCoop(o.coop) }),
     slot: int(o.slot ?? -1, 'slot', -1, MAX_SLOTS - 1),
     createdAt: num(o.createdAt, 'createdAt', 0, MAX_TIME),
     updatedAt: num(o.updatedAt, 'updatedAt', 0, MAX_TIME),

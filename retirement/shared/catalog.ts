@@ -302,3 +302,12 @@ export const HEARTS_MAX = 10
 export const GIFT_HEARTS = 5
 /** Chef Rosa sells treats in packs. */
 export const TREAT_PACK = { count: 3, price: 10 }
+
+// --- animals ---------------------------------------------------------------------------------
+
+/** Hens in the henhouse; each lays one egg per game day, for every player to collect. */
+export const HENS = 3
+/** The game hour the hens lay. Eggs belong to the "egg day" that starts then. */
+export const LAY_HOUR = 7
+/** What Chef Rosa pays for an egg. */
+export const EGG_PRICE = 15

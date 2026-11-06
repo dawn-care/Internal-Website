@@ -17,7 +17,8 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
 - shared/catalog.ts: crops, furniture, wallpapers, floors, look options, sizes. Pure data,
   also imported by the server to validate saves.
 - shared/schema.ts: Save / Profile / presence / chat types, newSave, validateSave.
-- src/maps.ts: the grounds (home, Community Kitchen, Community Garden with 12 plots, pond),
+- src/maps.ts: the grounds (home, Community Kitchen, Community Garden with 12 plots, pond,
+  the henhouse in the north-west corner),
   the hallway (12 doors, Nurse Ada), and rooms (14×10, built from a player's furniture).
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an
   auto outline), src/game.ts (loop, movement, interaction, decorating, sync, rendering),
@@ -25,7 +26,9 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
   src/garden.ts (growth), src/audio.ts (synth sfx and the dialogue voice blip),
   src/intro.ts (Nurse Ada's introduction for new players: steps, hints, guide arrow targets;
   see COMMUNITY.md), src/portraits.ts (detailed dialogue portraits drawn from a Look),
-  src/pets.ts (dog and cat sprites, the Follower that trails an owner, daily-care helpers).
+  src/pets.ts (dog and cat sprites, the Follower that trails an owner, daily-care helpers),
+  src/animals.ts (hens and eggs, ducks, squirrels, butterflies, fireflies, Mittens the house cat;
+  positions from the game clock), src/clock.ts (the shared game clock).
 - Look: the property is bright and saturated; `MOODS` in src/game.ts sets a colour grade per area
   (the forest will be drained and dark). Night is a multiply tint, not a grey overlay.
 
@@ -34,6 +37,8 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
   timestamps, so they grow while you're away and everyone sees the same plot.
 - Day/night is a shared game clock (one day per 24 real minutes, from the timestamp), not
   the viewer's wall clock.
+- Eggs: each hen lays once per game day at LAY_HOUR; each player collects their own share
+  (save.coop records the egg day and how many were taken).
 - Plot/door slot is assigned by the server (first free of MAX_SLOTS) and never trusted from
   the client. The game is client-authoritative for coins/inventory; the server only checks
   saves are well-formed (validateSave).
@@ -70,6 +75,15 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
     lower each time. Dogs pant and cats purr when petted (half volume when asleep); a bark or meow
     for a treat, a gift, adoption and coming out of the front door to find you; a whine (dog) or
     meow (cat) when begging for a treat you can't give. The treat crunch is still synthesized.
+  - Animals: `hen-cluck-1..4` (chicken_clucking 0–2, 4.2–6.2, 8–10, 10.9–12.9s), `duck-quack-1..3`
+    (multiple_ducks_quacking_in_pond 0.3, 4.6, 6.9s, 2.2s each), `duck-quack-4` (single_duck_quack),
+    `rooster` (rooster_call 0.3–2.75s), `squirrel-chitter` (squirrel_chittering 0.1–1.5s), cut with
+    cut-sfx.sh at -22 dB mean (rooster -20). `playClip()` in src/soundscape.ts plays any one-shot
+    (a random take, never the same twice running, panned); Wildlife.sounds() in src/animals.ts
+    schedules them: hens cluck every 4–10s while out (heard within 14 tiles of the run), ducks
+    quack every 5–11s by day (within 16 tiles of the mother duck), the rooster crows once as the
+    hens come out at 6 am (carries across the grounds, at least 35% volume; faint indoors), a
+    squirrel chitters as it darts up its tree, and the hens cluck when you take their eggs.
   - sounds/birds_chirping.mp3, walking_on_dirt.mp3 and walking_on_leaves.mp3 aren't used yet
     (dirt could replace pitched gravel on the garden paths; leaves are for the forest).
   - To add footsteps for a new surface (e.g. the forest), cut single steps into

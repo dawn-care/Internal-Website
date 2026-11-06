@@ -807,7 +807,7 @@ function cachedCtx(key: string, w: number, h: number, draw: (c: Ctx) => void): H
 }
 
 /** A dark outline round everything opaque (alpha > 200), like the characters have. */
-function outlineCanvas(c: Ctx, w: number, h: number, color = [0x1c, 0x33, 0x1c]) {
+export function outlineCanvas(c: Ctx, w: number, h: number, color = [0x1c, 0x33, 0x1c]) {
   const img = c.getImageData(0, 0, w, h)
   const d = img.data
   const solid = (x: number, y: number) =>
@@ -1135,6 +1135,15 @@ export function drawObject(
       c.drawImage(
         cached(`home${o.w}x${o.h}`, o.w! * TS + PAD * 2, o.h! * TS + PAD_TOP, (g) =>
           drawHome(g, PAD, PAD_TOP, o.w!, o.h!),
+        ),
+        px - PAD,
+        py - PAD_TOP,
+      )
+      break
+    case 'coop':
+      c.drawImage(
+        cached(`coop${o.w}x${o.h}`, o.w! * TS + PAD * 2, o.h! * TS + PAD_TOP, (g) =>
+          drawCoop(g, PAD, PAD_TOP, o.w!, o.h!),
         ),
         px - PAD,
         py - PAD_TOP,
@@ -1500,6 +1509,71 @@ function window2(f: Pen, x: number, y: number, shutters = false) {
     f('#3f8f36', x + i * 3 + 1, y + 19, 1, 2)
     f(FLOWER_COLORS[i % FLOWER_COLORS.length], x + i * 3, y + 18, 2, 2)
   }
+}
+
+/** Where the henhouse's nest boxes are, from its top-left (for drawing the eggs in them). */
+export const NEST_SLOTS = [
+  { x: 5, y: 47 },
+  { x: 18, y: 47 },
+  { x: 31, y: 47 },
+]
+
+function drawCoop(f: Pen, px: number, py: number, w: number, h: number) {
+  const W = w * TS
+  const H = h * TS
+  const roofH = 26
+  // Roof: red shingles with a ridge cap and a shadow under the eaves.
+  shingles(
+    f,
+    px - 3,
+    py + 2,
+    W + 6,
+    roofH - 2,
+    {
+      base: ['#c0473a', '#b43f33', '#c95244'],
+      dark: '#832b22',
+      light: '#e26a5a',
+      gap: '#6e231c',
+    },
+    13,
+  )
+  f('#832b22', px - 3, py, W + 6, 3)
+  f('#e26a5a', px - 3, py, W + 6, 1)
+  f('#5e1e18', px - 4, py + roofH, W + 8, 2)
+  // Whitewashed plank walls.
+  const wy = py + roofH + 2
+  const wh = H - roofH - 2
+  f('#efe6d2', px, wy, W, wh)
+  for (let x = 0; x < W; x += 6) {
+    f('#d6c9ad', px + x + 5, wy, 1, wh)
+    f('#fbf5e8', px + x, wy, 1, wh)
+  }
+  f('rgba(80,30,10,0.22)', px, wy, W, 3)
+  // A little round window up top.
+  f('#6b4526', px + 26, wy + 4, 10, 8)
+  f('#5fa8e6', px + 27, wy + 5, 8, 6)
+  f('#c9e7fb', px + 28, wy + 6, 2, 2)
+  f('#6b4526', px + 30, wy + 5, 1, 6)
+  // Three nest boxes full of straw along the front.
+  for (const n of NEST_SLOTS) {
+    const nx = px + n.x - 3
+    const ny = py + n.y - 6
+    f('#6b4526', nx, ny, 12, 11)
+    f('#a0703f', nx + 1, ny + 1, 10, 9)
+    f('#4a2c16', nx + 2, ny + 2, 8, 5)
+    f('#e8c860', nx + 2, ny + 5, 8, 3)
+    f('#f6dc84', nx + 3, ny + 5, 2, 1)
+    f('#c9a43e', nx + 7, ny + 6, 2, 1)
+    f('#c08a52', nx, ny, 12, 1)
+  }
+  // The hens' door with a ramp down into the run.
+  const dx = px + W - 16
+  f('#4a2c16', dx, wy + 14, 11, wh - 14)
+  f('#2a1a10', dx + 1, wy + 15, 9, wh - 15)
+  f('#a0703f', dx - 1, py + H - 3, 13, 3)
+  for (let i = 0; i < 13; i += 3) f('#7d5530', dx - 1 + i, py + H - 3, 1, 3)
+  // Foundation.
+  f('#8c8170', px, py + H - 2, W - 18, 2)
 }
 
 function kitchenSmoke(f: Pen, px: number, py: number, w: number, time: number) {
