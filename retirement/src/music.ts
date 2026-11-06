@@ -1,6 +1,6 @@
 /*
- * Background music: a shuffled playlist of the tracks in retirement/music, crossfading from
- * one to the next. The files there are pre-processed copies of source recordings,
+ * Background music: a shuffled playlist of the tracks in retirement/music, with about 30
+ * seconds of quiet between one track and the next. The files there are pre-processed copies of source recordings,
  * normalized to -18 LUFS with 4s fades baked in (see retirement/CLAUDE.md), so every track
  * plays at the same loudness; on top of that, the player ramps the volume up whenever it
  * starts or resumes, so music never starts abruptly.
@@ -15,8 +15,8 @@ const TRACKS = Object.values(
 
 /** Music sits under the sound effects. */
 const VOLUME = 0.35
-/** Seconds of overlap between one track ending and the next starting. */
-const CROSSFADE_S = 5
+/** Quiet between one track ending (on its baked-in fade-out) and the next starting. */
+const GAP_MS = 30_000
 const FADE_IN_MS = 3000
 const LS_KEY = 'sunset-acres-music'
 
@@ -29,6 +29,9 @@ let on = (() => {
 })()
 
 let current: HTMLAudioElement | null = null
+/** In the quiet between tracks. gapTimer is 0 once the gap is over but music couldn't play. */
+let waiting = false
+let gapTimer = 0
 /** Every element currently playing: during a crossfade, both tracks. */
 const live = new Set<HTMLAudioElement>()
 let order: string[] = []
@@ -76,18 +79,12 @@ function playNext() {
   el.preload = 'auto'
   el.volume = 0
   let handedOff = false
-  // Start the next track a few seconds before this one ends, and fade this one out.
-  el.addEventListener('timeupdate', () => {
-    if (handedOff || !el.duration || el.duration - el.currentTime > CROSSFADE_S) return
-    handedOff = true
-    fadeTo(el, 0, CROSSFADE_S * 1000, () => stop(el))
-    playNext()
-  })
+  // Each file fades out on its own; then a pause before the next one.
   el.addEventListener('ended', () => {
     live.delete(el)
     if (!handedOff) {
       handedOff = true
-      playNext()
+      startGap()
     }
   })
   el.addEventListener('error', () => {
@@ -110,11 +107,31 @@ function playNext() {
     })
 }
 
+function startGap() {
+  waiting = true
+  window.clearTimeout(gapTimer)
+  gapTimer = window.setTimeout(() => {
+    gapTimer = 0
+    // Music off or tab hidden: the next track waits for resume().
+    if (!on || document.hidden) return
+    waiting = false
+    playNext()
+  }, GAP_MS)
+}
+
 function resume() {
   if (!on || document.hidden) return
   if (!started) {
     started = true
     playNext()
+    return
+  }
+  if (waiting) {
+    // In the quiet between tracks: let it run out, or start now if it already has.
+    if (!gapTimer) {
+      waiting = false
+      playNext()
+    }
     return
   }
   if (current && current.paused) {

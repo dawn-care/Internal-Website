@@ -229,4 +229,91 @@ describe('/api/retirement', () => {
     })
     expect(res.statusCode).toBe(400)
   })
+
+  describe('pets', () => {
+    const pet = {
+      kind: 'dog',
+      coat: 1,
+      name: '  Biscuit\n',
+      adoptedAt: 1_700_000_000_000,
+      hearts: 3,
+      pettedOn: '2026-11-06',
+    }
+
+    it('keeps a pet and treats in the save, and loads saves without a pet', async () => {
+      const s = { ...save(), pet, inv: { treat: 2 } }
+      expect((await call({ method: 'POST', op: 'save', body: { save: s } })).statusCode).toBe(200)
+      expect((await call({ method: 'GET', op: 'me' })).body).toMatchObject({
+        save: { pet: { kind: 'dog', coat: 1, name: 'Biscuit', hearts: 3 }, inv: { treat: 2 } },
+      })
+      expect(save().pet).toBeUndefined()
+      expect((await call({ method: 'POST', op: 'save', body: { save: save() } })).statusCode).toBe(
+        200,
+      )
+    })
+
+    it('refuses pets that are not well-formed', async () => {
+      const bad = [
+        { ...pet, kind: 'dragon' },
+        { ...pet, coat: 4 },
+        { ...pet, coat: -1 },
+        { ...pet, name: '   ' },
+        { ...pet, hearts: 11 },
+        { ...pet, hearts: 2.5 },
+        { ...pet, fedOn: 'yesterday' },
+        { ...pet, adoptedAt: 'soon' },
+        'Biscuit',
+      ]
+      for (const p of bad) {
+        const res = await call({
+          method: 'POST',
+          op: 'save',
+          body: { save: { ...save(), pet: p } },
+        })
+        expect(res.statusCode, JSON.stringify(p)).toBe(400)
+      }
+    })
+
+    it('shows a pet in the world profile without its care details', async () => {
+      await call({ method: 'POST', op: 'save', body: { save: { ...save(), pet } } })
+      const world = await call({ method: 'GET', op: 'world' })
+      const [profile] = (world.body as { profiles: Record<string, unknown>[] }).profiles
+      expect(profile.pet).toEqual({ kind: 'dog', coat: 1, name: 'Biscuit' })
+    })
+
+    it('shares a following pet through presence', async () => {
+      const look = defaultLook('Ada')
+      await call({
+        method: 'POST',
+        op: 'sync',
+        body: {
+          p: { ...presence, pet: { kind: 'cat', coat: 3, name: 'Pickles' } },
+          look,
+          since: 0,
+        },
+      })
+      const res = await call({
+        method: 'POST',
+        op: 'sync',
+        login: 'grace',
+        body: { p: presence, look: defaultLook('Grace'), since: 0 },
+      })
+      const players = (res.body as { players: Record<string, unknown>[] }).players
+      expect(players[0].pet).toEqual({ kind: 'cat', coat: 3, name: 'Pickles' })
+    })
+
+    it('refuses malformed pets in presence', async () => {
+      for (const p of [
+        { kind: 'cat', coat: 9, name: 'x' },
+        { kind: 'cat', coat: 0, name: '' },
+      ]) {
+        const res = await call({
+          method: 'POST',
+          op: 'sync',
+          body: { p: { ...presence, pet: p }, look: defaultLook('Ada'), since: 0 },
+        })
+        expect(res.statusCode).toBe(400)
+      }
+    })
+  })
 })

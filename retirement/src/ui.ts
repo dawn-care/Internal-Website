@@ -12,6 +12,11 @@ import {
   HAIR_NAMES,
   HAIR_STYLES,
   OUTFIT_COLORS,
+  PET_COATS,
+  PET_KINDS,
+  PET_NAME_MAX,
+  TREAT_PACK,
+  type PetKind,
   PANTS_COLORS,
   SKIN_TONES,
   WALLPAPERS,
@@ -22,6 +27,7 @@ import { isMuted, setMuted, sfx, voice } from './audio'
 import { isMusicOn, setMusicOn } from './music'
 import { fmt, type Game } from './game'
 import { INTRO_TASKS, isActive as introActive } from './intro'
+import { petSprite, treatIcon } from './pets'
 import { personSprite } from './people'
 import { PORTRAIT, portrait } from './portraits'
 
@@ -488,6 +494,16 @@ export class UI {
         el('span', { text: `×${g.save.inv[`crop:${id}`]}` }),
       ),
     )
+    const treats = g.save.inv.treat ?? 0
+    if (treats)
+      produce.push(
+        el(
+          'span',
+          { class: 'produce', title: 'Pet treats (F to give one)' },
+          treatIcon(24),
+          el('span', { text: `×${treats}` }),
+        ),
+      )
     const water = g.nearMyPlot()
       ? button(
           'Water all',
@@ -721,7 +737,11 @@ export class UI {
         'div',
         { class: 'tabs' },
         button('Sell produce', () => render('sell'), `tab${tab === 'sell' ? ' active' : ''}`),
-        button('Buy seeds', () => render('seeds'), `tab${tab === 'seeds' ? ' active' : ''}`),
+        button(
+          g.save.pet ? 'Seeds & treats' : 'Buy seeds',
+          () => render('seeds'),
+          `tab${tab === 'seeds' ? ' active' : ''}`,
+        ),
       )
       const rows =
         tab === 'sell'
@@ -779,6 +799,34 @@ export class UI {
                 button('Buy 5', () => (g.buySeeds(id, 5), render('seeds')), 'btn primary'),
               )
             })
+      if (tab === 'seeds' && g.save.pet)
+        rows.push(
+          el(
+            'div',
+            { class: `shop-row${g.save.coins >= TREAT_PACK.price ? '' : ' dim'}` },
+            treatIcon(32),
+            el(
+              'div',
+              { class: 'grow' },
+              el('strong', { text: `Treats for ${g.save.pet.name}` }),
+              el('div', {
+                class: 'muted',
+                text: `A pack of ${TREAT_PACK.count} · you have ${g.save.inv.treat ?? 0} · press F to give one`,
+              }),
+            ),
+            el(
+              'div',
+              { class: 'price' },
+              coinIcon(),
+              document.createTextNode(` ${TREAT_PACK.price}`),
+            ),
+            button(
+              `Buy ${TREAT_PACK.count}`,
+              () => (g.buyTreats(), render('seeds')),
+              'btn primary',
+            ),
+          ),
+        )
       this.showPanel(
         el(
           'div',
@@ -903,6 +951,114 @@ export class UI {
     )
   }
 
+  /** Nurse Ada's pet programme: choose a dog or cat, a coat and a name (or just rename). */
+  openAdoption(mode: 'adopt' | 'rename') {
+    const g = this.game
+    const pet = g.save.pet
+    if (mode === 'rename' && !pet) return
+    let kind: PetKind = pet?.kind ?? 'dog'
+    let coat = pet?.coat ?? 0
+    const nameInput = el('input')
+    nameInput.maxLength = PET_NAME_MAX
+    nameInput.value = pet?.name ?? 'Biscuit'
+    nameInput.setAttribute('aria-label', 'Pet name')
+    const error = el('div', { class: 'error' })
+    const preview = el('canvas', { class: 'pet-preview' })
+    preview.width = 18
+    preview.height = 16
+    preview.setAttribute('aria-hidden', 'true')
+    const kinds = el('div', { class: 'tabs' })
+    const coats = el('div', { class: 'pet-coats' })
+    const draw = () => {
+      const c = preview.getContext('2d')!
+      c.clearRect(0, 0, 18, 16)
+      c.drawImage(petSprite(kind, coat, 'sit', 0, 1), 0, 0)
+    }
+    const render = () => {
+      kinds.replaceChildren(
+        ...PET_KINDS.map((k) =>
+          button(
+            k === 'dog' ? 'Dog' : 'Cat',
+            () => {
+              if (kind !== k && nameInput.value === (kind === 'dog' ? 'Biscuit' : 'Pickles'))
+                nameInput.value = k === 'dog' ? 'Biscuit' : 'Pickles'
+              kind = k
+              coat = Math.min(coat, PET_COATS[k].length - 1)
+              render()
+            },
+            `tab${kind === k ? ' active' : ''}`,
+          ),
+        ),
+      )
+      coats.replaceChildren(
+        ...PET_COATS[kind].map((c, i) => {
+          const b = button(
+            '',
+            () => {
+              coat = i
+              render()
+            },
+            `chip pet-coat${coat === i ? ' active' : ''}`,
+          )
+          const icon = el('canvas')
+          icon.width = 18
+          icon.height = 16
+          icon.getContext('2d')!.drawImage(petSprite(kind, i, 'sit', 0, 0), 0, 0)
+          b.append(icon, el('span', { text: c.name }))
+          b.setAttribute('aria-pressed', String(coat === i))
+          return b
+        }),
+      )
+      draw()
+    }
+    const confirm = () => {
+      const name = cleanName(nameInput.value).slice(0, PET_NAME_MAX)
+      if (!name) {
+        error.textContent = 'Every pet needs a name.'
+        return
+      }
+      this.closePanel()
+      if (mode === 'rename') g.renamePet(name)
+      else g.adoptPet({ kind, coat, name })
+    }
+    nameInput.addEventListener('keydown', (e) => {
+      e.stopPropagation()
+      if (e.key === 'Enter') confirm()
+      if (e.key === 'Escape') this.closePanel()
+    })
+    render()
+    this.showPanel(
+      el(
+        'div',
+        { class: 'panel-body adopt' },
+        el('h2', { text: mode === 'rename' ? `Rename ${pet!.name}` : 'The pet programme' }),
+        el('p', {
+          class: 'muted',
+          text:
+            mode === 'rename'
+              ? 'A new name for your companion.'
+              : 'Nurse Ada: "Every resident can have one companion. Who would you like?"',
+        }),
+        el(
+          'div',
+          { class: 'adopt-grid' },
+          el('div', { class: 'pet-frame' }, preview),
+          el(
+            'div',
+            { class: 'adopt-fields' },
+            mode === 'adopt' ? kinds : null,
+            mode === 'adopt' ? coats : null,
+            el('label', { class: 'field' }, el('span', { text: 'Name' }), nameInput),
+            error,
+            button(mode === 'rename' ? 'Rename' : 'Adopt', confirm, 'btn primary'),
+          ),
+        ),
+      ),
+    )
+    nameInput.focus()
+    nameInput.select()
+  }
+
   openHelp() {
     const rows: [string, string][] = [
       ['WASD / arrow keys', 'Walk (hold Shift to hurry)'],
@@ -910,6 +1066,7 @@ export class UI {
       ['Click', 'Act on a tile right next to you'],
       ['1–6', 'Choose which seeds to plant'],
       ['Enter', 'Chat (shows as a speech bubble)'],
+      ['F', 'Give your pet a treat (face it and press E to pet it)'],
       ['Esc', 'Close a window, stop decorating'],
     ]
     this.showPanel(

@@ -1,6 +1,6 @@
 # Community: cozy ideas for Sunset Acres
 
-Status: **being built, in the suggested order.** Built so far: the introduction, and a brighter look and feel. These are the additions that make the property worth
+Status: **being built, in the suggested order.** Built so far: the introduction, a brighter look and feel, and pets. These are the additions that make the property worth
 coming back to (the forest, in FOREST.md, is the other half). Suggested order: build the
 introduction first, then the rest roughly in the order listed.
 
@@ -97,6 +97,44 @@ where things go grey (FOREST.md).
 
 Notes: the pet goes in the save and in presence (so neighbours see it walking behind you). The
 existing "Cat (with bed)" furniture could become the pet's bed.
+
+**Built** (src/pets.ts for sprites, following and helpers; src/game.ts for care, sleeping and
+drawing; the adoption panel in src/ui.ts). How it works and the calls made:
+
+- **Getting one:** free, from Nurse Ada (desk or, during the intro, outside) once the intro is
+  done: "Would you like one?" opens the pet programme panel: Dog or Cat, one of 4 coats each
+  (dog: Golden, Chocolate, Black & white, Silver; cat: Orange tabby, Black, Grey tabby, Calico),
+  and a name (up to 14 characters; "Biscuit" for dogs and "Pickles" for cats by default), with a
+  big preview. One pet each. Talking to Ada later offers "Rename". Ada's intro goodbye mentions it.
+- **Its bed:** a free Pet bed (new furniture, price 0 so it's not in the Catalog) is put in the
+  first free floor spot from the bottom right of your room, or in storage if there's no room. The
+  old "Cat (with bed)" stays a separate decoration (Mittens, the house cat).
+- **Following:** the pet trots along your path about two tiles behind you (never closer than 1.4, so you
+  don't hide it; if you double back or walk into it, it waits or steps aside, never into a wall), sits (wagging)
+  when you stop, and comes with you into the hallway and other people's rooms. In your own room
+  it's asleep in its bed (z's drifting up). At night on the shared clock (9 pm to 6 am) it's
+  asleep at home; in the morning it comes out of the front door to find you.
+- **Neighbours:** presence carries `pet: { kind, coat, name }` only while it's following you
+  (validated on the server); each viewer runs the same follower behind your synced position, so
+  the pet's own position is never sent. A neighbour's room shows their pet asleep in its bed when
+  it isn't out with them (the world profile carries the pet's look, never its care details).
+- **Care:** face a pet and press E to pet it (hearts float up; a bark, or a purr). Your own pet
+  gains a heart for the first pat each New York calendar day. F gives a treat (within 2.5 tiles):
+  another heart, once a day. Treats are sold by Chef Rosa ("Seeds & treats" tab, 3 for 10 coins)
+  and sit in your basket. Nothing bad happens if you skip a day. Petting neighbours' pets only
+  shows hearts.
+- **Hearts:** 0–10, saved on the pet. From 5 hearts, once a day (a few seconds after it's out
+  with you) there's a 60% chance it brings a gift: 5–15 coins, or a few carrot, radish or (rarely)
+  strawberry seeds. Hearts are kept for the forest's pet rescue (FOREST.md).
+- **Sounds:** recorded (retirement/sounds → sfx/pet-*.mp3, see CLAUDE.md "Music and sound"):
+  petting makes a dog pant and a cat purr; a treat, a gift, adoption and your pet trotting out of
+  the front door get a bark or a meow; begging for a treat you can't give gets a whine (dog) or a
+  meow (cat). Only the treat crunch is synthesized.
+- **Coming next (forest):** near the edge of the grounds a dog growls and a cat hisses at the
+  trees, warning you that the forest is dangerous. Designed in FOREST.md ("Your pet"), not
+  built yet; it needs growl and hiss recordings.
+- **Offline:** in LocalNet, Nana June walks with Pickles (a calico) and Grandpa Walt's dog Duke
+  is asleep at home in his room. Both have beds.
 
 ## Animals on the property
 

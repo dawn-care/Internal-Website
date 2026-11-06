@@ -21,7 +21,8 @@ in to piece together a story, and you only keep what you learned if you make it 
   light, people who are subtly wrong, and small decisions with uncertain outcomes. Nothing leaps at
   the screen.
 - **A surprise, not a feature.** No opt-in, no gate, no warning sign. It's for the internal team,
-  and finding it by wandering off the edge of the map is part of the fun.
+  and finding it by wandering off the edge of the map is part of the fun. (Your pet growling or
+  hissing at the treeline, below, is an in-world hint, not a sign: it never stops you.)
 - **The horror is the experience of confusion, not people with dementia.** It's told from the
   frightened resident's point of view and never mocks them.
 - **Fair, not random.** Every risky choice has a clue an observant player can learn to read. The
@@ -35,6 +36,9 @@ in to piece together a story, and you only keep what you learned if you make it 
   bird/cricket ambience fades and creepy forest ambience fades up.
 - **Each visit is a different forest**, generated fresh (seeded per visit), so nobody can memorize
   the way.
+- **Your pet knows.** When you get really close to the edge of the grounds with your pet out
+  with you, **a dog growls and a cat hisses** at the trees (see "Your pet" below). It's the first
+  hint that the forest is dangerous.
 
 ## Getting lost for real
 
@@ -195,10 +199,35 @@ Each refusal (they ask again) pushes it a stage further:
 
 ## Your pet
 
+### At the edge of the grounds: growling and hissing
+
+- When you come **really close to the community's bounds** (the treeline round the grounds)
+  with your pet following you, it stops, faces the trees, and **a dog growls / a cat hisses**,
+  with a short animation (hackles up, ears back, tail puffed). This tells you, in the world, that
+  the forest is dangerous, before you ever find a way in.
+- It's a **warning, never a wall**: it doesn't block you, take you back or show any text box. If
+  you keep going, the pet hangs back at the edge (it won't follow you into the forest; that's
+  what makes it finding you in there later, below, special) and is waiting for you when you come
+  back.
+- It reacts most strongly near the hidden gaps in the treeline, so it's also a fair clue to
+  where they are _(decide: only near gaps, or anywhere along the edge, stronger near gaps)_.
+- Only when your pet is out with you: at night it's asleep at home, so you get no warning then.
+  That's deliberate.
+- Distance and cooldown _(tune: within ~2 tiles of the edge; at most once every ~20 s, so it
+  doesn't nag)_. Neighbours' pets near you react too, so a group at the treeline hears it.
+- **Sound:** needs recordings of **a dog growl and a cat hiss**, processed like the other pet
+  sounds (`scripts/cut-sfx.sh`, into `sfx/pet-growl.mp3` and `sfx/pet-hiss.mp3`; see CLAUDE.md
+  "Music and sound").
+- Build it with stage 1 (the forest itself) or earlier: pets and the treeline already exist, so
+  it can go in before the forest does.
+
+### In the forest
+
 - **Rarely, your dog or cat finds you in the forest** _(tune: ~10% of rescues once lost)_.
 - It's **always real and 100% safe**: follow it and it leads you home with your notes kept.
 - **The pet is never faked.** It's the one thing in the forest you can always trust.
-- Depends on pets being built first (COMMUNITY.md). Until then, this rescue simply doesn't happen.
+- Pets are built (COMMUNITY.md): `save.pet` has the kind, coat, name and **hearts** (0–10,
+  from daily petting and treats), so the rescue chance can grow with hearts if we want.
 
 ## Things you avoid
 
@@ -389,7 +418,8 @@ Each stage is playable before the next:
 1. **The forest itself:** treeline exits; a freshly generated, effectively endless forest each
    visit; darkness, fog, forest ambience and footsteps, music fade; being alone (hidden presence,
    quiet chat, "wandered off…"); walking back before you're lost; the point of no return; the
-   collapse safety net and the infirmary wake-up.
+   collapse safety net and the infirmary wake-up; your pet growling or hissing at the treeline and
+   staying behind at the edge (needs growl and hiss recordings).
 2. **Family:** the creation step with randomize, the wall photo, the Wardrobe editor, taking the
    photo with you (pocket slot), and the reprint from Nurse Ada.
 3. **Encounters:** dialogue with beeps, real vs fake and the tells, "Look at the photo", the four
@@ -429,6 +459,8 @@ Each stage is playable before the next:
 - The full story text: the story above is a first version that will be revised as we go; more
   fragments and events still need writing, consistent with the story bible.
 - Pocket size (how many slots) and the cost or wait for a photo reprint from Nurse Ada.
+- The pet's growl/hiss at the treeline: only near the hidden gaps, or along the whole edge
+  (stronger near gaps); the trigger distance and cooldown. Needs a growl and a hiss recording.
 - Who can reach the game. The site belongs to a dementia-care project. The forest's horror comes
   from the resident's own point of view and doesn't mock anyone, but if the sponsor or anyone
   from St. Ann's can sign in, they could stumble into it. Worth deciding whether that's fine.

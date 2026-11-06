@@ -1785,6 +1785,16 @@ export function drawFurniture(c: Ctx, k: string, px: number, py: number, time: n
       f('#3c3a46', px + 20, py - 16, 1, 4)
       break
     }
+    case 'petbed': {
+      shadow()
+      disc(f, px + 8, py + 10, 7.5, 5, '#6b3f6b')
+      disc(f, px + 8, py + 9.5, 7, 4.5, '#9a5a9a')
+      disc(f, px + 8, py + 10.5, 5, 3, '#f2d8e8')
+      disc(f, px + 8, py + 11, 4, 2.2, '#e6c2d8')
+      f('#c486c4', px + 3, py + 6, 10, 1)
+      f('#fff1f8', px + 6, py + 9, 3, 1)
+      break
+    }
     case 'catbed': {
       shadow()
       disc(f, px + 8, py + 10, 7, 4.5, '#8a4f4f')

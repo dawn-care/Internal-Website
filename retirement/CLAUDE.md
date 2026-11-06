@@ -24,7 +24,8 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
   src/ui.ts (HUD, hotbar, chat, Kitchen / Catalog / Wardrobe / Help panels),
   src/garden.ts (growth), src/audio.ts (synth sfx and the dialogue voice blip),
   src/intro.ts (Nurse Ada's introduction for new players: steps, hints, guide arrow targets;
-  see COMMUNITY.md), src/portraits.ts (detailed dialogue portraits drawn from a Look).
+  see COMMUNITY.md), src/portraits.ts (detailed dialogue portraits drawn from a Look),
+  src/pets.ts (dog and cat sprites, the Follower that trails an owner, daily-care helpers).
 - Look: the property is bright and saturated; `MOODS` in src/game.ts sets a colour grade per area
   (the forest will be drained and dark). Night is a multiply tint, not a grey overlay.
 
@@ -42,23 +43,35 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
   retirement/music and retirement/sfx hold the processed copies the game plays.
 - Music: `scripts/normalize-music.sh <in> <out>` (ffmpeg: -18 LUFS, -1.5 dBTP, 4s fade in/out,
   128 kbps) into retirement/music. src/music.ts plays every file there (import.meta.glob) as a
-  shuffled playlist with 5s crossfades and a 3s fade-in on start and resume. Starts on the first
+  shuffled playlist with about 30 seconds of silence between tracks (GAP_MS; each file's own
+  fade-out ends it) and a 3s fade-in on start and resume. Starts on the first
   click/key (autoplay rules), pauses while the tab is hidden, has its own on/off toggle
   (localStorage), and setMusicLevel() for fading it down later. Original music files are no
   longer kept in the repo; to add a track, run the script on it into music/. No code change.
 - Sound effects (src/soundscape.ts, files in retirement/sfx, all following "Sound: on/off"):
+  - `scripts/cut-sfx.sh <in> <out> <start> <duration> [fade-out-ms] [mean-dB]` cuts a clip out of
+    a recording and levels it (mono 44.1 kHz 96 kbps, 4ms fade in, mean -24 dB by default, peaks
+    under -1 dBFS). Use it for new footsteps and one-shot sounds.
   - Footsteps: `step-<group>-<n>.mp3`, single steps cut from sounds/walking_on_*.mp3 and levelled
     to about -24 dB RMS (peaks under -1 dBFS, 4ms in / 60ms out, mono 96 kbps). Groups: grass,
-    gravel, wood. Each surface maps to a group plus a pitch and level (SURFACES): grass; gravel
-    (paths, dirt, sand); stone (plaza, gravel pitched up); wood (rooms); tile (hall linoleum, wood
-    pitched up and quieter); rug (rugs and mats, muffled). Game.surfaceAt picks the surface. One
+    gravel, wood, stone (six steps from walking_on_stone, 80ms out). Each surface maps to a group
+    plus a pitch and level (SURFACES): grass; gravel (paths, dirt, sand); stone (plaza); wood
+    (rooms); tile (hall linoleum, wood pitched up and quieter); rug (rugs and mats, muffled).
+    STEP_VOLUME sets them all (0.24). Game.surfaceAt picks the surface. One
     step per foot landing (walk frames 1 and 3), random take with ±8% pitch and loudness; other
     players' steps play within 8 tiles, quieter with distance and panned.
   - Ambience: amb-*.mp3, two-pass loudnorm to -26 LUFS with 2s fades baked in; each loops by
     starting a new copy over the previous one's fade-out. Follows the shared game clock: dawn
     birds 5–8, day birds (chirping_birds_ambience) 8–19:30, crickets otherwise, 6s crossfades
     between them. Indoors plays at 18% (heard through the windows).
-  - sounds/birds_chirping.mp3 isn't used yet.
+  - Pets: `pet-bark` (dog_bark, both woofs), `pet-whine` (dog_whining 0.28–2.14s), `pet-pant`
+    (dog_panting 0.15–1.4s, 300ms fade), `pet-meow` (cat_meow), `pet-purr` (cat_purring 1.5–4.5s), cut with
+    cut-sfx.sh at -20/-22 dB mean. src/soundscape.ts `petSound()` plays them a touch higher or
+    lower each time. Dogs pant and cats purr when petted (half volume when asleep); a bark or meow
+    for a treat, a gift, adoption and coming out of the front door to find you; a whine (dog) or
+    meow (cat) when begging for a treat you can't give. The treat crunch is still synthesized.
+  - sounds/birds_chirping.mp3, walking_on_dirt.mp3 and walking_on_leaves.mp3 aren't used yet
+    (dirt could replace pitched gravel on the garden paths; leaves are for the forest).
   - To add footsteps for a new surface (e.g. the forest), cut single steps into
     `step-<group>-<n>.mp3` and add the surface to SURFACES.
 

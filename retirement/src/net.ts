@@ -1,4 +1,5 @@
 import { PLOT_H, PLOT_W } from '../shared/catalog'
+import { petBedtime } from './pets'
 import {
   defaultLook,
   newSave,
@@ -6,6 +7,7 @@ import {
   type ChatMsg,
   type Look,
   type MapId,
+  type PetLook,
   type Player,
   type PresenceIn,
   type Profile,
@@ -121,6 +123,8 @@ interface Bot {
   dir: 0 | 1 | 2 | 3
   slot: number
   garden: Profile['garden']
+  /** Her pet; `out` means it follows her around (else it's asleep in its bed at home). */
+  pet?: PetLook & { out: boolean }
 }
 
 const BOT_LINES = [
@@ -166,6 +170,7 @@ export class LocalNet implements Net {
         dir: 0,
         slot: 1,
         garden: garden('pumpkin'),
+        pet: { kind: 'dog', coat: 0, name: 'Duke', out: false },
       },
       {
         login: 'june-bot',
@@ -186,6 +191,7 @@ export class LocalNet implements Net {
         dir: 0,
         slot: 2,
         garden: garden('sunflower'),
+        pet: { kind: 'cat', coat: 3, name: 'Pickles', out: true },
       },
     ]
   }
@@ -210,7 +216,10 @@ export class LocalNet implements Net {
         { k: 'rocker', x: 6, y: 4 },
         { k: 'rug', x: 5, y: 5 },
         { k: 'catbed', x: 10, y: 3 },
+        { k: 'petbed', x: 12, y: 5 },
       )
+      if (b.pet)
+        s.pet = { kind: b.pet.kind, coat: b.pet.coat, name: b.pet.name, adoptedAt: 0, hearts: 5 }
       return toProfile(b.login, s)
     })
   }
@@ -277,6 +286,10 @@ export class LocalNet implements Net {
       y: b.y,
       dir: b.dir,
       moving: Math.hypot(b.tx - b.x, b.ty - b.y) > 0.1,
+      // Like real players' pets, hers stays home in bed at night (9 pm–6 am, game clock).
+      ...(b.pet?.out && !petBedtime(((now % 1_440_000) / 1_440_000) * 24)
+        ? { pet: { kind: b.pet.kind, coat: b.pet.coat, name: b.pet.name } }
+        : {}),
       t: now,
     }))
     return { players, chat: this.chat.filter((m) => m.id > body.since), sent: !!body.msg, now }

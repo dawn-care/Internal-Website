@@ -130,6 +130,8 @@ export const FURNITURE: Record<string, FurnitureDef> = {
   record: { id: 'record', name: 'Record player', price: 120, w: 1, h: 1 },
   tv: { id: 'tv', name: 'Television', price: 150, w: 2, h: 1 },
   catbed: { id: 'catbed', name: 'Cat (with bed)', price: 175, w: 1, h: 1 },
+  // Comes free with a pet (price 0 keeps it out of the Catalog).
+  petbed: { id: 'petbed', name: 'Pet bed', price: 0, w: 1, h: 1 },
   fishtank: { id: 'fishtank', name: 'Fish tank', price: 200, w: 2, h: 1 },
   clock: { id: 'clock', name: 'Grandfather clock', price: 220, w: 1, h: 1 },
   piano: { id: 'piano', name: 'Upright piano', price: 400, w: 2, h: 1 },
@@ -203,3 +205,100 @@ export const ACCESSORY_NAMES: Record<Accessory, string> = {
   pearls: 'Pearls',
   scarf: 'Scarf',
 }
+
+// --- pets ----------------------------------------------------------------------------------
+
+export const PET_KINDS = ['dog', 'cat'] as const
+export type PetKind = (typeof PET_KINDS)[number]
+
+export interface PetCoat {
+  name: string
+  base: string
+  dark: string
+  light: string
+  /** Muzzle, chest and paws. */
+  belly: string
+  pattern: 'plain' | 'stripes' | 'patches' | 'tuxedo'
+  /** Patch colour for calico. */
+  patch?: string
+}
+
+export const PET_COATS: Record<PetKind, PetCoat[]> = {
+  dog: [
+    {
+      name: 'Golden',
+      base: '#e0a64e',
+      dark: '#b07a2c',
+      light: '#f3c97c',
+      belly: '#f6e2b8',
+      pattern: 'plain',
+    },
+    {
+      name: 'Chocolate',
+      base: '#7a4a2a',
+      dark: '#55301a',
+      light: '#9a6440',
+      belly: '#b98a62',
+      pattern: 'plain',
+    },
+    {
+      name: 'Black & white',
+      base: '#2e2a30',
+      dark: '#1a171c',
+      light: '#4a4550',
+      belly: '#f4efe6',
+      pattern: 'tuxedo',
+    },
+    {
+      name: 'Silver',
+      base: '#a3a3ae',
+      dark: '#77777f',
+      light: '#c6c6ce',
+      belly: '#e6e6ea',
+      pattern: 'plain',
+    },
+  ],
+  cat: [
+    {
+      name: 'Orange tabby',
+      base: '#e8933f',
+      dark: '#b8621c',
+      light: '#f6b56c',
+      belly: '#f8dcb6',
+      pattern: 'stripes',
+    },
+    {
+      name: 'Black',
+      base: '#2a2630',
+      dark: '#18151c',
+      light: '#45404e',
+      belly: '#3a3542',
+      pattern: 'plain',
+    },
+    {
+      name: 'Grey tabby',
+      base: '#8e8e9a',
+      dark: '#5e5e6a',
+      light: '#b2b2bc',
+      belly: '#dcdce2',
+      pattern: 'stripes',
+    },
+    {
+      name: 'Calico',
+      base: '#f4eee4',
+      dark: '#c9c0b0',
+      light: '#ffffff',
+      belly: '#ffffff',
+      pattern: 'patches',
+      patch: '#e8933f',
+    },
+  ],
+}
+
+export const PET_NAME_MAX = 14
+/** Affection, 0–HEARTS_MAX; petting and a treat each add one, at most once a day each. */
+export const HEARTS_MAX = 10
+/** From this many hearts your pet sometimes brings you a little gift (once a day at most). */
+export const GIFT_HEARTS = 5
+/** Chef Rosa sells treats in packs. */
+export const TREAT_PACK = { count: 3, price: 10 }

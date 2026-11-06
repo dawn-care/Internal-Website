@@ -167,6 +167,7 @@ function online(entries: Iterable<PresenceEntry>, me: PresenceEntry): Player[] {
       y: p.y,
       dir: p.dir,
       moving: p.moving,
+      ...(p.pet ? { pet: p.pet } : {}),
       t: p.t,
     })
   }

@@ -1,6 +1,9 @@
 import {
   CROPS,
   FURNITURE,
+  GIFT_HEARTS,
+  TREAT_PACK,
+  HEARTS_MAX,
   MAX_SLOTS,
   PLOT_H,
   PLOT_W,
@@ -16,6 +19,8 @@ import {
   type Dir,
   type Look,
   type MapId,
+  type PetLook,
+  petLook,
   type Player,
   type Profile,
   type RoomItem,
@@ -35,9 +40,10 @@ import {
   renderGround,
 } from './art'
 import { sfx } from './audio'
-import { footstep, setAmbience, type Surface } from './soundscape'
+import { footstep, petSound, setAmbience, type Surface } from './soundscape'
 import * as garden from './garden'
 import {
+  HOME_DOOR,
   buildRoom,
   getGrounds,
   getHall,
@@ -54,6 +60,17 @@ import {
 } from './maps'
 import * as intro from './intro'
 import { NetError, type Net } from './net'
+import {
+  Follower,
+  PET_H,
+  PET_W,
+  heartsText,
+  petBedtime,
+  petDay,
+  petSprite,
+  pickGift,
+  type PetPose,
+} from './pets'
 import { SPR_H, SPR_W, personSprite } from './people'
 import type { UI } from './ui'
 
@@ -234,6 +251,10 @@ export class Game {
         if (!e.repeat) this.interact()
         return
       }
+      if (k === 'f') {
+        if (!e.repeat) this.feedPet()
+        return
+      }
       if (this.decor.active && (k === 'delete' || k === 'backspace' || k === 'x')) {
         this.storeHeld()
         return
@@ -315,6 +336,8 @@ export class Game {
     this.me.x = x
     this.me.y = y
     this.me.dir = dir
+    if (this.petOut) this.myPet.reset(x, y)
+    this.remotePets.clear()
     this.resize()
     if (fade) {
       this.fade = 1
@@ -465,6 +488,7 @@ export class Game {
       }
       r.frame = r.anim > 0 ? Math.floor(r.anim) % 4 : 0
     }
+    this.updatePets(dt)
     this.fade = Math.max(0, this.fade - dt * 3)
     const hour = gameHour(Date.now() + this.serverSkew)
     this.ui.setClock(clockText(hour))
@@ -694,6 +718,8 @@ export class Game {
   }
 
   private promptText(): string | null {
+    const pet = this.petInFront()
+    if (pet) return this.petPrompt(pet)
     const t = this.facingTile()
     const it = this.interactAt(t.x, t.y)
     if (it) {
@@ -750,6 +776,8 @@ export class Game {
 
   interact() {
     if (this.decor.active) return
+    const pet = this.petInFront()
+    if (pet) return this.petPet(pet)
     const t = this.facingTile()
     this.actOn(t.x, t.y)
   }
@@ -766,6 +794,8 @@ export class Game {
   }
 
   private actOn(x: number, y: number) {
+    const pet = this.petAt(x, y)
+    if (pet) return this.petPet(pet)
     const it = this.interactAt(x, y)
     if (it) {
       switch (it.kind) {
@@ -813,13 +843,380 @@ export class Game {
       this.say("Nurse Ada: The home is full, dear, but I've set up a cot for you. This way!")
       return this.warp(roomId(this.login), ROOM_DOOR_X + 0.5, 8.2, 3)
     }
+    const ada = { pitch: intro.ADA_VOICE, look: intro.INTRO_ADA.look, old: false }
+    const pet = this.save.pet
+    if (!pet) {
+      return this.ui.dialogue(
+        'Nurse Ada',
+        [
+          `Good to see you, ${this.save.look.name}!`,
+          'We have a little pet programme here: a dog or a cat of your own, to keep you company. Would you like one?',
+        ],
+        {
+          ...ada,
+          choices: [
+            { label: 'Yes, please!', onPick: () => this.ui.openAdoption('adopt') },
+            { label: 'Maybe later', onPick: () => {} },
+          ],
+        },
+      )
+    }
     const lines = [
-      `Nurse Ada: Good to see you, ${this.save.look.name}! Your room is ${101 + this.slot}.`,
-      'Nurse Ada: Remember to water your plants. They only grow while the soil is wet!',
-      'Nurse Ada: Chef Rosa at the Kitchen buys produce. Pumpkins fetch the best price.',
-      'Nurse Ada: Press Enter to chat with your neighbours.',
+      `How is ${pet.name} getting on? You two look very happy together.`,
+      'Remember to water your plants. They only grow while the soil is wet!',
+      'Chef Rosa at the Kitchen buys produce. Pumpkins fetch the best price.',
+      `Chef Rosa sells treats for ${pet.name}, too. One a day keeps the tail wagging.`,
+      'Press Enter to chat with your neighbours.',
     ]
-    this.say(lines[Math.floor(Math.random() * lines.length)])
+    this.ui.dialogue('Nurse Ada', [lines[Math.floor(Math.random() * lines.length)]], {
+      ...ada,
+      choices: [
+        { label: 'Bye for now', onPick: () => {} },
+        { label: `Rename ${pet.name}`, onPick: () => this.ui.openAdoption('rename') },
+      ],
+    })
+  }
+
+  // --- pets -----------------------------------------------------------------------------------
+
+  private myPet = new Follower()
+  /** Your pet is out with you on this map (not asleep at home). */
+  private petOut = false
+  private remotePets = new Map<string, Follower>()
+  private petFx: { x: number; y: number; t0: number }[] = []
+  private petOutFor = 0
+  private giftChecked = false
+
+  /** Where your pet is: none, asleep in its bed (your room), asleep at home (night), or out. */
+  private petMode(): 'none' | 'bed' | 'home' | 'follow' {
+    if (!this.save.pet) return 'none'
+    if (this.mapId === roomId(this.login)) return 'bed'
+    if (petBedtime(gameHour(Date.now() + this.serverSkew))) return 'home'
+    return 'follow'
+  }
+
+  /** Where a room's pet sleeps: on its bed, or on the floor if the bed isn't put down. */
+  private bedSpot(room: { items: RoomItem[] } | null): { x: number; y: number } {
+    const bed = room?.items.find((i) => i.k === 'petbed' && i.x >= 0)
+    if (bed) return { x: bed.x + 0.5, y: bed.y + 0.62 }
+    return { x: ROOM_FLOOR.x0 + 1.5, y: ROOM_FLOOR.y1 + 0.8 }
+  }
+
+  private updatePets(dt: number) {
+    const out = this.petMode() === 'follow'
+    if (out && !this.petOut) {
+      // Coming out to join you: from the front door on the grounds, else right behind you.
+      if (this.mapId === 'grounds') {
+        this.myPet.reset(HOME_DOOR.x + 1, HOME_DOOR.y + 1.4)
+        // A happy hello as it trots out of the front door to find you.
+        const kind = this.save.pet!.kind
+        window.setTimeout(() => petSound(kind === 'dog' ? 'bark' : 'meow', 0.7), 600)
+      } else this.myPet.reset(this.me.x, this.me.y)
+      this.scheduleSync(50)
+    }
+    if (!out && this.petOut) this.scheduleSync(50)
+    this.petOut = out
+    if (out) {
+      this.myPet.update(dt, this.me.x, this.me.y, (x, y) => this.blocked(x, y))
+      this.petOutFor += dt
+      if (!this.giftChecked && this.petOutFor > 4) {
+        this.giftChecked = true
+        this.maybeGift()
+      }
+    }
+    for (const [login, r] of this.others) {
+      const pet = r.p.pet
+      if (!pet || r.p.map !== this.mapId) {
+        this.remotePets.delete(login)
+        continue
+      }
+      let fl = this.remotePets.get(login)
+      if (!fl) {
+        fl = new Follower()
+        fl.reset(r.rx, r.ry)
+        this.remotePets.set(login, fl)
+      }
+      fl.update(dt, r.rx, r.ry, (x, y) => this.blocked(x, y))
+    }
+    for (const login of this.remotePets.keys())
+      if (!this.others.has(login)) this.remotePets.delete(login)
+    this.petFx = this.petFx.filter((f) => this.time - f.t0 < 1400)
+  }
+
+  /** Every pet on this map: yours, neighbours' out with them, and a room owner's asleep. */
+  private visiblePets(): {
+    look: PetLook
+    mine: boolean
+    owner: string
+    x: number
+    y: number
+    pose: PetPose
+    dir: Dir
+    frame: number
+  }[] {
+    const out: ReturnType<Game['visiblePets']> = []
+    const pet = this.save.pet
+    const wag = Math.floor(this.time / 260) % 2
+    const follower = (look: PetLook, owner: string, f: Follower, mine: boolean) => {
+      const pose = f.pose()
+      out.push({
+        look,
+        mine,
+        owner,
+        x: f.x,
+        y: f.y,
+        pose,
+        dir: f.dir,
+        frame: pose === 'walk' ? Math.floor(f.anim) % 4 : wag,
+      })
+    }
+    if (pet && this.petOut) follower(pet, this.login, this.myPet, true)
+    for (const [login, f] of this.remotePets) {
+      const look = this.others.get(login)?.p.pet
+      if (look) follower(look, login, f, false)
+    }
+    const owner = this.ownerOf(this.mapId)
+    if (owner) {
+      const look = owner === this.login ? pet : this.profiles.get(owner)?.pet
+      const away = owner !== this.login && !!this.others.get(owner)?.p.pet
+      if (look && !away) {
+        const spot = this.bedSpot(this.roomOf(owner))
+        out.push({
+          look,
+          mine: owner === this.login,
+          owner,
+          ...spot,
+          pose: 'sleep',
+          dir: 0,
+          frame: 0,
+        })
+      }
+    }
+    return out
+  }
+
+  private petAt(tx: number, ty: number) {
+    if (this.decor.active) return null
+    return (
+      this.visiblePets().find(
+        (p) => Math.abs(p.x - (tx + 0.5)) < 0.9 && Math.abs(p.y - 0.25 - (ty + 0.5)) < 0.9,
+      ) ?? null
+    )
+  }
+
+  /** The pet just in front of you, if any (pets don't sit neatly on tiles). */
+  private petInFront() {
+    if (this.decor.active) return null
+    const [dx, dy] = [
+      [0, 1],
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+    ][this.me.dir]
+    const fx = this.me.x + dx * 0.9
+    const fy = this.me.y - 0.1 + dy * 0.9
+    let best: ReturnType<Game['visiblePets']>[number] | null = null
+    let bestD = 0.85
+    for (const p of this.visiblePets()) {
+      const d = Math.hypot(p.x - fx, p.y - 0.2 - fy)
+      if (d < bestD) {
+        best = p
+        bestD = d
+      }
+    }
+    return best
+  }
+
+  private petPrompt(p: ReturnType<Game['visiblePets']>[number]): string {
+    const verb = p.pose === 'sleep' ? 'Stroke' : 'Pet'
+    if (!p.mine) return `${verb} ${p.look.name}`
+    const pet = this.save.pet!
+    const treat = (this.save.inv.treat ?? 0) > 0 && pet.fedOn !== petDay(Date.now())
+    return `${verb} ${pet.name}${treat ? ' · F: give a treat' : ''}`
+  }
+
+  private petPet(p: ReturnType<Game['visiblePets']>[number]) {
+    const dog = p.look.kind === 'dog'
+    this.petFx.push({ x: p.x, y: p.y, t0: this.time })
+    if (p.pose === 'sleep') petSound(dog ? 'pant' : 'purr', 0.5)
+    else petSound(dog ? 'pant' : 'purr')
+    if (!p.mine) {
+      const name = p.look.name
+      return this.say(
+        p.pose === 'sleep'
+          ? `${name} sighs happily in their sleep.`
+          : dog
+            ? `${name} wags at you.`
+            : `${name} purrs and leans into your hand.`,
+      )
+    }
+    const pet = this.save.pet!
+    const today = petDay(Date.now())
+    if (pet.pettedOn !== today) {
+      pet.pettedOn = today
+      pet.hearts = Math.min(HEARTS_MAX, pet.hearts + 1)
+      this.markDirty()
+      return this.say(`${pet.name} loves that! ${heartsText(pet.hearts, HEARTS_MAX)}`)
+    }
+    this.say(`${pet.name} ${dog ? 'wags happily' : 'purrs'}. ${heartsText(pet.hearts, HEARTS_MAX)}`)
+  }
+
+  /** F: give your pet a treat (one a day counts towards hearts). */
+  feedPet() {
+    const pet = this.save.pet
+    if (!pet || this.ui.panelOpen() || this.ui.dialogueOpen()) return
+    const mine = this.visiblePets().find((p) => p.mine)
+    if (!mine) return this.say(`${pet.name} is curled up asleep at home.`)
+    if (Math.hypot(mine.x - this.me.x, mine.y - this.me.y) > 2.5)
+      return this.say(`Get a little closer to ${pet.name} first.`)
+    // Begging: a whine from a dog, a meow from a cat.
+    const beg = () => petSound(pet.kind === 'dog' ? 'whine' : 'meow')
+    if ((this.save.inv.treat ?? 0) <= 0) {
+      beg()
+      return this.say(`You're out of treats. Chef Rosa sells them at the Kitchen.`)
+    }
+    const today = petDay(Date.now())
+    if (pet.fedOn === today) {
+      beg()
+      return this.say(`${pet.name} has already had a treat today. Tomorrow!`)
+    }
+    this.save.inv.treat -= 1
+    if (this.save.inv.treat <= 0) delete this.save.inv.treat
+    pet.fedOn = today
+    pet.hearts = Math.min(HEARTS_MAX, pet.hearts + 1)
+    sfx('crunch')
+    window.setTimeout(() => petSound(pet.kind === 'dog' ? 'bark' : 'meow'), 350)
+    this.petFx.push({ x: mine.x, y: mine.y, t0: this.time })
+    this.markDirty()
+    this.ui.refresh()
+    this.say(`${pet.name} gobbles it up! ${heartsText(pet.hearts, HEARTS_MAX)}`)
+  }
+
+  /** From GIFT_HEARTS hearts, once a day, your pet sometimes brings you something. */
+  private maybeGift() {
+    const pet = this.save.pet
+    const today = petDay(Date.now())
+    if (!pet || pet.hearts < GIFT_HEARTS || pet.giftOn === today) return
+    pet.giftOn = today
+    this.markDirty()
+    const gift = pickGift(Math.random(), Math.random())
+    if (!gift) return
+    let what: string
+    if ('coins' in gift) {
+      this.save.coins += gift.coins
+      what = `${gift.coins} coins`
+    } else {
+      const key = `seed:${gift.seed}`
+      this.save.inv[key] = (this.save.inv[key] ?? 0) + gift.count
+      what = `${gift.count} ${CROPS[gift.seed].name} seed${gift.count > 1 ? 's' : ''}`
+    }
+    petSound(pet.kind === 'dog' ? 'bark' : 'meow')
+    this.petFx.push({ x: this.myPet.x, y: this.myPet.y, t0: this.time })
+    this.ui.refresh()
+    this.say(`${pet.name} ${pet.kind === 'dog' ? 'dug up' : 'brought you'} ${what}!`)
+  }
+
+  adoptPet(look: PetLook) {
+    if (this.save.pet) return
+    const pet = { ...look, adoptedAt: Date.now(), hearts: 0 }
+    this.save.pet = pet
+    // Its bed goes in your room, in the first free spot from the bottom right.
+    let placed = false
+    const items = this.save.room.items
+    if (items.length < MAX_ROOM_ITEMS) {
+      items.push({ k: 'petbed', x: -1, y: -1 })
+      const i = items.length - 1
+      for (let y = ROOM_FLOOR.y1; y >= ROOM_FLOOR.y0 && !placed; y--)
+        for (let x = ROOM_FLOOR.x1; x >= ROOM_FLOOR.x0 && !placed; x--)
+          if (this.canPlace(i, x, y)) {
+            items[i].x = x
+            items[i].y = y
+            placed = true
+          }
+      if (this.ownerOf(this.mapId) === this.login) this.refreshRoom()
+    }
+    this.giftChecked = true
+    this.markDirty()
+    void this.flushSave()
+    this.ui.refresh()
+    petSound(pet.kind === 'dog' ? 'bark' : 'meow')
+    const they = pet.kind === 'dog' ? 'He' : 'She'
+    this.ui.dialogue(
+      'Nurse Ada',
+      [
+        `${pet.name}! What a sweetheart. ${they}'ll follow you around the grounds, and curl up in ${pet.kind === 'dog' ? 'his' : 'her'} bed in your room${placed ? '. I put the bed in your room for you' : ' (the bed is in your storage, under Decorate)'}.`,
+        `Give ${pet.name} a pat each day (face them and press E) and a treat (press F), and you'll be the best of friends. Chef Rosa sells treats at the Kitchen.`,
+        `Pets get sleepy at night, so ${pet.name} will be tucked up at home after nine.`,
+      ],
+      { pitch: intro.ADA_VOICE, look: intro.INTRO_ADA.look, old: false },
+    )
+  }
+
+  renamePet(name: string) {
+    const pet = this.save.pet
+    if (!pet || !name) return
+    pet.name = name
+    this.markDirty()
+    this.scheduleSync(30)
+    this.say(`Nurse Ada: ${name} it is! It suits them.`)
+  }
+
+  buyTreats() {
+    if (this.save.coins < TREAT_PACK.price) {
+      sfx('nope')
+      return this.ui.toast(`You need ${TREAT_PACK.price - this.save.coins} more coins.`)
+    }
+    this.save.coins -= TREAT_PACK.price
+    this.save.inv.treat = (this.save.inv.treat ?? 0) + TREAT_PACK.count
+    sfx('coin')
+    this.markDirty()
+    this.ui.refresh()
+  }
+
+  private drawPet(p: ReturnType<Game['visiblePets']>[number], ox: number, oy: number) {
+    const c = this.ctx
+    const px = Math.round(p.x * TS + ox)
+    const py = Math.round(p.y * TS + oy)
+    c.fillStyle = 'rgba(0,0,0,0.18)'
+    c.fillRect(px - 5, py - 1, 10, 2)
+    c.drawImage(
+      petSprite(p.look.kind, p.look.coat, p.pose, p.dir, p.frame),
+      px - PET_W / 2,
+      py - PET_H + 1,
+    )
+    if (p.pose === 'sleep') {
+      // Little z's drifting up.
+      const t = (this.time / 1600) % 1
+      c.fillStyle = `rgba(59,63,128,${0.9 * (1 - t)})`
+      const zx = px + 4 + Math.round(t * 4)
+      const zy = py - 14 - Math.round(t * 8)
+      c.fillRect(zx, zy, 3, 1)
+      c.fillRect(zx + 1, zy + 1, 1, 1)
+      c.fillRect(zx, zy + 2, 3, 1)
+    }
+  }
+
+  private drawPetFx(ox: number, oy: number) {
+    const c = this.ctx
+    for (const fx of this.petFx) {
+      const age = (this.time - fx.t0) / 1400
+      for (let i = 0; i < 3; i++) {
+        const a = Math.max(0, Math.min(1, (age - i * 0.12) * 1.6))
+        if (a <= 0 || a >= 1) continue
+        const hx = Math.round(fx.x * TS + ox + (i - 1) * 5 + Math.sin(age * 8 + i) * 2)
+        const hy = Math.round(fx.y * TS + oy - 16 - a * 12)
+        c.globalAlpha = 1 - a
+        c.fillStyle = '#e8475b'
+        c.fillRect(hx, hy, 2, 2)
+        c.fillRect(hx + 3, hy, 2, 2)
+        c.fillRect(hx, hy + 1, 5, 2)
+        c.fillRect(hx + 1, hy + 3, 3, 1)
+        c.fillRect(hx + 2, hy + 4, 1, 1)
+        c.fillStyle = '#ffb3be'
+        c.fillRect(hx, hy, 1, 1)
+        c.globalAlpha = 1
+      }
+    }
   }
 
   private say(text: string) {
@@ -1173,6 +1570,7 @@ export class Game {
           y: round2(this.me.y),
           dir: this.me.dir,
           moving: this.me.moving,
+          ...(this.petOut && this.save.pet ? { pet: petLook(this.save.pet) } : {}),
         },
         look: this.save.look,
         msg: msg ?? undefined,
@@ -1310,6 +1708,12 @@ export class Game {
     if (m.id === 'hall') this.drawHallPlates(ox, oy)
 
     for (const n of this.npcs()) list.push({ y: n.y * TS, draw: () => this.drawNpc(n, ox, oy) })
+    for (const p of this.visiblePets())
+      // A sleeping pet is drawn after (on top of) its bed.
+      list.push({
+        y: p.pose === 'sleep' ? (Math.floor(p.y) + 1) * TS + 1 : p.y * TS - 0.5,
+        draw: () => this.drawPet(p, ox, oy),
+      })
     for (const r of this.others.values()) {
       if (r.p.map !== m.id) continue
       list.push({
@@ -1325,6 +1729,7 @@ export class Game {
 
     list.sort((a, b) => a.y - b.y)
     for (const d of list) d.draw()
+    this.drawPetFx(ox, oy)
 
     if (this.decor.active) this.drawDecorGhost(ox, oy)
     if (!this.decor.active && !this.ui.panelOpen() && !this.ui.dialogueOpen())
@@ -1653,6 +2058,7 @@ const FLAVOR: Record<string, string> = {
   record: 'A little Glenn Miller fills the room.',
   tv: 'The game show is on. You know all the answers.',
   catbed: 'Mittens purrs and stretches. Prrrrt.',
+  petbed: 'A soft, well-loved bed, with a little dent where someone curls up.',
   fishtank: 'The fish blow you little bubbles.',
   clock: 'Tick... tock... Right on time, as always.',
   piano: 'You play the first few bars of a song you love.',

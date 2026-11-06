@@ -5,7 +5,8 @@ export function onMuteChange(fn: (muted: boolean) => void) {
   muteListeners.add(fn)
 }
 
-type Sfx = 'blip' | 'coin' | 'till' | 'plant' | 'water' | 'harvest' | 'door' | 'chat' | 'nope'
+type Sfx =
+  'blip' | 'coin' | 'till' | 'plant' | 'water' | 'harvest' | 'door' | 'chat' | 'nope' | 'crunch'
 
 let ctx: AudioContext | null = null
 let muted = (() => {
@@ -98,6 +99,9 @@ export function sfx(kind: Sfx) {
       return tone(880, 0.06, 'sine', 0.05)
     case 'nope':
       return tone(200, 0.15, 'square', 0.04, 0, -80)
+    case 'crunch':
+      noise(0.05, 0.18, 1800)
+      return setTimeout(() => noise(0.05, 0.15, 1500), 90)
   }
 }
 

@@ -60,6 +60,7 @@ export function finale(name: string, giftName: string): string[] {
   return [
     `Oh, that looks lovely in here, ${name}. You're all settled in!`,
     `I've left you a little welcome present: a ${giftName.toLowerCase()}. It's waiting in your storage; you'll find it under Decorate.`,
+    "Oh, and if you'd like a companion, come and ask me about our pet programme. A dog or a cat of your own!",
     'If you ever forget how something works, press Help. And come and say hello at the front desk any time. Welcome home, dear.',
   ]
 }

@@ -5,6 +5,10 @@ import {
   FLOORS,
   FURNITURE,
   HAIR_COLORS,
+  HEARTS_MAX,
+  PET_COATS,
+  PET_KINDS,
+  PET_NAME_MAX,
   HAIR_STYLES,
   MAX_SLOTS,
   OUTFIT_COLORS,
@@ -19,6 +23,7 @@ import {
   type Accessory,
   type Body,
   type HairStyle,
+  type PetKind,
 } from './catalog.js'
 
 /*
@@ -64,6 +69,23 @@ export interface Room {
   floors: string[]
 }
 
+/** What anyone can see of a pet: which animal, its coat and its name. */
+export interface PetLook {
+  kind: PetKind
+  coat: number
+  name: string
+}
+
+/** Your pet. Dates are New York calendar days ("YYYY-MM-DD"), so care counts once a day. */
+export interface Pet extends PetLook {
+  adoptedAt: number
+  /** Affection, 0–HEARTS_MAX. Kept for the forest's pet rescue too (FOREST.md). */
+  hearts: number
+  pettedOn?: string
+  fedOn?: string
+  giftOn?: string
+}
+
 export interface Save {
   v: 1
   look: Look
@@ -78,6 +100,8 @@ export interface Save {
    * Saves from before the introduction existed have no field, so those players never see it.
    */
   intro?: IntroStep
+  /** Your dog or cat, once you've adopted one from Nurse Ada. */
+  pet?: Pet
   /** Garden plot and hallway door. Assigned by the server, never trusted from the client. */
   slot: number
   createdAt: number
@@ -88,6 +112,8 @@ export interface Save {
 export interface Profile {
   login: string
   look: Look
+  /** Shown asleep in its bed when you visit their room and it isn't out with them. */
+  pet?: PetLook
   slot: number
   garden: Tile[]
   room: { wall: string; floor: string; items: RoomItem[] }
@@ -106,6 +132,8 @@ export interface PresenceIn {
   y: number
   dir: Dir
   moving: boolean
+  /** Your pet, sent only while it's following you (it isn't at night or in your own room). */
+  pet?: PetLook
 }
 
 export interface Player extends PresenceIn {
@@ -177,6 +205,7 @@ export function toProfile(login: string, save: Save): Profile {
   return {
     login,
     look: save.look,
+    ...(save.pet ? { pet: petLook(save.pet) } : {}),
     slot: save.slot,
     garden: save.garden,
     room: {
@@ -251,8 +280,47 @@ export function validateLook(v: unknown): Look {
   }
 }
 
-const INV_KEYS = new Set(Object.keys(CROPS).flatMap((c) => [`seed:${c}`, `crop:${c}`]))
+const INV_KEYS = new Set([
+  ...Object.keys(CROPS).flatMap((c) => [`seed:${c}`, `crop:${c}`]),
+  'treat',
+])
 const MAX_TIME = 8_640_000_000_000_000 // the largest valid Date
+
+export function petLook(p: PetLook): PetLook {
+  return { kind: p.kind, coat: p.coat, name: p.name }
+}
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function day(v: unknown, what: string): string | undefined {
+  if (v === undefined) return undefined
+  if (typeof v !== 'string' || !DAY_RE.test(v)) throw new SaveError(`${what} must be a date.`)
+  return v
+}
+
+export function validatePetLook(v: unknown, what = 'pet'): PetLook {
+  const o = obj(v, what)
+  const kind = oneOf(o.kind, PET_KINDS, `${what}.kind`)
+  const name = cleanText(o.name, PET_NAME_MAX)
+  if (!name) throw new SaveError('Your pet needs a name.')
+  return { kind, coat: int(o.coat, `${what}.coat`, 0, PET_COATS[kind].length - 1), name }
+}
+
+function validatePet(v: unknown): Pet {
+  const o = obj(v, 'pet')
+  const pet: Pet = {
+    ...validatePetLook(o),
+    adoptedAt: num(o.adoptedAt, 'pet.adoptedAt', 0, MAX_TIME),
+    hearts: int(o.hearts ?? 0, 'pet.hearts', 0, HEARTS_MAX),
+  }
+  const petted = day(o.pettedOn, 'pet.pettedOn')
+  const fed = day(o.fedOn, 'pet.fedOn')
+  const gift = day(o.giftOn, 'pet.giftOn')
+  if (petted) pet.pettedOn = petted
+  if (fed) pet.fedOn = fed
+  if (gift) pet.giftOn = gift
+  return pet
+}
 
 function validateTile(v: unknown, i: number): Tile {
   const o = obj(v, `garden[${i}]`)
@@ -331,6 +399,7 @@ export function validateSave(v: unknown): Save {
       earned: int(stats.earned, 'stats.earned', 0, 1e12),
     },
     ...(intro === undefined ? {} : { intro }),
+    ...(o.pet === undefined ? {} : { pet: validatePet(o.pet) }),
     slot: int(o.slot ?? -1, 'slot', -1, MAX_SLOTS - 1),
     createdAt: num(o.createdAt, 'createdAt', 0, MAX_TIME),
     updatedAt: num(o.updatedAt, 'updatedAt', 0, MAX_TIME),
@@ -354,5 +423,8 @@ export function validatePresence(v: unknown): PresenceIn {
     y: num(o.y, 'presence.y', -10, 200),
     dir: int(o.dir, 'presence.dir', 0, 3) as Dir,
     moving: o.moving === true,
+    ...(o.pet === undefined || o.pet === null
+      ? {}
+      : { pet: validatePetLook(o.pet, 'presence.pet') }),
   }
 }

@@ -26,14 +26,14 @@ export type Surface = 'grass' | 'gravel' | 'stone' | 'wood' | 'tile' | 'rug'
 const SURFACES: Record<Surface, { clips: string; rate: number; gain: number }> = {
   grass: { clips: 'step-grass', rate: 1.15, gain: 0.9 },
   gravel: { clips: 'step-gravel', rate: 1, gain: 0.75 },
-  stone: { clips: 'step-gravel', rate: 1.25, gain: 0.55 },
+  stone: { clips: 'step-stone', rate: 1, gain: 0.7 },
   wood: { clips: 'step-wood', rate: 1, gain: 0.7 },
   // The hallway's linoleum: a lighter, higher tap.
   tile: { clips: 'step-wood', rate: 1.3, gain: 0.45 },
   // Rugs muffle the step.
   rug: { clips: 'step-wood', rate: 0.8, gain: 0.25 },
 }
-const STEP_VOLUME = 0.32
+const STEP_VOLUME = 0.24
 
 const buffers = new Map<string, AudioBuffer[]>()
 let loading: Promise<void> | null = null
@@ -88,10 +88,63 @@ export function footstep(surface: Surface, volume = 1, pan = 0) {
   src.start()
 }
 
-/** Starts decoding the footsteps early so the first step isn't silent. */
+/** Starts decoding the footsteps and pet sounds early so the first one isn't silent. */
 export function preloadFootsteps() {
   const ctx = audioContext()
-  if (ctx) void loadSteps(ctx)
+  if (ctx) {
+    void loadSteps(ctx)
+    void loadPets(ctx)
+  }
+}
+
+// --- pets ---------------------------------------------------------------------------------------
+
+/** Pet recordings (pet-*.mp3, cut and levelled with scripts/cut-sfx.sh) and how loud each plays. */
+const PET_SOUNDS = {
+  bark: { file: 'pet-bark', gain: 0.32 },
+  whine: { file: 'pet-whine', gain: 0.3 },
+  pant: { file: 'pet-pant', gain: 0.36 },
+  meow: { file: 'pet-meow', gain: 0.34 },
+  purr: { file: 'pet-purr', gain: 0.45 },
+}
+export type PetSound = keyof typeof PET_SOUNDS
+
+const petBuffers = new Map<string, AudioBuffer>()
+let petLoading: Promise<void> | null = null
+
+function loadPets(ctx: AudioContext): Promise<void> {
+  petLoading ??= Promise.all(
+    Object.values(PET_SOUNDS).map(async ({ file }) => {
+      const src = url(file)
+      if (!src) return
+      const data = await (await fetch(src)).arrayBuffer()
+      petBuffers.set(file, await ctx.decodeAudioData(data))
+    }),
+  ).then(
+    () => undefined,
+    () => undefined,
+  )
+  return petLoading
+}
+
+/** Plays one pet sound (follows "Sound: on/off"), a touch higher or lower each time. */
+export function petSound(sound: PetSound, volume = 1) {
+  if (isMuted()) return
+  const ctx = audioContext()
+  if (!ctx) return
+  const s = PET_SOUNDS[sound]
+  const buf = petBuffers.get(s.file)
+  if (!buf) {
+    void loadPets(ctx)
+    return
+  }
+  const src = ctx.createBufferSource()
+  src.buffer = buf
+  src.playbackRate.value = 0.95 + Math.random() * 0.1
+  const gain = ctx.createGain()
+  gain.gain.value = s.gain * volume
+  src.connect(gain).connect(ctx.destination)
+  src.start()
 }
 
 // --- ambience -----------------------------------------------------------------------------------
