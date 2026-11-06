@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   // Team-only. The /tasks route still exists: sign-in (and its errors) land there.
   { to: '/tasks', label: 'Tasks', end: false, signedInOnly: true },
   { to: '/meetings', label: 'Meetings', end: false, signedInOnly: true },
+  { to: '/metrics', label: 'Metrics', end: false, signedInOnly: true },
   { to: '/agendas', label: 'Agendas', end: false },
   { to: '/artifacts', label: 'Artifacts', end: false },
 ]

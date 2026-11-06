@@ -263,6 +263,22 @@ GitHub Project; the site reads and writes them through GitHub's API.
 - Cache /api/dashboard responses per user for 60s in memory. Never share cached data
   across users.
 
+## Metrics (/metrics, signed-in only)
+- A page of small, independent team metrics, each its own card (reuses WidgetCard from
+  src/components/dashboard/Widget — it's generic, not dashboard-specific). Unlike
+  /dashboard, each widget fetches its own public data directly in the browser, with no
+  /api route and no user token, because the sources are public and need no secret.
+- Pattern per metric, modeled on src/lib/reviewers: a src/lib/<metric>/ module with
+  client.ts (the fetch + a typed error), mock.ts (fallback for VITE_TASKS_MOCK=true, so
+  local dev needs no network), data.ts (fetch-once cache, matching src/lib/drive/data.ts),
+  hooks.ts, and an index.ts barrel; then one src/components/metrics/<Metric>.tsx widget
+  that handles its own loading/error/empty state and is listed in src/pages/Metrics.tsx.
+  One widget failing never blocks the others.
+- Current widgets: Reviews (#reviews) — per-person counts of distinct merged PRs
+  reviewed, from metrics/reviewers.json on the `metrics` branch of the separate
+  dawn-care/DAWN repo (dawn-care/DAWN#475), produced nightly by that repo's own
+  pr-metrics.yml workflow. A 404 means the workflow hasn't run yet, not an error.
+
 ## Meetings (Google Calendar)
 - The shared "DAWN Team" Google Calendar is the ONLY source of meetings:
   - Official: "Sponsor Meeting", Tuesdays (the ONLY meetings with agendas and 4Ups)

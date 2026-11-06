@@ -8,6 +8,7 @@ import Artifacts from './pages/Artifacts'
 import Dashboard from './pages/Dashboard'
 import Home from './pages/Home'
 import Meetings from './pages/Meetings'
+import Metrics from './pages/Metrics'
 import NotFound from './pages/NotFound'
 import Tasks from './pages/Tasks'
 
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/meetings" element={<Meetings />} />
+            <Route path="/metrics" element={<Metrics />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
