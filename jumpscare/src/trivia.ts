@@ -1,6 +1,9 @@
 // Category 18 is "Science: Computers". url3986 encoding avoids HTML entities in the text.
 const API_URL = "https://opentdb.com/api.php?amount=1&category=18&type=multiple&encode=url3986";
 
+// The API takes one difficulty per request, so each question picks one of these at random.
+const DIFFICULTIES = ["easy", "medium"];
+
 // The API allows one request every 5 seconds per IP and answers code 5 when that's exceeded.
 const RATE_LIMITED = 5;
 const RETRY_DELAY_MS = 5000;
@@ -20,7 +23,7 @@ type ApiResponse = {
   }[];
 };
 
-function shuffle<T>(items: T[]): T[] {
+export function shuffle<T>(items: T[]): T[] {
   const copy = [...items];
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -30,7 +33,8 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 export async function fetchQuestion(): Promise<Question> {
-  const response = await fetch(API_URL);
+  const difficulty = DIFFICULTIES[Math.floor(Math.random() * DIFFICULTIES.length)];
+  const response = await fetch(`${API_URL}&difficulty=${difficulty}`);
   const data: ApiResponse = await response.json();
 
   if (data.response_code === RATE_LIMITED) {

@@ -1,12 +1,37 @@
 # Jumpscare
 
-A standalone trivia game, separate from the rest of DAWN. It asks one multiple-choice question at a time from the [Open Trivia Database](https://opentdb.com/) (category: Science: Computers, any difficulty). A wrong answer shows a random image from `media/` full screen for 3 seconds, with a sound.
+A standalone game, separate from the rest of DAWN. It starts as a plain trivia quiz: one multiple-choice question at a time from the [Open Trivia Database](https://opentdb.com/) (category: Science: Computers, any difficulty).
+
+After 5 questions it stops being trivia. "Can you remember your life?" has only blank answers, and every one is wrong. "Can you remember why you matter?" has nothing you can click. Five seconds later you wake up in a dark house you can walk around in first person (`src/house/`).
+
+## The house
+
+- **Controls:** mouse (click to capture it, Esc to let go) or arrow keys to look, WASD or arrow keys to walk, Shift to hurry, E to look closer at a painting or try a door. On touch screens, drag on the left half to walk and on the right half to look, and tap the prompt that appears.
+- **Memories:** each painting holds a memory. Walk up to one and press E to remember it. The photo shows up hazy, the way a memory would.
+- **Doors:** doors with words scratched into them open if you answer their riddle, and the answers are in the memories, so you'll find some riddles long before you can answer them and have to come back. Opened doors stay visibly open. Door 1 (answer: Ashton) opens onto stairs down to the basement, where the floating head lives. Door 2 (answer: Thanatos, from a memory in the basement) leads to the east wing, where the pale thing lives. The double door (answer: Minnow, from a memory in the east wing) leads outside. Plain doors never open.
+- **The floating head** drifts slower than you walk. It chases you while it can see you, or if you run near it. If it loses you, it searches where it last saw you, then wanders. Hold your flashlight on it for a couple of seconds and it fades away, then comes back somewhere else later. If it reaches you, you get a jumpscare and wake up back at the start. You can hear it wheezing, through walls too.
+- **The pale thing** is long and pale, with long hair and eyes that glow in the dark, and it acts like an animal. It wanders with its nose to the floor until it catches your scent, then follows you, slower than you walk and in fits and starts. It stops just out of reach, rears up and sniffs at you, and if you stand still it gets bored and leaves for a while. Walk into it, or run while it's near, and it lunges. It can't take the stairs, so the basement shakes it off. Its tuning is the `PALE_*` constants at the top of `src/house/game.ts`.
+- **The figure** turns up in rooms far from you. Walk up to it and it vanishes. Stare at it for too long and you get a jumpscare.
+- **Outside**, the door slams shut behind you. There's only dead ground and fog you can't walk through, and a forty-foot shadow walking toward you, very slowly. Wherever you run, it's ahead of you in the fog. When it reaches you, the game ends (for now).
+- **The house:** tables with candles, chairs, a rocking chair that rocks by itself, a ticking grandfather clock, bookshelves, and claw marks torn into the walls and doors.
+- **Atmosphere:** swinging, creaking ceiling lamps, fog and the sea outside every window, footsteps that sometimes run up behind you, and a low drone with distant knocks, creaks, whispers and the house groaning.
+
+The house is a hand-written raycaster on a canvas, with procedurally drawn textures. Its footsteps, ambience and other sounds are synthesized with the Web Audio API, so they need no extra files or dependencies.
+
+### Adding memories and riddles
+
+- **More notes:** `CLAUDE.md` in this folder has the route through the game and how the code fits together.
+- **Memories and riddles:** `src/house/story.ts` holds every memory (the painting's image file, or `null` for a black frame, and its text) and every riddle (its text and accepted answers). Answers are compared ignoring case, spaces and punctuation.
+- **The map:** `src/house/map.ts` is a grid of characters. A painting is its letter from `story.ts` placed on a wall, and a riddle door is its digit. The key at the top of the file lists the rest (furniture, lamps, claw marks and so on).
+- **Images:** they go in `media/`, and `story.ts` refers to them by file name. Restart the dev server after adding files so it picks them up.
+
+## Running it
 
 ```bash
 npm install
 npm run dev      # localhost:5173
 ```
 
-Images (png, jpg, gif, webp, svg) go in `media/`. One sound file (mp3, wav or ogg) goes directly in this folder, next to `package.json`, and plays for the 3 seconds an image shows. Restart the dev server after adding files so it picks them up. With no images a wrong answer shows "WRONG!" instead, and with no sound it's silent.
+From the site root, `npm run dev:game` serves it at localhost:5173/game/. In dev, localhost:5173/game/#house skips straight to the house, and the browser console can move things around through `window.__house` (for example `__house.player.x = 22`).
 
-The API allows one request every 5 seconds, so a new question can take a few seconds to load if you click through quickly.
+Each jumpscare plays a random sound from `sounds/` (mp3, wav or ogg) with a random image from `media/`. On the deployed site, `/game` is only served to signed-in team members. The trivia API allows one request every 5 seconds, so a new question can take a few seconds to load if you click through quickly.
