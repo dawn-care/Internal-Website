@@ -1,3 +1,4 @@
+import { EST } from './grounds.js'
 import { SaveError, type MapId } from './schema.js'
 
 /*
@@ -21,10 +22,15 @@ export const GAME_NAMES: Record<GameKind, string> = { connect4: 'Connect 4', che
  * lawns either side of the plaza, and one by the pond, in line with the Kitchen's path.
  */
 export const TABLES: readonly { id: string; x: number; y: number }[] = [
-  { id: 'table:14,13', x: 14, y: 13 },
-  { id: 'table:33,13', x: 33, y: 13 },
-  { id: 'table:40,21', x: 40, y: 21 },
-]
+  [14, 13],
+  [33, 13],
+  [40, 21],
+].map(([lx, ly]) => {
+  // Laid out in the established area's own coordinates (see shared/grounds.ts).
+  const x = lx + EST.x
+  const y = ly + EST.y
+  return { id: `table:${x},${y}`, x, y }
+})
 export const TABLE_MAP: MapId = 'grounds'
 const TABLE_IDS = new Set(TABLES.map((t) => t.id))
 

@@ -102,6 +102,70 @@ function tuft(f: Pen, bx: number, by: number, dark: string, mid: string, light: 
   f(light, bx + 3, by + 1, 1, 1)
 }
 
+/** Mixes two #rrggbb colours (t 0: a, 1: b). */
+function mix(a: string, b: string, t: number): string {
+  const na = parseInt(a.slice(1), 16)
+  const nb = parseInt(b.slice(1), 16)
+  const ch = (s: number) =>
+    Math.round(((na >> s) & 255) + (((nb >> s) & 255) - ((na >> s) & 255)) * t)
+  return `#${((1 << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).slice(1)}`
+}
+
+/** How many steps the outskirts' grass fades through on the way to the treeline. */
+const WILD_BANDS = 8
+/** The tired, yellow-grey green the grass fades to at the treeline, and the bare earth. */
+const WILD_GRASS = '#8b8a66'
+const WILD_EARTH = '#76695a'
+interface GrassPalette {
+  tones: string[]
+  dark: string
+  light: string
+  deep: string
+  earth: string[]
+  /** 0 (lush) to 1 (the treeline). */
+  w: number
+}
+const wildPalettes: GrassPalette[] = Array.from({ length: WILD_BANDS + 1 }, (_, i) => {
+  const w = i / WILD_BANDS
+  const t = w
+  return {
+    tones: GRASS_TONES.map((c) => mix(c, WILD_GRASS, t)),
+    dark: mix(GRASS_D, shade(WILD_GRASS, -0.12), t),
+    light: mix(GRASS_L, shade(WILD_GRASS, 0.1), t),
+    deep: mix(GRASS_DD, shade(WILD_GRASS, -0.22), t),
+    earth: [WILD_EARTH, shade(WILD_EARTH, -0.06), shade(WILD_EARTH, 0.05)],
+    w,
+  }
+})
+
+/**
+ * Grass out in the outskirts: duller and greyer the further out it is, fewer tufts and flowers,
+ * and more and more bare earth showing through (FOREST.md "The outskirts").
+ */
+function wildGrass(f: Pen, px: number, py: number, x: number, y: number, w: number) {
+  const p = wildPalettes[Math.min(WILD_BANDS, Math.round(w * WILD_BANDS))]
+  for (let yy = 0; yy < 16; yy += 2)
+    for (let xx = 0; xx < 16; xx += 2) {
+      const gx = px + xx
+      const gy = py + yy
+      const n = smooth(gx, gy, 44, 701) * 0.75 + smooth(gx, gy, 13, 702) * 0.25
+      const j = (hash(gx, gy, 703) - 0.5) * 0.08
+      // Bare patches open up where the soft noise is low, more of them further out.
+      const bare = smooth(gx, gy, 22, 704) + (hash(gx, gy, 705) - 0.5) * 0.1 < p.w * 0.7 - 0.08
+      const col = bare
+        ? p.earth[Math.floor(hash(gx, gy, 706) * 3)]
+        : p.tones[n + j < 0.38 ? 0 : n + j > 0.64 ? 2 : 1]
+      f(col, gx, gy, 2, 2)
+    }
+  speckle(f, px, py, x, y, 5, [p.dark, p.light], 11)
+  const tufts = Math.round((2 + Math.floor(hash(x, y, 44) * 3)) * (1 - p.w * 0.85))
+  for (let i = 0; i < tufts; i++) {
+    const bx = px + Math.floor(hash(x, y, 40 + i) * 11)
+    const by = py + 1 + Math.floor(hash(y, x, 50 + i) * 12)
+    tuft(f, bx, by, p.deep, p.dark, p.light)
+  }
+}
+
 /**
  * Grass: soft patches of three greens across the whole lawn (dithered where they meet), tufts of
  * blades, and the odd clover leaf, instead of a flat colour.
@@ -141,6 +205,10 @@ const FLOWER_COLORS = ['#ffffff', '#ff7fb0', '#b583f5', '#ffd23a', '#ff6a45', '#
 
 function flowers(f: Pen, px: number, py: number, x: number, y: number) {
   grass(f, px, py, x, y)
+  flowerHeads(f, px, py, x, y)
+}
+
+function flowerHeads(f: Pen, px: number, py: number, x: number, y: number) {
   for (let i = 0; i < 3; i++) {
     const fx = px + 2 + Math.floor(hash(x, y, 60 + i) * 11)
     const fy = py + 2 + Math.floor(hash(y, x, 70 + i) * 11)
@@ -468,23 +536,67 @@ function trim(f: Pen, m: GameMap, px: number, py: number, x: number, y: number) 
   if (y === m.h - 1) f('#5a4840', px, py, 16, 3)
 }
 
+/**
+ * A pen that writes straight into image data: for the outskirts' many thousands of grass tiles,
+ * far quicker than a fillRect per block. Opaque #rrggbb colours only.
+ */
+function bufferPen(img: ImageData): Pen {
+  const d = img.data
+  const W = img.width
+  const H = img.height
+  const rgb = new Map<string, number>()
+  return (color, x, y, w = 1, h = 1) => {
+    let n = rgb.get(color)
+    if (n === undefined) {
+      n = parseInt(color.slice(1), 16)
+      rgb.set(color, n)
+    }
+    const r = (n >> 16) & 255
+    const g = (n >> 8) & 255
+    const b = n & 255
+    const x1 = Math.min(W, x + w)
+    const y1 = Math.min(H, y + h)
+    for (let yy = Math.max(0, y); yy < y1; yy++)
+      for (let xx = Math.max(0, x); xx < x1; xx++) {
+        const o = (yy * W + xx) * 4
+        d[o] = r
+        d[o + 1] = g
+        d[o + 2] = b
+        d[o + 3] = 255
+      }
+  }
+}
+
 /** The static ground layer of a map, rendered once into its own canvas. */
 export function renderGround(m: GameMap, wall?: string, floor?: string): HTMLCanvasElement {
   const [cv, c] = canvas(m.w * TS, m.h * TS)
   const f = pen(c)
+  // The outskirts' grass goes into image data (after everything else), then onto the canvas.
+  const wildTile = (x: number, y: number) =>
+    (m.wild?.[y * m.w + x] ?? 0) > 0 &&
+    (m.ground[y * m.w + x] === T.GRASS || m.ground[y * m.w + x] === T.FLOWERS)
   const wallFin = WALLPAPERS[wall ?? 'cream'] ?? WALLPAPERS.cream
   const floorFin = FLOORS[floor ?? 'oak'] ?? FLOORS.oak
   for (let y = 0; y < m.h; y++)
     for (let x = 0; x < m.w; x++) {
       const px = x * TS
       const py = y * TS
+      if (wildTile(x, y)) continue
       switch (m.ground[y * m.w + x]) {
-        case T.GRASS:
-          grass(f, px, py, x, y)
+        case T.GRASS: {
+          const w = m.wild?.[y * m.w + x] ?? 0
+          if (w > 0) wildGrass(f, px, py, x, y, w)
+          else grass(f, px, py, x, y)
           break
-        case T.FLOWERS:
-          flowers(f, px, py, x, y)
+        }
+        case T.FLOWERS: {
+          const w = m.wild?.[y * m.w + x] ?? 0
+          if (w > 0) {
+            wildGrass(f, px, py, x, y, w)
+            flowerHeads(f, px, py, x, y)
+          } else flowers(f, px, py, x, y)
           break
+        }
         case T.PATH:
           path(f, m, px, py, x, y)
           break
@@ -520,6 +632,17 @@ export function renderGround(m: GameMap, wall?: string, floor?: string): HTMLCan
           break
       }
     }
+  if (m.wild) {
+    const img = c.getImageData(0, 0, cv.width, cv.height)
+    const bf = bufferPen(img)
+    for (let y = 0; y < m.h; y++)
+      for (let x = 0; x < m.w; x++) {
+        if (!wildTile(x, y)) continue
+        wildGrass(bf, x * TS, y * TS, x, y, m.wild[y * m.w + x])
+        if (m.ground[y * m.w + x] === T.FLOWERS) flowerHeads(bf, x * TS, y * TS, x, y)
+      }
+    c.putImageData(img, 0, 0)
+  }
   return cv
 }
 
@@ -1085,6 +1208,167 @@ function pineSprite(): HTMLCanvasElement {
   })
 }
 
+function groundShadow(c: Ctx, x: number, y: number, w: number) {
+  c.globalCompositeOperation = 'destination-over'
+  c.fillStyle = 'rgba(0,0,0,0.3)'
+  c.fillRect(x, y, w, 4)
+  c.globalCompositeOperation = 'source-over'
+}
+
+/** The forest's own trees (src/forest), also used for the treeline round the grounds. */
+
+/** A tall dark pine: tiers of near-black needles, a thin trunk. 48 × 96, trunk on the bottom tile. */
+export function darkPineSprite(v: number): HTMLCanvasElement {
+  return cachedCtx(`fpine${v}`, 48, 96, (c) => {
+    const f = pen(c)
+    f('#2e2118', 21, 78, 6, 15)
+    f('#3d2c20', 22, 78, 2, 15)
+    const tiers = 6
+    for (let i = 0; i < tiers; i++) {
+      const top = 1 + i * 13
+      for (let r = 0; r < 18; r++) {
+        const half = Math.min(22, Math.floor(2 + (r + i * 2.6) * 0.8))
+        const y = top + r
+        f('#16301f', 24 - half, y, half * 2, 1)
+        f('#1f3d27', 24 - half, y, Math.floor(half * 1.2), 1)
+        if (r % 3 === 1)
+          for (let x = 24 - half + 2; x < 24 + half - 2; x += 4)
+            f(x < 24 ? '#2e5234' : '#12261a', x + ((r + v) % 2), y, 2, 1)
+      }
+      const half = Math.min(22, Math.floor(2 + (17 + i * 2.6) * 0.8))
+      for (let x = 24 - half; x < 24 + half; x += 3)
+        f('#16301f', x, top + 18, 2, 1 + Math.floor(hash(x, i, 1301 + v) * 2))
+    }
+    outlineCanvas(c, 48, 96, [0x10, 0x14, 0x12])
+    groundShadow(c, 12, 91, 24)
+  })
+}
+
+/** A dark broad-leaved tree: heavy clumps of murky green. 64 × 84. */
+export function darkTreeSprite(v: number): HTMLCanvasElement {
+  return cachedCtx(`ftree${v}`, 64, 84, (c) => {
+    const f = pen(c)
+    f('#2e2118', 28, 50, 8, 31)
+    f('#3d2c20', 29, 50, 3, 31)
+    f('#2e2118', 23, 78, 18, 3)
+    disc(f, 32, 32, 28, 26, '#14281c')
+    for (let i = 0; i < 16; i++) {
+      const a = hash(i, v, 1311) * Math.PI * 2
+      const dd = Math.sqrt(hash(v, i, 1312)) * 20
+      const x = 32 + Math.cos(a) * dd
+      const y = 30 + Math.sin(a) * dd * 0.85
+      const r = 6 + hash(i, i, 1313 + v) * 3
+      disc(f, x + 0.6, y + 1, r, r * 0.85, '#193524')
+      disc(f, x, y, r * 0.85, r * 0.7, '#22432d')
+      disc(f, x - r * 0.3, y - r * 0.35, r * 0.4, r * 0.3, '#305636')
+    }
+    outlineCanvas(c, 64, 84, [0x10, 0x14, 0x12])
+    groundShadow(c, 14, 79, 36)
+  })
+}
+
+/** Dark undergrowth: along the treeline's edge, in its gaps, and on the forest's way home. */
+export function undergrowthSprite(v: number): HTMLCanvasElement {
+  return cachedCtx(`brush${v}`, 22, 18, (c) => {
+    const f = pen(c)
+    disc(f, 11, 10, 10, 7, '#193524')
+    for (const [x, y, r] of [
+      [6, 10, 5],
+      [15, 10, 5],
+      [11, 7, 5.5],
+    ]) {
+      disc(f, x, y, r, r * 0.8, '#22432d')
+      disc(f, x - 1, y - 1.5, r * 0.5, r * 0.35, '#2a4a30')
+    }
+    if (v % 2) f('#3a5a3a', 9, 5, 2, 1)
+    outlineCanvas(c, 22, 18, [0x10, 0x14, 0x12])
+  })
+}
+
+/**
+ * A dead tree: a grey trunk with bare, crooked branches. 48 × 88. In the forest and out in the
+ * far outskirts of the grounds.
+ */
+export function deadTreeSprite(v: number): HTMLCanvasElement {
+  return cachedCtx(`dead${v}`, 48, 88, (c) => {
+    const f = pen(c)
+    const bark = '#4a4440'
+    const lit = '#6a625a'
+    f(bark, 21, 30, 6, 55)
+    f(lit, 22, 30, 2, 55)
+    f(bark, 17, 82, 14, 3)
+    // Branches: crooked lines going up and out, each with a twig or two.
+    const branch = (x: number, y: number, dx: number, len: number) => {
+      let bx = x
+      let by = y
+      for (let i = 0; i < len; i++) {
+        bx += dx
+        by -= i % 2 === 0 ? 1 : hash(i, v, 1321) < 0.5 ? 1 : 0
+        f(bark, Math.round(bx), by, 2, 2)
+        if (i === Math.floor(len / 2)) f(bark, Math.round(bx), by - 3, 1, 3)
+      }
+      f(lit, Math.round(bx), by, 1, 1)
+    }
+    branch(24, 44, -1, 12 + v)
+    branch(24, 38, 1, 13 - v)
+    branch(23, 30, -0.6, 10)
+    branch(24, 28, 0.7, 11)
+    f(bark, 23, 8, 2, 22)
+    branch(24, 18, -0.8, 7)
+    branch(24, 14, 0.9, 6)
+    outlineCanvas(c, 48, 88, [0x10, 0x14, 0x12])
+    groundShadow(c, 12, 84, 24)
+  })
+}
+
+/** A tree stump, grey and split. */
+export function stumpSprite(): HTMLCanvasElement {
+  return cachedCtx('stump', 20, 16, (c) => {
+    const f = pen(c)
+    f('#3d2c20', 3, 4, 14, 10)
+    f('#5a4636', 3, 2, 14, 4)
+    f('#6e5844', 5, 3, 10, 2)
+    f('#4a382a', 8, 3, 4, 1)
+    f('#2e2118', 1, 12, 4, 2)
+    f('#2e2118', 15, 12, 4, 2)
+    outlineCanvas(c, 20, 16, [0x10, 0x14, 0x12])
+    groundShadow(c, 2, 13, 16)
+  })
+}
+
+/** An infirmary bed (2 × 2 tiles, head at the top): steel frame, white sheets, a pale blanket. */
+function sickbedSprite(): HTMLCanvasElement {
+  return cached('sickbed', 34, 40, (f) => {
+    f('rgba(0,0,0,0.16)', 2, 36, 32, 3)
+    f('#7c8794', 1, 0, 32, 4)
+    f('#b6c0cb', 2, 1, 30, 2)
+    f('#7c8794', 1, 4, 2, 34)
+    f('#7c8794', 31, 4, 2, 34)
+    f('#f4f2ec', 3, 5, 28, 30)
+    f('#dedbd2', 3, 33, 28, 2)
+    f('#ffffff', 7, 7, 20, 7)
+    f('#e3e0d8', 7, 13, 20, 1)
+    f('#a9c4d6', 3, 17, 28, 18)
+    f('#c3d8e6', 3, 17, 28, 2)
+    f('#93b1c4', 3, 33, 28, 2)
+    f('#7c8794', 1, 35, 32, 2)
+  })
+}
+
+/** A folding hospital screen: a steel frame with pale green cloth. */
+function screenSprite(): HTMLCanvasElement {
+  return cached('screen', 16, 30, (f) => {
+    f('rgba(0,0,0,0.15)', 1, 28, 14, 2)
+    f('#7c8794', 1, 0, 2, 29)
+    f('#7c8794', 13, 0, 2, 29)
+    f('#7c8794', 1, 0, 14, 2)
+    f('#cfe0d4', 3, 2, 10, 22)
+    f('#b8cfbf', 3, 2, 1, 22)
+    f('#b8cfbf', 8, 2, 1, 22)
+    f('#7c8794', 1, 24, 14, 1)
+  })
+}
+
 function bushSprite(berries: boolean): HTMLCanvasElement {
   return cachedCtx(`bush${berries}`, 20, 18, (c) => {
     const f = pen(c)
@@ -1498,6 +1782,41 @@ export function drawObject(
       f('#fff6e6', px + 27, py - 12, 4, 3)
       f('#6b4526', px, py - 9, 2, 13)
       f('#6b4526', px + 30, py - 9, 2, 13)
+      break
+    case 'brush':
+    case 'edgebush':
+      // Undergrowth along the treeline: solid, or (brush) a gap you can push through. They look
+      // the same.
+      c.drawImage(undergrowthSprite(Math.floor(hash(o.x, o.y, 5) * 4)), px - 3, py - 3)
+      break
+    case 'edgepine':
+      c.drawImage(darkPineSprite(Math.floor(hash(o.x, o.y, 4) * 2)), px + 8 - 24, py + 16 - 96)
+      break
+    case 'edgetree':
+      c.drawImage(darkTreeSprite(Math.floor(hash(o.x, o.y, 4) * 3)), px + 8 - 32, py + 16 - 84)
+      break
+    case 'infirmaryDoor':
+      // A pale door with a little red cross on it.
+      f('#5b4030', px + 1, py + 1, 14, 31)
+      f('#e6e1d3', px + 2, py + 2, 12, 30)
+      f('#cfc8b6', px + 4, py + 17, 8, 11)
+      f('#c8453f', px + 6, py + 7, 4, 1)
+      f('#c8453f', px + 7, py + 6, 2, 3)
+      f('#c8453f', px + 6, py + 7, 4, 2)
+      f('#8a8170', px + 11, py + 17, 2, 2)
+      f('#f4ecd8', px + 2, py - 2, 12, 3)
+      break
+    case 'deadtree':
+      c.drawImage(deadTreeSprite(Math.floor(hash(o.x, o.y, 4) * 3)), px + 8 - 24, py + 16 - 88)
+      break
+    case 'stump':
+      c.drawImage(stumpSprite(), px - 2, py)
+      break
+    case 'sickbed':
+      c.drawImage(sickbedSprite(), px - 1, py - 6)
+      break
+    case 'screen':
+      c.drawImage(screenSprite(), px, py - 14)
       break
     case 'hallDoor':
       f('#5b4030', px + 1, py + 1, 14, 31)

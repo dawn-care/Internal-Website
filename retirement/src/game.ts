@@ -63,11 +63,58 @@ import {
   renderGround,
 } from './art'
 import { sfx } from './audio'
-import { footstep, petSound, playClip, setAmbience, type Surface } from './soundscape'
+import { footstep, hasClip, petSound, playClip, setAmbience, type Surface } from './soundscape'
+import { setMusicLevel } from './music'
+import { TREELINE } from '../shared/grounds'
+import { Forest } from './forest/gen'
+import { TALL, chunkGround, drawForestObj, flatKind, warmForest } from './forest/art'
+import {
+  Darkness,
+  darknessAt,
+  deepness,
+  drawFog,
+  forestGrade,
+  lightRadius,
+  outskirtsGrade,
+} from './forest/light'
+import { hushWarnings, setForestAmbience, synthWarning, twigSnap } from './forest/sound'
+import {
+  BIRDS_AT_TREELINE,
+  CHUNK,
+  COLLAPSE_FADE_MS,
+  COLLAPSE_HOLD_MS,
+  COLLAPSE_MS,
+  EXIT_BACK,
+  HOME_GLOW_UNTIL,
+  MUSIC_SILENT_FROM,
+  NO_RETURN,
+  PET_GAP_NEAR,
+  PET_HOLD,
+  PET_WARN_COOLDOWN_MS,
+  PET_WARN_EDGE,
+  PET_WARN_GAP_EDGE,
+  PET_WARN_MS,
+  SEE_THROUGH,
+  SEE_THROUGH_H,
+  SEE_THROUGH_W,
+  PET_RUMBLE,
+  TWIG_CHANCE,
+  WIND_AT_TREELINE,
+  WIND_FROM,
+} from './forest/tuning'
 import * as garden from './garden'
 import {
   HOME_DOOR,
+  INFIRMARY_WAKE,
   buildRoom,
+  forestStub,
+  gapAt,
+  gapDistance,
+  gapReturn,
+  getInfirmary,
+  outskirts,
+  toTreeline,
+  type Gap,
   getGrounds,
   getHall,
   hallDoorX,
@@ -81,6 +128,7 @@ import {
   type GameMap,
   type Interact,
   type Npc,
+  type Obj,
   type Seat,
 } from './maps'
 import { HOUSE_CAT, Wildlife, eggDay, eggsLeft, houseCat } from './animals'
@@ -149,6 +197,15 @@ export class Game {
 
   mapId: MapId = 'grounds'
   map: GameMap = getGrounds()
+  /** The forest you're in, if you're in it (FOREST.md). It only ever exists in this browser. */
+  forest: Forest | null = null
+  /**
+   * This trip into the forest: the gap you came in by, how long you've been lost, and the collapse
+   * (ms since it began, 0 if not). Never saved: reload and you're back on the grounds.
+   */
+  trip: { gap: Gap; lostFor: number; collapse: number; deep: number } | null = null
+  private darkness = new Darkness()
+  private musicLevel = -1
   private groundCache = new Map<string, HTMLCanvasElement>()
   private fences = new Set<string>()
 
@@ -364,6 +421,8 @@ export class Game {
   private buildMap(id: MapId): GameMap {
     if (id === 'grounds') return getGrounds()
     if (id === 'hall') return getHall()
+    if (id === 'infirmary') return getInfirmary()
+    if (id === 'forest') return forestStub()
     const owner = this.ownerOf(id)!
     return buildRoom(owner, this.roomOf(owner) ?? { items: [] })
   }
@@ -385,24 +444,31 @@ export class Game {
     if (this.ownerOf(this.mapId)) this.map = this.buildMap(this.mapId)
   }
 
-  warp(to: MapId, x: number, y: number, dir: Dir, fade = true) {
+  warp(to: MapId, x: number, y: number, dir: Dir, fade = true, door = true) {
     if (this.decor.active) this.endDecorate()
+    const fromForest = this.mapId === 'forest'
+    if (to !== 'forest') {
+      this.forest = null
+      this.trip = null
+    }
     this.mapId = to
     this.map = this.buildMap(to)
     this.me.x = x
     this.me.y = y
     this.me.dir = dir
     this.seat = null
-    if (this.petOut) this.myPet.reset(x, y)
+    // Your pet won't go into the forest: it stays where it stopped, and is there when you're back.
+    if (this.petOut && to !== 'forest' && !(fromForest && to === 'grounds')) this.myPet.reset(x, y)
     this.remotePets.clear()
     this.resize()
     // Build this place's cached ground and sprites now, under the fade, not mid-walk.
     this.warm(this.map)
     if (fade) {
       this.fade = 1
-      sfx('door')
+      if (door) sfx('door')
     }
     this.ui.refresh()
+    this.ui.renderChat()
     if (to !== 'grounds') void this.refreshWorld()
     this.scheduleSync(30)
   }
@@ -410,6 +476,9 @@ export class Game {
   placeName(): string {
     if (this.mapId === 'grounds') return 'Sunset Acres grounds'
     if (this.mapId === 'hall') return 'The hallway'
+    if (this.mapId === 'infirmary') return 'The infirmary'
+    // Where you are in the forest: you don't know (FOREST.md "Build status").
+    if (this.mapId === 'forest') return 'Unknown'
     const owner = this.ownerOf(this.mapId)!
     if (owner === this.login) return 'Your room'
     return `${this.profiles.get(owner)?.look.name ?? owner}'s room`
@@ -422,6 +491,7 @@ export class Game {
   // --- movement & collision -------------------------------------------------------------------
 
   private solid(tx: number, ty: number): boolean {
+    if (this.forest) return this.forest.solid(tx, ty)
     if (!inBounds(this.map, tx, ty)) return true
     if (this.introAdaHere() && tx === intro.INTRO_ADA_TILE.x && ty === intro.INTRO_ADA_TILE.y)
       return true
@@ -432,6 +502,7 @@ export class Game {
 
   /** What's underfoot at (x, y), for the footstep sound. */
   surfaceAt(x: number, y: number): Surface {
+    if (this.forest) return 'leaves'
     const tx = Math.floor(x)
     const ty = Math.floor(y - 0.1)
     const m = this.map
@@ -488,7 +559,8 @@ export class Game {
   private update(dt: number) {
     let dx = 0
     let dy = 0
-    if (!this.typing() && !this.ui.panelOpen() && !this.ui.dialogueOpen()) {
+    const collapsing = !!this.trip?.collapse
+    if (!this.typing() && !this.ui.panelOpen() && !this.ui.dialogueOpen() && !collapsing) {
       if (this.keys.has('arrowleft') || this.keys.has('a')) dx -= 1
       if (this.keys.has('arrowright') || this.keys.has('d')) dx += 1
       if (this.keys.has('arrowup') || this.keys.has('w')) dy -= 1
@@ -518,8 +590,10 @@ export class Game {
       // Hurrying shuffles the feet faster (and so steps come quicker).
       this.me.anim += dt * (this.keys.has('shift') ? 10 : 7)
       const walked = Math.hypot(this.me.x - before.x, this.me.y - before.y) > 0.001
-      if (walked && landed(this.myFrame, this.me.anim))
+      if (walked && landed(this.myFrame, this.me.anim)) {
         footstep(this.surfaceAt(this.me.x, this.me.y))
+        if (this.forest && Math.random() < TWIG_CHANCE) twigSnap(0.6 + Math.random() * 0.4)
+      }
       this.myFrame = Math.floor(this.me.anim) % 4
       if (bumped) this.bumpDoor()
     } else {
@@ -543,7 +617,7 @@ export class Game {
       }
       r.anim = r.p.moving || d > 0.06 ? r.anim + dt * 7 : 0
       // Neighbours' footsteps, quieter with distance and panned to where they are.
-      if (r.p.map === this.mapId && r.anim > 0 && landed(r.frame, r.anim)) {
+      if (r.p.map === this.mapId && !this.forest && r.anim > 0 && landed(r.frame, r.anim)) {
         const dist = Math.hypot(r.rx - this.me.x, r.ry - this.me.y)
         if (dist < HEAR_STEPS)
           footstep(
@@ -555,6 +629,8 @@ export class Game {
       r.frame = r.anim > 0 ? Math.floor(r.anim) % 4 : 0
     }
     this.updatePets(dt)
+    if (this.forest) this.updateForest(dt)
+    else if (this.mapId === 'grounds') this.checkTreeline()
     this.updateWatching()
     if (this.mapId === 'grounds') {
       const threats = [{ x: this.me.x, y: this.me.y }]
@@ -576,7 +652,7 @@ export class Game {
     this.fade = Math.max(0, this.fade - dt * 3)
     const hour = gameHour(Date.now() + this.serverSkew)
     this.ui.setClock(clockText(hour))
-    setAmbience(hour, this.map.outdoor ? 'outdoors' : 'indoors')
+    this.updateSound(hour)
     this.ui.setPrompt(this.decor.active || this.ui.dialogueOpen() ? null : this.promptText())
     if (intro.isActive(this.save)) {
       this.ui.renderQuest()
@@ -1383,11 +1459,20 @@ export class Game {
     }
     if (!out && this.petOut) this.scheduleSync(50)
     this.petOut = out
-    if (out) {
+    if (out && !this.forest) {
       if (this.seat) {
         const spot = this.feetSpot(this.seat.x, this.seat.y)
         this.myPet.settle(dt, spot.x, spot.y)
-      } else this.myPet.update(dt, this.me.x, this.me.y)
+      } else if (
+        this.mapId === 'grounds' &&
+        toTreeline(this.myPet.x, this.myPet.y) < PET_HOLD &&
+        toTreeline(this.me.x, this.me.y) < toTreeline(this.myPet.x, this.myPet.y)
+      )
+        // Right at the treeline it won't come any closer: it stands and faces the trees.
+        this.myPet.hold(dt, facingEdge(this.myPet.x, this.myPet.y))
+      else this.myPet.update(dt, this.me.x, this.me.y)
+      if (this.mapId === 'grounds')
+        this.petAtTreeline(this.login, this.myPet, this.save.pet!.kind, true)
       this.petOutFor += dt
       if (!this.giftChecked && this.petOutFor > 4) {
         this.giftChecked = true
@@ -1410,6 +1495,7 @@ export class Game {
         const spot = this.feetSpot(r.p.x, r.p.y)
         fl.settle(dt, spot.x, spot.y)
       } else fl.update(dt, r.rx, r.ry)
+      if (this.mapId === 'grounds') this.petAtTreeline(login, fl, pet.kind, false)
     }
     for (const login of this.remotePets.keys())
       if (!this.others.has(login)) this.remotePets.delete(login)
@@ -1431,6 +1517,12 @@ export class Game {
     const pet = this.save.pet
     const wag = Math.floor(this.time / 260) % 2
     const follower = (look: PetLook, owner: string, f: Follower, mine: boolean) => {
+      // Growling or hissing at the treeline: standing, stiff, facing the trees.
+      const alarm = this.petAlarm.get(owner)
+      if (alarm && alarm.until > this.time) {
+        out.push({ look, mine, owner, x: f.x, y: f.y, pose: 'walk', dir: alarm.dir, frame: 0 })
+        return
+      }
       const pose = f.pose()
       out.push({
         look,
@@ -1443,7 +1535,7 @@ export class Game {
         frame: pose === 'walk' ? Math.floor(f.anim) % 4 : wag,
       })
     }
-    if (pet && this.petOut) follower(pet, this.login, this.myPet, true)
+    if (pet && this.petOut && !this.forest) follower(pet, this.login, this.myPet, true)
     const cat = houseCat(this.gameNow(), gameHour(this.gameNow()))
     if (cat.map === this.mapId) out.push({ look: HOUSE_CAT, mine: false, owner: 'house', ...cat })
     for (const [login, f] of this.remotePets) {
@@ -1510,8 +1602,25 @@ export class Game {
     return `${verb} ${pet.name}${treat ? ' · [F] Give a treat' : ''}`
   }
 
+  /** Whether a pet is close enough to the treeline to be uneasy (the same distance it warns at). */
+  private uneasy(x: number, y: number): boolean {
+    if (this.mapId !== 'grounds') return false
+    const near = gapDistance(x, y) < PET_GAP_NEAR
+    return toTreeline(x, y) <= (near ? PET_WARN_GAP_EDGE : PET_WARN_EDGE)
+  }
+
   private petPet(p: ReturnType<Game['visiblePets']>[number]) {
     const dog = p.look.kind === 'dog'
+    // By the treeline it's too uneasy to enjoy it (FOREST.md "Your pet").
+    if (p.owner !== 'house' && p.pose !== 'sleep' && this.uneasy(p.x, p.y)) {
+      const name = p.mine ? this.save.pet!.name : p.look.name
+      if (dog) petSound('whine', 0.6)
+      return this.say(
+        dog
+          ? `${name} looks nervous... its ears are flat, and it won't take its eyes off the trees.`
+          : `${name} looks nervous... its tail is puffed up, and it keeps staring at the trees.`,
+      )
+    }
     this.petFx.push({ x: p.x, y: p.y, t0: this.time })
     if (p.pose === 'sleep') petSound(dog ? 'pant' : 'purr', 0.5)
     else petSound(dog ? 'pant' : 'purr')
@@ -1656,7 +1765,11 @@ export class Game {
 
   private drawPet(p: ReturnType<Game['visiblePets']>[number], ox: number, oy: number) {
     const c = this.ctx
-    const px = Math.round(p.x * TS + ox)
+    const alarm = this.petAlarm.get(p.owner)
+    const tense = !!alarm && alarm.until > this.time
+    // A tense little tremble while it growls.
+    const shake = tense ? (Math.floor(this.time / 70) % 2 ? 1 : 0) : 0
+    const px = Math.round(p.x * TS + ox) + shake
     const py = Math.round(p.y * TS + oy)
     c.fillStyle = 'rgba(0,0,0,0.18)'
     c.fillRect(px - 5, py - 1, 10, 2)
@@ -1665,6 +1778,12 @@ export class Game {
       px - PET_W / 2,
       py - PET_H + 1,
     )
+    if (tense) {
+      // Hackles up: a ridge of raised fur along its back, ears flat (dark spikes over the sprite).
+      c.fillStyle = 'rgba(30,24,20,0.85)'
+      const top = py - PET_H + 6
+      for (let i = -3; i <= 3; i += 2) c.fillRect(px + i, top - (i % 4 === 1 ? 2 : 1), 1, 2)
+    }
     if (p.pose === 'sleep') {
       // Little z's drifting up.
       const t = (this.time / 1600) % 1
@@ -2187,6 +2306,7 @@ export class Game {
   // --- multiplayer ----------------------------------------------------------------------------
 
   sendChat(text: string) {
+    if (this.forest) return
     const clean = text.replace(/\s+/g, ' ').trim().slice(0, MAX_CHAT_CHARS)
     if (!clean) return
     this.pendingMsg = clean
@@ -2208,15 +2328,18 @@ export class Game {
     this.pendingMsg = null
     try {
       const res = await this.net.sync({
-        p: {
-          map: this.mapId,
-          x: round2(this.me.x),
-          y: round2(this.me.y),
-          dir: this.me.dir,
-          moving: this.me.moving,
-          ...(this.petOut && this.save.pet ? { pet: petLook(this.save.pet) } : {}),
-          ...(this.seat ? { sit: this.seat.id, sitAt: this.seatAt } : {}),
-        },
+        // In the forest nobody can see you: no position, no pet, nothing (FOREST.md).
+        p: this.forest
+          ? { map: 'forest', x: 0, y: 0, dir: 0, moving: false }
+          : {
+              map: this.mapId,
+              x: round2(this.me.x),
+              y: round2(this.me.y),
+              dir: this.me.dir,
+              moving: this.me.moving,
+              ...(this.petOut && this.save.pet ? { pet: petLook(this.save.pet) } : {}),
+              ...(this.seat ? { sit: this.seat.id, sitAt: this.seatAt } : {}),
+            },
         look: this.save.look,
         msg: msg ?? undefined,
         since: this.chatSince,
@@ -2265,6 +2388,11 @@ export class Game {
 
   private applyChat(msgs: ChatMsg[]) {
     if (!msgs.length) return
+    // You can't hear anyone from the forest: what's said while you're there never reaches you.
+    if (this.forest) {
+      for (const m of msgs) this.chatSince = Math.max(this.chatSince, m.id)
+      return
+    }
     const first = this.chatSince === 0
     const now = Date.now() + this.serverSkew
     for (const m of msgs) {
@@ -2371,6 +2499,7 @@ export class Game {
   }
 
   private render() {
+    if (this.forest) return this.renderForest(this.forest)
     const c = this.ctx
     const m = this.map
     const W = m.w * TS
@@ -2400,28 +2529,33 @@ export class Game {
 
     const fenceAt = (x: number, y: number) => this.fences.has(`${x},${y}`)
     const list: Drawable[] = []
-    for (const o of m.objects) {
-      if (!visible(o.x, o.y, o.w ?? 1, o.h ?? 1)) continue
-      const px = o.x * TS + ox
-      const py = o.y * TS + oy
-      if (FLAT_KINDS.has(o.k)) {
-        drawObject(c, o, px, py, this.time, fenceAt)
-        continue
-      }
-      const base =
-        o.k === 'home' || o.k === 'kitchen' ? (o.y + (o.h ?? 1)) * TS : (o.y + 1) * TS - 1
-      const seeThrough = (o.k === 'tree' || o.k === 'pine') && this.behindTree(o.x, o.y)
-      list.push({
-        y: base,
-        draw: () => {
-          // Trees fade when you walk behind them, so you're never lost under a canopy.
-          if (seeThrough) c.globalAlpha = 0.45
+    // Only the rows near the view (the grounds have hundreds of treeline trees).
+    const rows = this.objectRows(m)
+    const r0 = Math.max(0, y0 - MAX_OBJ_H)
+    const r1 = Math.min(rows.length - 1, y1)
+    for (let row = r0; row <= r1; row++)
+      for (const o of rows[row]) {
+        if (!visible(o.x, o.y, o.w ?? 1, o.h ?? 1)) continue
+        const px = o.x * TS + ox
+        const py = o.y * TS + oy
+        if (FLAT_KINDS.has(o.k)) {
           drawObject(c, o, px, py, this.time, fenceAt)
-          c.globalAlpha = 1
-          if (o.k === 'gametable') this.drawTableTop(`table:${o.x},${o.y}`, px, py)
-        },
-      })
-    }
+          continue
+        }
+        const base =
+          o.k === 'home' || o.k === 'kitchen' ? (o.y + (o.h ?? 1)) * TS : (o.y + 1) * TS - 1
+        const seeThrough = TALL_KINDS.has(o.k) && this.behindTree(o.x, o.y)
+        list.push({
+          y: base,
+          draw: () => {
+            // Trees fade when you walk behind them, so you're never lost under a canopy.
+            if (seeThrough) c.globalAlpha = 0.45
+            drawObject(c, o, px, py, this.time, fenceAt)
+            c.globalAlpha = 1
+            if (o.k === 'gametable') this.drawTableTop(`table:${o.x},${o.y}`, px, py)
+          },
+        })
+      }
 
     if (m.id === 'grounds') {
       perf?.mark('garden')
@@ -2488,7 +2622,10 @@ export class Game {
     }
     perf?.mark('present')
     const v = this.vctx
-    if (this.canvasFilter) v.filter = MOODS.property
+    // The colour grade drains as you walk out across the outskirts (FOREST.md).
+    if (this.canvasFilter)
+      v.filter =
+        m.id === 'grounds' ? outskirtsGrade(outskirts(this.me.x, this.me.y)) : MOODS.property
     v.drawImage(this.scene, 0, 0)
     if (this.canvasFilter) v.filter = 'none'
     perf?.mark('overlay')
@@ -2722,6 +2859,254 @@ export class Game {
     c.globalCompositeOperation = 'source-over'
   }
 
+  // --- the forest (FOREST.md) --------------------------------------------------------------
+
+  /** Walking out through a gap in the treeline takes you into the forest. Nothing marks it. */
+  private checkTreeline() {
+    if (this.fade > 0.3 || this.seat) return
+    const g = gapAt(Math.floor(this.me.x), Math.floor(this.me.y - 0.1))
+    if (g && toTreeline(this.me.x, this.me.y) < -(TREELINE - 0.8)) this.enterForest(g)
+  }
+
+  /** The recorded growl or hiss playing at the treeline, so crossing over can cut it off. */
+  private warningClip: GainNode | undefined
+
+  private enterForest(gap: Gap) {
+    // Nothing from the grounds follows you in, not even your pet's growl.
+    hushWarnings()
+    const ac = this.warningClip?.context
+    if (ac) this.warningClip!.gain.setTargetAtTime(0, ac.currentTime, 0.08)
+    this.warningClip = undefined
+    const f = new Forest(Math.floor(Math.random() * 2 ** 30), gap.side)
+    const s = f.start()
+    // Build the first few chunks and every sprite now, under the fade, not mid-step.
+    warmForest()
+    for (const ch of f.chunksIn(s.x - 24, s.y - 16, s.x + 24, s.y + 16)) chunkGround(ch)
+    this.warp('forest', s.x, s.y, s.dir, true, false)
+    this.forest = f
+    this.trip = { gap, lostFor: 0, collapse: 0, deep: 0 }
+    this.ui.refresh()
+    this.ui.renderChat()
+    this.scheduleSync(30)
+  }
+
+  /** Back down the strip of undergrowth, before you're lost: home, to the gap you used. */
+  private leaveForest() {
+    const r = gapReturn(this.trip!.gap)
+    this.warp('grounds', r.x, r.y, r.dir, true, false)
+    this.ui.renderChat()
+  }
+
+  private updateForest(dt: number) {
+    const f = this.forest!
+    const t = this.trip!
+    if (t.collapse) {
+      t.collapse += dt * 1000
+      if (t.collapse > COLLAPSE_FADE_MS + COLLAPSE_HOLD_MS) this.wakeInInfirmary()
+      return
+    }
+    const depth = f.depth(this.me.x, this.me.y)
+    t.deep = deepness(depth)
+    if (!f.lost) {
+      if (f.onWayHome(this.me.x, this.me.y) && f.back(this.me.x, this.me.y) > EXIT_BACK)
+        return this.leaveForest()
+      // The point of no return: nothing announces it, the last of the music just goes.
+      if (depth > NO_RETURN) f.lose(this.me.x, this.me.y)
+    } else {
+      t.lostFor += dt * 1000
+      // The safety net: lost long enough, you sit down among the roots and wake up at home.
+      if (t.lostFor > COLLAPSE_MS) {
+        t.collapse = 1
+        this.keys.clear()
+      }
+    }
+    f.prune(this.me.x, this.me.y)
+    const vx = this.vw / TS / 2 + 4
+    const vy = this.vh / TS / 2 + 6
+    f.forgetHome(this.me.x - vx, this.me.y - vy, this.me.x + vx, this.me.y + vy)
+    // Make the chunks just beyond the view in idle time, so walking on never hitches.
+    if (Math.floor(this.time / 500) !== this.warmTick) {
+      this.warmTick = Math.floor(this.time / 500)
+      const r = 26
+      const ahead = f.chunksIn(this.me.x - r, this.me.y - r, this.me.x + r, this.me.y + r)
+      const next = ahead.find((ch) => !ch.canvas)
+      if (next) {
+        if ('requestIdleCallback' in window)
+          requestIdleCallback(() => chunkGround(next), { timeout: 400 })
+        else chunkGround(next)
+      }
+    }
+  }
+  private warmTick = 0
+
+  private wakeInInfirmary() {
+    const w = INFIRMARY_WAKE
+    this.warp('infirmary', w.x, w.y, w.dir, true, false)
+    this.fade = 1
+    window.setTimeout(() => {
+      this.ui.dialogue(
+        'Nurse Ada',
+        [
+          'There you are, dear. They found you wandering by the fence again.',
+          "You're in the infirmary. Have a little rest before you go back out, won't you?",
+        ],
+        { pitch: intro.ADA_VOICE, look: intro.INTRO_ADA.look, old: false },
+      )
+    }, 900)
+  }
+
+  /** Music, birdsong and the forest's own sound, from how far out (or in) you are. */
+  private updateSound(hour: number) {
+    let music: number
+    const f = this.forest
+    if (f) {
+      setAmbience(hour, 'none')
+      setForestAmbience(this.trip?.collapse ? 0 : 1)
+      music = 0
+    } else {
+      const w = this.mapId === 'grounds' ? outskirts(this.me.x, this.me.y) : 0
+      // Out past WIND_FROM the forest's wind starts to reach you, over the silence.
+      setForestAmbience(Math.max(0, (w - WIND_FROM) / (1 - WIND_FROM)) * WIND_AT_TREELINE)
+      setAmbience(hour, this.map.outdoor ? 'outdoors' : 'indoors', 1 - (1 - BIRDS_AT_TREELINE) * w)
+      music = Math.max(0, 1 - w / MUSIC_SILENT_FROM)
+    }
+    const v = Math.round(music * 100) / 100
+    if (v !== this.musicLevel) {
+      this.musicLevel = v
+      setMusicLevel(v, 1200)
+    }
+  }
+
+  /** When each pet last warned at the treeline, and its current warning (until, facing). */
+  private petWarned = new Map<string, number>()
+  private petAlarm = new Map<string, { until: number; dir: Dir }>()
+
+  /**
+   * A pet right by the treeline stops and growls (dog) or hisses (cat) at the trees: anywhere
+   * along it, but sooner near a gap (FOREST.md "Your pet"). Never a wall, never a text box.
+   */
+  private petAtTreeline(owner: string, f: Follower, kind: PetLook['kind'], mine: boolean) {
+    const edge = toTreeline(f.x, f.y)
+    const nearGap = gapDistance(f.x, f.y) < PET_GAP_NEAR
+    if (edge > (nearGap ? PET_WARN_GAP_EDGE : PET_WARN_EDGE)) return
+    const now = performance.now()
+    if (now - (this.petWarned.get(owner) ?? -Infinity) < PET_WARN_COOLDOWN_MS) return
+    this.petWarned.set(owner, now)
+    const dir = facingEdge(f.x, f.y)
+    this.petAlarm.set(owner, { until: this.time + PET_WARN_MS, dir })
+    const dist = Math.hypot(f.x - this.me.x, f.y - this.me.y)
+    const vol = (mine ? 1 : Math.max(0, 1 - dist / 12)) * (nearGap ? 1 : 0.7)
+    if (vol <= 0.02) return
+    const clip = kind === 'dog' ? 'growl' : 'hiss'
+    // The recording, with a low synthesized rumble under it (for a cat too: it's the dread).
+    if (hasClip(clip)) this.warningClip = playClip(clip, vol, (f.x - this.me.x) / 6)
+    else synthWarning(clip, vol)
+    synthWarning('growl', vol * PET_RUMBLE, kind === 'dog' ? 3.8 : 2.4)
+  }
+
+  private rowCache = new WeakMap<GameMap, Obj[][]>()
+  /** A map's objects bucketed by row (built once per map; rooms are rebuilt as they change). */
+  private objectRows(m: GameMap): Obj[][] {
+    let rows = this.rowCache.get(m)
+    if (!rows) {
+      rows = Array.from({ length: m.h }, () => [] as Obj[])
+      for (const o of m.objects) rows[Math.max(0, Math.min(m.h - 1, o.y))].push(o)
+      this.rowCache.set(m, rows)
+    }
+    return rows
+  }
+
+  private renderForest(f: Forest) {
+    const c = this.ctx
+    const t = this.trip!
+    this.cam.x = Math.round(this.me.x * TS - this.vw / 2)
+    this.cam.y = Math.round((this.me.y - 0.5) * TS - this.vh / 2)
+    const ox = -this.cam.x
+    const oy = -this.cam.y
+    perf?.mark('ground')
+    c.fillStyle = '#14100c'
+    c.fillRect(0, 0, this.vw, this.vh)
+    const x0 = Math.floor(this.cam.x / TS) - 3
+    const y0 = Math.floor(this.cam.y / TS) - 2
+    const x1 = Math.ceil((this.cam.x + this.vw) / TS) + 3
+    const y1 = Math.ceil((this.cam.y + this.vh) / TS) + 7
+    const chunks = f.chunksIn(x0, y0, x1, y1)
+    for (const ch of chunks)
+      c.drawImage(chunkGround(ch), ch.cx * CHUNK * TS + ox, ch.cy * CHUNK * TS + oy)
+    perf?.mark('objects')
+    const list: Drawable[] = []
+    for (const ch of chunks)
+      for (const o of ch.objects) {
+        if (o.x < x0 || o.x > x1 || o.y < y0 || o.y > y1) continue
+        const px = o.x * TS + ox
+        const py = o.y * TS + oy
+        if (flatKind(o.k)) {
+          drawForestObj(c, o, px, py)
+          continue
+        }
+        // Forest trees are taller and closer together: they fade over a wider area round you.
+        const dx = this.me.x - (o.x + 0.5)
+        const dy = this.me.y - (o.y + 1)
+        const see = TALL.has(o.k) && Math.abs(dx) < SEE_THROUGH_W && dy < 0 && dy > -SEE_THROUGH_H
+        list.push({
+          y: (o.y + 1) * TS - 1,
+          draw: () => {
+            if (see) c.globalAlpha = SEE_THROUGH
+            drawForestObj(c, o, px, py)
+            c.globalAlpha = 1
+          },
+        })
+      }
+    list.push({
+      y: this.me.y * TS,
+      draw: () =>
+        this.drawPerson(this.save.look, this.me.x, this.me.y, this.me.dir, this.me.anim, ox, oy),
+    })
+    perf?.mark('draw')
+    list.sort((a, b) => a.y - b.y)
+    for (const d of list) d.draw()
+    perf?.mark('light')
+    drawFog(c, this.vw, this.vh, this.cam.x, this.cam.y, this.time, 0.6 + 0.4 * t.deep)
+    const night = darkness(gameHour(this.gameNow())) / NIGHT
+    const depth = f.depth(this.me.x, this.me.y)
+    const glowsAt: { x: number; y: number; r: number; a: number }[] = []
+    // The home's lights, faint through the trees behind you, until you're far enough in.
+    if (!f.lost && depth < HOME_GLOW_UNTIL) {
+      const hx = 0.5 - f.into.x * 6
+      const hy = 0.5 - f.into.y * 6
+      glowsAt.push({
+        x: hx * TS + ox,
+        y: hy * TS + oy,
+        r: 6 * TS,
+        a: 0.6 * (1 - depth / HOME_GLOW_UNTIL),
+      })
+    }
+    const flicker = 1 + Math.sin(this.time / 310) * 0.02 + Math.sin(this.time / 83) * 0.01
+    this.darkness.draw(
+      c,
+      this.vw,
+      this.vh,
+      this.me.x * TS + ox,
+      (this.me.y - 0.6) * TS + oy,
+      lightRadius(t.deep) * TS * flicker,
+      darknessAt(t.deep, night),
+      glowsAt,
+    )
+    const black = t.collapse ? Math.min(1, t.collapse / COLLAPSE_FADE_MS) : 0
+    const fade = Math.max(this.fade, black)
+    if (fade > 0) {
+      c.fillStyle = `rgba(8,8,12,${fade})`
+      c.fillRect(0, 0, this.vw, this.vh)
+    }
+    perf?.mark('present')
+    const v = this.vctx
+    if (this.canvasFilter) v.filter = forestGrade(t.deep)
+    v.drawImage(this.scene, 0, 0)
+    if (this.canvasFilter) v.filter = 'none'
+    perf?.mark('overlay')
+    this.renderOverlay()
+  }
+
   private renderOverlay() {
     const c = this.octx
     c.clearRect(0, 0, innerWidth, innerHeight)
@@ -2778,7 +3163,7 @@ export class Game {
     const fontPx = Math.max(11, s * 3)
     const people: { login: string; name: string; x: number; y: number; me: boolean }[] = []
     for (const r of this.others.values())
-      if (r.p.map === this.mapId)
+      if (r.p.map === this.mapId && !this.forest)
         people.push({ login: r.p.login, name: r.p.look.name, x: r.rx, y: r.ry, me: false })
     people.push({
       login: this.login,
@@ -2799,7 +3184,33 @@ export class Game {
         tag(c, p.name, sp.x, sp.y - 2, fontPx * 0.9, '#fff8ef', 'rgba(30,33,64,0.7)')
       }
     }
+    // Collapsing: on the black screen, one line, fading in.
+    const col = this.trip?.collapse ?? 0
+    if (col > COLLAPSE_FADE_MS * 0.8) {
+      c.globalAlpha = Math.min(1, (col - COLLAPSE_FADE_MS * 0.8) / 1200)
+      c.fillStyle = '#d8d2c8'
+      c.font = `italic ${Math.max(16, s * 5)}px ${FONT}`
+      c.fillText(COLLAPSE_LINE, innerWidth / 2, innerHeight / 2)
+      c.globalAlpha = 1
+    }
   }
+}
+
+/** Objects tall enough to hide you: they fade when you walk behind them. */
+const TALL_KINDS = new Set(['tree', 'pine', 'deadtree', 'edgepine', 'edgetree'])
+
+/** The tallest object footprint in tiles (the home): how far above the view to look for objects. */
+const MAX_OBJ_H = 8
+
+/** What you see on the black screen when you collapse in the forest. */
+const COLLAPSE_LINE = 'You sit down among the roots, just for a moment…'
+
+/** Which way faces the nearest edge of the grounds (for a pet staring at the treeline). */
+function facingEdge(x: number, y: number): Dir {
+  const g = getGrounds()
+  const d = [y, g.h - y, x, g.w - x]
+  const i = d.indexOf(Math.min(...d))
+  return ([3, 0, 1, 2] as Dir[])[i]
 }
 
 const FLAVOR: Record<string, string> = {

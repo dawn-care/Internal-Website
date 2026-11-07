@@ -6,12 +6,14 @@ code). Built by vite.retirement.config.ts into dist/retirement; `npm run dev:ret
 serves it alone at localhost:5173/retirement/ in offline mode (localStorage save, two fake
 neighbours who wander and chat, see src/net.ts LocalNet).
 
-The forest beyond the grounds is designed but not built yet: FOREST.md records every decision
-(alone in the forest, no combat, real vs fake nurses and family, run-only chases, story notes
-kept only on a safe return, the draft Hollow Pines story). Read it before
-working on the forest and keep it current.
+The forest beyond the grounds is being built in stages (FOREST.md "Build stages"; stage 1, the
+forest itself, is done). FOREST.md records every decision (alone in the forest, no combat, real vs
+fake nurses and family, run-only chases, story notes kept only on a safe return, the draft Hollow
+Pines story) and, under "Build status", every judgement call made while building it. Read it
+before working on the forest and keep it current.
 COMMUNITY.md lists the agreed cozy additions (intro, pets, animals, benches, board games,
-plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
+plot upgrades, cooking, Chef Rosa's orders, reasons to come home to your room, collectibles) and
+marks which are built.
 
 ## Layout
 - shared/catalog.ts: crops, furniture, wallpapers, floors, look options, sizes. Pure data,
@@ -19,10 +21,20 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
 - shared/schema.ts: Save / Profile / presence / chat types, newSave, validateSave.
 - shared/tables.ts: the board-game tables (positions on the grounds, Connect 4 and checkers rules,
   who is seated, the table state and its validation). Used by the game, LocalNet and the server.
+- shared/grounds.ts: the grounds' size: the established area (EST_W × EST_H, placed at EST),
+  the outskirts round it and the treeline at the edge. Used by the server too (table positions).
 - src/maps.ts: the grounds (home, Community Kitchen, Community Garden with 12 allotments that
   plots grow into (PLOT_SIZES: 5×3, 7×4, 9×5, bought at the garden noticeboard), pond,
-  the henhouse in the north-west corner),
-  the hallway (12 doors, Nurse Ada), and rooms (14×10, built from a player's furniture).
+  the henhouse in the north-west corner), built in the established area's own coordinates and
+  placed at EST, with the outskirts (`outskirts(x, y)`: 0 inside, 1 at the treeline) and the
+  treeline with its hidden GAPS round it; the hallway (12 doors, Nurse Ada, the infirmary's door),
+  the infirmary (where you wake after the forest), and rooms (14×10, built from a player's
+  furniture). Use the exported constants (GARDEN, HOME_DOOR, ROSA_SPOT, ...) or EST, never raw
+  grounds coordinates.
+- src/forest/: the forest (FOREST.md), generated only in your browser. tuning.ts (every number),
+  gen.ts (chunks from the visit's seed, the way home, the point of no return), art.ts (its ground
+  and sprites), light.ts (darkness, your light, fog, the colour grades), sound.ts (its synthesized
+  ambience, twig snaps, stand-in growl/hiss). Game holds `forest` and `trip` while you're in it.
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an
   auto outline), src/game.ts (loop, movement, interaction, decorating, sync, rendering),
   src/ui.ts (HUD, hotbar, chat, Kitchen / Catalog / Wardrobe / Help panels),
@@ -123,8 +135,17 @@ with the breakdown for any frame over 20 ms. `window.perf` and `window.game` are
     quack every 5–11s by day (within 16 tiles of the mother duck), the rooster crows once as the
     hens come out at 6 am (carries across the grounds, at least 35% volume; faint indoors), a
     squirrel chitters as it darts up its tree, and the hens cluck when you take their eggs.
-  - sounds/birds_chirping.mp3, walking_on_dirt.mp3 and walking_on_leaves.mp3 aren't used yet
-    (dirt could replace pitched gravel on the garden paths; leaves are for the forest).
+  - sounds/birds_chirping.mp3 and walking_on_dirt.mp3 aren't used yet
+    (dirt could replace pitched gravel on the garden paths).
+  - The forest: the `leaves` surface plays `step-leaves-1..6` (walking_on_leaves at 0.03, 0.67,
+    1.25, 1.83, 3.05 and 5.23s, 0.42s each, 80ms out, -24 dB mean; step 1 is peak-limited to
+    about -27). The pet's warning at the treeline: `pet-growl` (only the growling in dog_growling,
+    none of its bark: 2.72–5.80s followed by 0.18–1.10s, joined with ffmpeg `acrossfade=d=0.2`
+    into a 3.8s wav, then cut-sfx.sh with a 400ms fade and -20 dB) and `pet-hiss` (all of cat_hissing, 150ms out, -22 dB), as the `growl` / `hiss`
+    clips. If any of these files is missing the game falls back to pitched grass steps and a
+    synthesized growl/hiss (src/forest/sound.ts). The forest's ambience is synthesized
+    (src/forest/sound.ts); the music and birdsong fade across the outskirts (src/game.ts
+    updateSound).
   - To add footsteps for a new surface (e.g. the forest), cut single steps into
     `step-<group>-<n>.mp3` and add the surface to SURFACES.
 
@@ -138,3 +159,5 @@ with the breakdown for any frame over 20 ms. `window.perf` and `window.game` are
   different instances may not see each other). In Redis, tables are the `ret:tables` hash, written
   with an EVAL compare-and-set on the version.
 - Chat: ≤140 chars, cleaned server-side, 1 message per 1.2s per player, last 50 kept.
+- The forest: presence with map `forest` is stored with no position, pet or seat (validatePresence),
+  and chat sent from there is dropped. Everything else about the forest stays in the browser.

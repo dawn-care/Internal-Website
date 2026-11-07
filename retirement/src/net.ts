@@ -1,4 +1,5 @@
 import { CROP_IDS, CROPS, HAIR_STYLES, MAX_SLOTS, PLOT_SIZES, plotSize } from '../shared/catalog'
+import { EST } from '../shared/grounds'
 import { getGrounds, seatsOf, type Seat } from './maps'
 import { petBedtime } from './pets'
 import {
@@ -209,10 +210,10 @@ export class LocalNet implements Net {
           pants: 1,
           accessory: 'cane',
         },
-        x: 20,
-        y: 15,
-        tx: 20,
-        ty: 15,
+        x: EST.x + 20,
+        y: EST.y + 15,
+        tx: EST.x + 20,
+        ty: EST.y + 15,
         dir: 0,
         slot: 1,
         sitter: true,
@@ -234,10 +235,10 @@ export class LocalNet implements Net {
           pants: 0,
           accessory: 'pearls',
         },
-        x: 28,
-        y: 17,
-        tx: 28,
-        ty: 17,
+        x: EST.x + 28,
+        y: EST.y + 17,
+        tx: EST.x + 28,
+        ty: EST.y + 17,
         dir: 0,
         slot: 2,
         garden: garden('sunflower'),
@@ -283,10 +284,10 @@ export class LocalNet implements Net {
           pants: i % 4,
           accessory: 'none',
         },
-        x: 12 + i * 2,
-        y: 17.5,
-        tx: 12 + i * 2,
-        ty: 17.5,
+        x: EST.x + 12 + i * 2,
+        y: EST.y + 17.5,
+        tx: EST.x + 12 + i * 2,
+        ty: EST.y + 17.5,
         dir: 0,
         slot: 3 + i < MAX_SLOTS ? 3 + i : -1,
         garden: full(),
@@ -504,7 +505,12 @@ export class LocalNet implements Net {
       if (d < 0.1) {
         if (b.sitter && Math.random() < 0.25) {
           const seats = seatsOf(getGrounds()).filter(
-            (s) => s.y < 16 && s.x > 15 && s.x < 32 && s.id !== body.p.sit && !tableOfSeat(s.id),
+            (s) =>
+              s.y < EST.y + 16 &&
+              s.x > EST.x + 15 &&
+              s.x < EST.x + 32 &&
+              s.id !== body.p.sit &&
+              !tableOfSeat(s.id),
           )
           const seat = seats[Math.floor(Math.random() * seats.length)]
           if (seat) {
@@ -515,8 +521,8 @@ export class LocalNet implements Net {
           }
         }
         if (Math.random() < 0.3) {
-          b.tx = 12 + Math.random() * 22
-          b.ty = 14 + Math.random() * 4.5
+          b.tx = EST.x + 12 + Math.random() * 22
+          b.ty = EST.y + 14 + Math.random() * 4.5
         }
       } else {
         const s = Math.min(d, 2.2 * dt)

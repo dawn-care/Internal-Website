@@ -1,7 +1,8 @@
 import { CROPS, plotSize } from '../shared/catalog'
 import { INTRO, type IntroStep, type MapId, type Save } from '../shared/schema'
 import * as garden from './garden'
-import { HOME_DOOR, getHall, plotOrigin, roomId, type GameMap, type Npc } from './maps'
+import { EST } from '../shared/grounds'
+import { HOME_DOOR, ROSA_SPOT, getHall, plotOrigin, roomId, type GameMap, type Npc } from './maps'
 
 /*
  * Nurse Ada's introduction: greet, then plant something, sell it, and buy a piece of furniture.
@@ -12,8 +13,8 @@ import { HOME_DOOR, getHall, plotOrigin, roomId, type GameMap, type Npc } from '
 /** Ada waits on the plaza just west of where new arrivals appear, until the intro is done. */
 export const INTRO_ADA: Npc = {
   id: 'nurse-intro',
-  x: 21.5,
-  y: 11.6,
+  x: EST.x + 21.5,
+  y: EST.y + 11.6,
   dir: 0,
   name: 'Nurse Ada',
   look: {
@@ -27,10 +28,10 @@ export const INTRO_ADA: Npc = {
     accessory: 'none',
   },
 }
-export const INTRO_ADA_TILE = { x: 21, y: 11 } as const
+export const INTRO_ADA_TILE = { x: EST.x + 21, y: EST.y + 11 } as const
 
 /** Where Chef Rosa stands (arrow target for "sell it"). */
-const ROSA = { x: 42.5, y: 16.9 }
+const ROSA = ROSA_SPOT
 
 /** What Ada gives you for finishing: a piece of furniture into storage. */
 export const INTRO_GIFT = 'painting'

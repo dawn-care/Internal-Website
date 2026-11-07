@@ -297,6 +297,14 @@ export class Follower {
     this.walkTo(dt, tx, ty)
   }
 
+  /** Stays where it is, facing `dir` (at the treeline it won't go any closer). */
+  hold(dt: number, dir: Dir) {
+    this.curl = false
+    this.walkTo(dt, this.x, this.y)
+    this.dir = dir
+    this.retrail()
+  }
+
   reset(x: number, y: number) {
     this.x = x
     this.y = y

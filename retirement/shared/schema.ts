@@ -142,7 +142,12 @@ export interface Profile {
 export const INTRO = { greet: 0, plant: 1, sell: 2, buy: 3, done: 4 } as const
 export type IntroStep = 0 | 1 | 2 | 3
 
-export type MapId = 'grounds' | 'hall' | `room:${string}`
+/**
+ * A place. 'forest' is generated in the player's own browser (FOREST.md): presence there carries
+ * no position, and nobody there is shown or heard. 'infirmary' is off the hallway.
+ */
+export type MapId = 'grounds' | 'hall' | 'infirmary' | 'forest' | `room:${string}`
+export const FOREST_MAP = 'forest' satisfies MapId
 export type Dir = 0 | 1 | 2 | 3 // down, left, right, up
 
 export interface PresenceIn {
@@ -479,6 +484,8 @@ export function isMapId(v: unknown): v is MapId {
   return (
     v === 'grounds' ||
     v === 'hall' ||
+    v === 'infirmary' ||
+    v === 'forest' ||
     (typeof v === 'string' && /^room:[A-Za-z0-9-]{1,39}$/.test(v))
   )
 }
@@ -516,6 +523,8 @@ export function validSeat(seat: unknown, map: MapId): seat is string {
 export function validatePresence(v: unknown): PresenceIn {
   const o = obj(v, 'presence')
   if (!isMapId(o.map)) throw new SaveError('presence.map is not a place.')
+  // In the forest you're alone: where you are isn't shared, and nothing comes with you.
+  if (o.map === FOREST_MAP) return { map: FOREST_MAP, x: 0, y: 0, dir: 0, moving: false }
   return {
     map: o.map,
     x: num(o.x, 'presence.x', -10, 200),

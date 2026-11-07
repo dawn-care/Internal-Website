@@ -1,7 +1,8 @@
 # The Forest: design decisions
 
-Status: **designed, not built yet.** This records what we've decided for the forest beyond the
-Sunset Acres grounds and why. Numbers marked _(tune)_ are starting points to adjust after
+Status: **being built. Stage 1 (the forest itself) is done**; see "Build status" at the end for
+what's built and the judgement calls made along the way. This records what we've decided for the
+forest beyond the Sunset Acres grounds and why. Numbers marked _(tune)_ are starting points to adjust after
 play-testing. The story outline near the end is a **draft** for the team to react to.
 
 ## The idea in one line
@@ -37,7 +38,8 @@ in to piece together a story, and you only keep what you learned if you make it 
   **outskirts**, so reaching the forest's edge takes **a bit of walking**. Nothing is out there
   but open country: grass, the odd tree or fence post, a path that peters out. _(tune: about 20–30
   tiles from the last building to the treeline on each side.)_
-- **The world fades as you walk out.** The further you get from the established area, the more:
+- **The world fades as you walk out.** The further you get from the established area, the more
+  (as built: see "Build status"; the music goes completely silent for the last stretch):
   - **the colours desaturate**: the property's bright colour grade (`MOODS.property` in
     src/game.ts) eases step by step towards a drained, greyer one, and only reaches the forest's
     full `MOODS.forest` inside the forest;
@@ -492,10 +494,104 @@ Each stage is playable before the next:
 - The full story text: the story above is a first version that will be revised as we go; more
   fragments and events still need writing, consistent with the story bible.
 - Pocket size (how many slots) and the cost or wait for a photo reprint from Nurse Ada.
-- How wide the outskirts are, how quickly things fade across them, and whether the camera or
-  lighting changes too (e.g. a slight vignette near the treeline).
-- The pet's growl/hiss at the treeline: only near the hidden gaps, or along the whole edge
-  (stronger near gaps); the trigger distance and cooldown. Needs a growl and a hiss recording.
+- Whether the camera or lighting changes too near the treeline (e.g. a slight vignette). (The
+  outskirts' width and fading, and the pet's warning, were settled in stage 1: see "Build
+  status".)
 - Who can reach the game. The site belongs to a dementia-care project. The forest's horror comes
   from the resident's own point of view and doesn't mock anyone, but if the sponsor or anyone
   from St. Ann's can sign in, they could stumble into it. Worth deciding whether that's fine.
+
+## Build status
+
+Tuning numbers live in `src/forest/tuning.ts` (and the grounds' size in `shared/grounds.ts`).
+`?forestfast` (dev builds only) shortens the point of no return to 12 tiles and the collapse to 25
+seconds, for testing.
+
+### Stage 1: the forest itself (built)
+
+Built: the bigger grounds with the outskirts (grade, music, birdsong and grass all fading with
+distance), the treeline and its hidden gaps, a fresh forest each visit (chunks from a per-visit
+seed), darkness with a circle of light, fog, the home's lights glowing behind you, synthesized
+forest ambience, leaf footsteps and twig snaps, being alone (no position sent, "wandered off…",
+quiet chat), walking back before you're lost, the point of no return, the collapse and waking in
+the infirmary, and your pet warning at the treeline and waiting there.
+
+Judgement calls (change freely):
+
+- **Size.** The grounds are 138 × 139: the established area (48 × 49, unchanged inside) sits in
+  the middle with **40 tiles of outskirts** on every side (about 12 seconds' walk, widened after
+  play-testing so the walk out builds tension) and a **treeline 5 tiles deep** at the edge (deep
+  enough to read as a wall of trees with the camera stopped at the map's edge). Everything on the
+  grounds moved by 45 tiles, so the games tables' ids changed: any game in progress at deploy is
+  dropped once.
+- **The outskirts' look.** The grass's colours step all the way to a dead grey-brown in 8 bands,
+  tufts thin out, and patches of grey bare earth open up where a soft noise is low (most of the
+  ground by the treeline). Flowers thin out with the square of the distance. Scenery: lone trees
+  and bushes in the nearer half; from halfway out (`DEAD_FROM`) **dead trees and stumps** instead.
+  Four broken runs of old fence posts, and the main path running on east and west and breaking up.
+  No vignette (left open).
+- **The treeline** is made of the forest's own sprites (dark pines, murky broad-leaved trees, the
+  odd dead trunk, dark undergrowth along its edge), not the property's bright trees, so the dying
+  outskirts end at something that already looks like the forest.
+- **Fading numbers.** Colour grade from the property's (saturate 1.18) to saturate 0.7,
+  brightness 0.94 at the treeline, in 10 steps. The **music fades out over the first 55% of the
+  walk and is completely silent from there to the treeline** (about 18 tiles of silence) and in
+  the forest (changed after play-testing: the silent walk builds the tension). Birdsong thins to
+  0.12. From 60% out, the forest's synthesized wind starts to reach you, up to 40% of its forest
+  level at the treeline.
+- **The point of no return's sign.** With no music in the forest, the sign is the home's lights:
+  they glow through the trees behind you, fainter as you go, and are gone exactly at the point of
+  no return. (This replaces "the last trace of the music disappearing".)
+- **Gaps.** Six fixed gaps, the same for everyone: two north, two south, one west, one east, each
+  2 tiles wide. They're undergrowth you can walk through, among the (solid) bushes along the
+  treeline's inner edge, with the treeline's trees closing over them. Walking out through the
+  last tile takes you in.
+- **Which way the forest goes.** You keep walking the way you were going when you came in.
+  Behind you is the treeline, solid except for a **3-tile-wide strip of undergrowth**; walking
+  2.4 tiles back down it (before you're lost) brings you out at the gap you used.
+- **The point of no return** is straight-line distance from where you came in (40 tiles). After
+  it, any piece of forest that held the treeline or the way home is forgotten as soon as it's out
+  of sight, and made again as plain forest (from a different seed), so turning back "just leads to
+  more forest".
+- **The forest's density.** About 6.5% of tiles have a tree near the edge, rising slowly with depth
+  (to 12%): pines, dark broad-leaved trees and dead trees. Clearings come from one soft noise,
+  winding open paths from another. Trees round you fade more than on the grounds (to 35%, over a
+  wider area) so you can always see yourself.
+- **Darkness.** Outside your light it's 80% dark at the entry, 94% at 70 tiles deep, and a little
+  darker at night. Your light is 6 tiles across at the entry, 3.6 deep in, and flickers slightly.
+  The forest's grade drains from saturate 0.55 to 0.35. (Light sources come in stage 6.)
+- **The place name** in the corner while you're in the forest is **"Unknown"** (chosen over
+  "Among the trees", which sounded too pleasant; "Gone" was the other idea). It never changes at
+  the point of no return, since nothing announces that.
+- **Sound.** There's no forest recording, so the ambience is synthesized: low wind that swells and
+  drops, a thin whistle in the branches, and now and then a creak (a slow, uneven train of clicks
+  through a high, narrow band, kept well away from the growl's low buzz so nothing in the forest
+  sounds like a dog) or two far-off knocks. Crossing into the forest cuts off any growl or hiss
+  still playing at the treeline: nothing from the grounds follows you in. A twig
+  snaps on about 1 step in 16.
+- **The collapse.** 12 minutes lost. The screen fades to black over 3 seconds and one line fades
+  in: _"You sit down among the roots, just for a moment…"_ Then you wake beside a bed in the
+  **infirmary** and Nurse Ada says: _"There you are, dear. They found you wandering by the fence
+  again."_ / _"You're in the infirmary. Have a little rest before you go back out, won't you?"_ (No
+  notes exist yet, so the "you can't remember what you found" line waits for stage 4.)
+- **The infirmary** is a small room off the east end of the hallway (a pale door with a red
+  cross): three beds behind screens and Nurse Ada. Anyone can visit it.
+- **Reloading mid-trip** puts you back on the grounds as usual: trip state is never saved. That's
+  also a way out of being lost; since nothing from a trip is kept unless you get home, it costs
+  you the trip, like collapsing.
+- **Your pet at the treeline** (the open question): it reacts **anywhere along the edge, and
+  sooner and louder near a gap**. It warns when it's within 2.8 tiles of the treeline, or 4.5
+  tiles if it's within 7 tiles of a gap; at most once every 20 s; neighbours' pets too (quieter
+  with distance). It stops 1.5 tiles short of the treeline, facing the trees, trembling, hackles
+  up, for 3.8 s (the growl's length). Under the recorded growl or hiss there's a low synthesized
+  rumble (for cats too). Petting a pet that close to the treeline doesn't please it: _"Rex looks
+  nervous... its ears are flat, and it won't take its eyes off the trees."_ (a cat: _"its tail is
+  puffed up, and it keeps staring at the trees."_), with a whine from a dog; it still counts as the
+  day's petting. While you're in the forest it waits where it stopped and follows you again when
+  you come out. (If night falls or you collapse, it goes home as usual.)
+- **Recordings:** the growl, the hiss and the forest's leaf footsteps are cut from the recordings
+  in retirement/sounds (CLAUDE.md "Music and sound" has the timings). The growl leaves out the
+  recording's bark and is made longer (3.8 s) from its two growling parts. The game falls back to a
+  synthesized growl/hiss and pitched-down grass steps if those files are ever missing.
+- **Not in stage 1:** the disorientation touches (they come with encounters and notes), light
+  sources, and everything from stage 2 on.

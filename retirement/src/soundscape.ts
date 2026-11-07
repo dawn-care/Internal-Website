@@ -20,10 +20,13 @@ const url = (name: string) =>
 
 // --- footsteps ---------------------------------------------------------------------------------
 
-export type Surface = 'grass' | 'gravel' | 'stone' | 'wood' | 'tile' | 'rug'
+export type Surface = 'grass' | 'gravel' | 'stone' | 'wood' | 'tile' | 'rug' | 'leaves'
 
 /** Which recordings each surface uses, and how: playback rate (pitch) and loudness. */
-const SURFACES: Record<Surface, { clips: string; rate: number; gain: number }> = {
+const SURFACES: Record<
+  Surface,
+  { clips: string; rate: number; gain: number; fallback?: { clips: string; rate: number } }
+> = {
   grass: { clips: 'step-grass', rate: 1.15, gain: 0.9 },
   gravel: { clips: 'step-gravel', rate: 1, gain: 0.75 },
   stone: { clips: 'step-stone', rate: 1, gain: 0.7 },
@@ -32,6 +35,14 @@ const SURFACES: Record<Surface, { clips: string; rate: number; gain: number }> =
   tile: { clips: 'step-wood', rate: 1.3, gain: 0.45 },
   // Rugs muffle the step.
   rug: { clips: 'step-wood', rate: 0.8, gain: 0.25 },
+  // The forest floor: dry leaves (cut from sounds/walking_on_leaves.mp3), or grass pitched down
+  // until those are cut.
+  leaves: {
+    clips: 'step-leaves',
+    rate: 1,
+    gain: 0.8,
+    fallback: { clips: 'step-grass', rate: 0.82 },
+  },
 }
 const STEP_VOLUME = 0.24
 
@@ -67,8 +78,12 @@ export function footstep(surface: Surface, volume = 1, pan = 0) {
   if (isMuted() || volume <= 0.01) return
   const ctx = audioContext()
   if (!ctx) return
-  const s = SURFACES[surface]
-  const clips = buffers.get(s.clips)
+  let s = SURFACES[surface]
+  let clips = buffers.get(s.clips)
+  if (!clips?.length && s.fallback && loading && buffers.size) {
+    s = { ...s, ...s.fallback }
+    clips = buffers.get(s.clips)
+  }
   if (!clips?.length) {
     void loadSteps(ctx)
     return
@@ -115,6 +130,9 @@ const CLIPS = {
   quack: { files: ['duck-quack-1', 'duck-quack-2', 'duck-quack-3', 'duck-quack-4'], gain: 0.3 },
   rooster: { files: ['rooster'], gain: 0.3 },
   chitter: { files: ['squirrel-chitter'], gain: 0.32 },
+  // Your pet at the treeline (FOREST.md "Your pet").
+  growl: { files: ['pet-growl'], gain: 0.4 },
+  hiss: { files: ['pet-hiss'], gain: 0.36 },
 }
 export type Clip = keyof typeof CLIPS
 export type PetSound = 'bark' | 'whine' | 'pant' | 'meow' | 'purr'
@@ -144,7 +162,7 @@ function loadClips(ctx: AudioContext): Promise<void> {
  * Plays a recorded sound (follows "Sound: on/off"), a touch higher or lower each time.
  * `volume` scales it (e.g. by distance), `pan` places it from -1 (left) to 1 (right).
  */
-export function playClip(name: Clip, volume = 1, pan = 0) {
+export function playClip(name: Clip, volume = 1, pan = 0): GainNode | undefined {
   if (isMuted() || volume <= 0.01) return
   const ctx = audioContext()
   if (!ctx) return
@@ -167,6 +185,12 @@ export function playClip(name: Clip, volume = 1, pan = 0) {
   panner.pan.value = Math.max(-1, Math.min(1, pan))
   src.connect(gain).connect(panner).connect(ctx.destination)
   src.start()
+  return gain
+}
+
+/** Whether a recording is there to play (some are still to be cut, see CLAUDE.md). */
+export function hasClip(name: Clip): boolean {
+  return CLIPS[name].files.some((f) => url(f))
 }
 
 /** A pet's sound, right where you are. */
@@ -182,7 +206,7 @@ const BEDS: Record<Bed, string> = {
   day: 'amb-day-birds',
   night: 'amb-night-crickets',
 }
-const AMBIENCE_VOLUME = 0.50
+const AMBIENCE_VOLUME = 0.5
 /** Indoors you still hear the outside, faintly, through the windows. */
 const INDOOR_LEVEL = 0.18
 const CHANGE_MS = 6000
@@ -289,10 +313,16 @@ function apply(ms: number) {
  * `hour` is the shared game clock; `place` is 'outdoors', 'indoors' or 'none' (silence, e.g.
  * for somewhere the ambience shouldn't follow you).
  */
-export function setAmbience(hour: number, place: 'outdoors' | 'indoors' | 'none') {
+export function setAmbience(
+  hour: number,
+  place: 'outdoors' | 'indoors' | 'none',
+  /** Scales it (the birdsong thins out across the outskirts); steps of 0.05. */
+  scale = 1,
+) {
+  const base = place === 'outdoors' ? 1 : place === 'indoors' ? INDOOR_LEVEL : 0
   wanted = {
     bed: place === 'none' ? null : bedFor(hour),
-    level: place === 'outdoors' ? 1 : place === 'indoors' ? INDOOR_LEVEL : 0,
+    level: Math.round(base * scale * 20) / 20,
   }
   apply(CHANGE_MS)
 }

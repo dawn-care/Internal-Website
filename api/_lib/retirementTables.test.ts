@@ -6,11 +6,12 @@ import {
   seatedAt,
   type Seated,
   type TableState,
+  TABLES,
 } from '../../retirement/shared/tables.js'
 
 /* The board-game rules shared by the server, the game and the offline stand-in. */
 
-const T = 'table:14,13'
+const T = TABLES[0].id
 const seated: Seated = [
   { login: 'ada', name: 'Ada' },
   { login: 'grace', name: 'Grace' },
@@ -151,7 +152,7 @@ describe('seatedAt', () => {
         p('grace', `${T}:0`, 200),
         p('ada', `${T}:0`, 100),
         p('lin', `${T}:1`, 50, 'hall'),
-        p('bo', 'table:33,13:1', 10),
+        p('bo', `${TABLES[1].id}:1`, 10),
       ]),
     ).toEqual([{ login: 'ada', name: 'ada' }, null])
   })

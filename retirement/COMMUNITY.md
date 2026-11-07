@@ -166,10 +166,12 @@ drawing; the adoption panel in src/ui.ts). How it works and the calls made:
   petting makes a dog pant and a cat purr; a treat, a gift, adoption and your pet trotting out of
   the front door get a bark or a meow; begging for a treat you can't give gets a whine (dog) or a
   meow (cat). Only the treat crunch is synthesized.
-- **Coming next (forest):** the grounds grow a wide band of outskirts that fade (colours, music,
-  grass) as you walk out; near the treeline beyond them, a dog growls and a cat hisses at the
-  trees, warning you that the forest is dangerous. Designed in FOREST.md ("Your pet"), not
-  built yet; it needs growl and hiss recordings.
+- **At the treeline (built with the forest, FOREST.md "Your pet"):** the grounds now have a wide
+  band of outskirts that fade (colours, music, grass) as you walk out. Near the treeline a dog
+  growls and a cat hisses at the trees (over a low rumble), hackles up, and won't go any closer;
+  petting it there only gets "looks nervous...". It waits where it stopped while you're in the
+  forest. The growl and hiss are sfx/pet-growl.mp3 and
+  sfx/pet-hiss.mp3, cut from the recordings in retirement/sounds.
 - **Offline:** in LocalNet, Nana June walks with Pickles (a calico) and Grandpa Walt's dog Duke
   is asleep at home in his room. Both have beds.
 
@@ -411,6 +413,85 @@ Notes: recipes are shared data in `shared/catalog.ts`; meals are inventory items
 - **Meals** go in your basket and sell to Chef Rosa (Sell produce tab). Eating them, and what they
   do in the forest, comes with the forest. Rosa's daily orders (not built yet) can reward new
   recipes later.
+- **Next:** baked goods move to an oven at home and take time to bake (see "Reasons to come home",
+  "Baking at home").
+
+## Reasons to come home (your room)
+
+Your room is for decorating and for your pet to sleep in, and once it's decorated nothing brings you
+back. These additions make it somewhere you look in on each day.
+
+Ground rules, for all of them:
+
+- **A small reward for coming home, never a chore.** Nothing spoils, dies, wilts or gets sad if you
+  stay away. Anything that waits for you keeps waiting.
+- **No sleeping to skip time.** The clock is shared, so a bed can't skip the night.
+- Daily things follow the same New York calendar day as pet care, unless they're timed (baking).
+- Each piece of furniture gets one small action; nothing needs a long minigame.
+
+### Pet gifts arrive on the pet bed
+
+- The once-a-day gift (5 hearts and up, see "Pets") is no longer handed over outside. Your pet
+  leaves it **on its bed in your room** and it waits there until you pick it up.
+- Face the pet bed and press E to take it. A small bundle on the bed shows there's something
+  waiting. Neighbours visiting see the bundle but can't take it.
+- If your pet doesn't have a bed in the room (stored away), the gift waits in storage
+  _(decide: or the pet just brings it out to you as today)_.
+
+### Mail
+
+- Letters arrive **on your nightstand** (everyone has one from the start), at most one a day
+  _(tune)_. The roadside mailbox on the grounds puts its red flag up when there's mail waiting at
+  home.
+- Face the nightstand and press E to read them. Letters you've read go in a small bundle you can
+  reread.
+- Who writes: family (a grandchild's drawing, news from home), Nurse Ada, Chef Rosa (a recipe tip,
+  a lesson at half price), the garden committee. Some letters come with a little something: a seed
+  packet, a few coins, a treat for your pet, now and then a piece of furniture.
+- _(Decide later, with the forest:)_ family letters with photos could quietly teach what your real
+  family looks like, before the forest tests it (FOREST.md, "The photo").
+
+### Record player
+
+- Face it and press E to choose what plays in your room: any track from the music playlist, or
+  "quiet". In your room it plays your choice on repeat instead of the shuffled playlist; outside
+  your room the playlist carries on as before.
+- Neighbours visiting your room hear your choice too (it's part of the room, like the wallpaper).
+- Follows the Music on/off toggle.
+
+### Puzzle table
+
+- A jigsaw you finish over several days. Face the table and press E to sit and add a few pieces
+  _(tune: a day's share, so a puzzle takes about a week)_. The picture fills in on the tabletop.
+- Neighbours visiting can add a piece too (it's still your puzzle; a nice reason to visit).
+- A finished puzzle can be glued and hung: it becomes a wall hanging in storage, and a new box
+  arrives (by mail). Each picture is a collectible ("Things to collect").
+
+### Fish tank
+
+- Face it and press E to feed the fish, once a day. They gather at the top for a moment.
+- Nothing bad happens if you don't. Feeding them on a few days _(tune)_ brings a new fish to the
+  tank, up to a full tank of different kinds (collectibles).
+
+### Baking at home (the stove becomes an oven)
+
+The stove as built only saves a walk: cooking at the Kitchen is instant and costs nothing. This
+gives it a job the Kitchen can't do:
+
+- **Quick dishes stay instant**, at the Kitchen or at home: radish salad, garden omelette,
+  vegetable soup.
+- **Baked goods need your oven and take real time:** carrot cake, strawberry jam toast, roasted
+  sunflower seeds, pumpkin pie _(tune: a few minutes each, the pie longest)_. Like crops, the time
+  is worked out from timestamps, so it bakes while you're out in the garden.
+- Put a dish in (one recipe at a time, a batch of up to a few _(tune)_), go about your day, and
+  come home to take it out. A finished dish waits in the oven until you collect it; nothing burns.
+- Chef Rosa still teaches every recipe. Her Cook tab marks the baked ones "bake at home" and says
+  you'll need a stove. The baked goods are the best sellers, so the stove pays for itself.
+- Steam over the oven while something's baking, for you and anyone visiting.
+- Save: what's in the oven (recipe, how many, when it went in), validated by the server like the
+  rest.
+- This changes cooking as built: cake, jam toast, roasted seeds and pie are instant at the Kitchen
+  today and move to the oven.
 
 ## Things to collect
 
@@ -426,4 +507,6 @@ Notes: recipes are shared data in `shared/catalog.ts`; meals are inventory items
 2. Pets, animals on the property (with chickens and eggs), benches
 3. Plot upgrades (built), Chef Rosa's daily orders and cooking
 4. Board-game tables: Connect 4 and checkers (built), chess later
-5. Collectibles, added alongside the others as they're built
+5. Reasons to come home: pet gifts on the pet bed, mail, baking at home, then the record
+   player, puzzle table and fish tank
+6. Collectibles, added alongside the others as they're built

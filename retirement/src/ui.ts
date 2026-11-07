@@ -101,6 +101,8 @@ export interface DialogueOptions {
 }
 
 const TYPE_MS = 24
+/** The chat box in the forest. */
+const QUIET = "…you can't hear anyone from here."
 
 export class UI {
   private game!: Game
@@ -925,6 +927,9 @@ export class UI {
   private mapName(map: MapId): string {
     if (map === 'grounds') return 'outside'
     if (map === 'hall') return 'hallway'
+    if (map === 'infirmary') return 'the infirmary'
+    // Friends notice you're gone, but not where (FOREST.md "Alone in the forest").
+    if (map === 'forest') return 'wandered off…'
     const owner = map.slice(5)
     if (owner === this.game.login) return 'your room'
     return `${this.game.profiles.get(owner)?.look.name ?? owner}'s room`
@@ -969,6 +974,7 @@ export class UI {
   }
 
   openChat() {
+    if (this.game.forest) return this.toast(QUIET)
     this.chatForm.hidden = false
     this.chatInput.focus()
   }
@@ -980,6 +986,11 @@ export class UI {
 
   renderChat() {
     const g = this.game
+    if (g.forest) {
+      if (!this.chatForm.hidden) this.closeChat()
+      this.chatlog.replaceChildren(el('div', { class: 'hint', text: QUIET }))
+      return
+    }
     const recent = Date.now() - 3 * 60_000
     const lines = g.chatLog
       .filter((m) => m.t > recent)

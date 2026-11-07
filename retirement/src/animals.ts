@@ -2,7 +2,8 @@ import { HENS, LAY_HOUR } from '../shared/catalog'
 import type { Dir, Save } from '../shared/schema'
 import { NEST_SLOTS, TS, outlineCanvas, pen } from './art'
 import { DAY_MS, HOUR_MS } from './clock'
-import { GARDEN, HENHOUSE, POND, T, groundAt, hash, type GameMap } from './maps'
+import { EST } from '../shared/grounds'
+import { GARDEN, HENHOUSE, POND, T, groundAt, hash, outDistance, type GameMap } from './maps'
 import type { PetPose } from './pets'
 
 /*
@@ -251,7 +252,7 @@ export class Wildlife {
   constructor(map: GameMap) {
     // Squirrels live by three leafy trees away from the edges.
     const trees = map.objects
-      .filter((o) => o.k === 'tree' && o.x > 2 && o.x < map.w - 3 && o.y > 2 && o.y < map.h - 3)
+      .filter((o) => o.k === 'tree' && outDistance(o.x, o.y) === 0)
       .sort((a, b) => hash(a.x, a.y, 901) - hash(b.x, b.y, 901))
     for (const t of trees) {
       if (this.squirrels.length >= 3) break
@@ -268,7 +269,12 @@ export class Wildlife {
     const flowers: { x: number; y: number }[] = []
     for (let y = 2; y < map.h - 2; y++)
       for (let x = 2; x < map.w - 2; x++)
-        if (groundAt(map, x, y) === T.FLOWERS && !map.solid[y * map.w + x]) flowers.push({ x, y })
+        if (
+          groundAt(map, x, y) === T.FLOWERS &&
+          !map.solid[y * map.w + x] &&
+          outDistance(x, y) === 0
+        )
+          flowers.push({ x, y })
     flowers.sort((a, b) => hash(a.x, a.y, 902) - hash(b.x, b.y, 902))
     for (const fl of flowers) {
       if (this.butterflies.length >= 9) break
@@ -580,10 +586,10 @@ export const HOUSE_CAT = { kind: 'cat' as const, coat: 0, name: 'Mittens' }
 
 /** Where Mittens naps, by game hour: she follows the sun round the grounds and sleeps inside. */
 const CAT_SPOTS: { from: number; map: 'grounds' | 'hall'; x: number; y: number }[] = [
-  { from: 7, map: 'grounds', x: 20.4, y: 12.5 }, // the plaza, morning sun
-  { from: 10, map: 'grounds', x: 21.4, y: 18.4 }, // the path by the garden gate
-  { from: 14, map: 'grounds', x: 39.3, y: 17.6 }, // outside the Kitchen (it smells good)
-  { from: 18, map: 'grounds', x: 26.6, y: 11.6 }, // the warm front step
+  { from: 7, map: 'grounds', x: EST.x + 20.4, y: EST.y + 12.5 }, // the plaza, morning sun
+  { from: 10, map: 'grounds', x: EST.x + 21.4, y: EST.y + 18.4 }, // the path by the garden gate
+  { from: 14, map: 'grounds', x: EST.x + 39.3, y: EST.y + 17.6 }, // outside the Kitchen
+  { from: 18, map: 'grounds', x: EST.x + 26.6, y: EST.y + 11.6 }, // the warm front step
   { from: 21, map: 'hall', x: 8.5, y: 6.5 }, // indoors for the night
 ]
 

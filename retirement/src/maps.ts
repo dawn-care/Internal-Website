@@ -1,4 +1,5 @@
 import { FURNITURE, MAX_SLOTS, PLOT_MAX, ROOM_DOOR_X, ROOM_H, ROOM_W } from '../shared/catalog'
+import { EST, EST_H, EST_W, GROUNDS_H, GROUNDS_W, OUTSKIRTS, TREELINE } from '../shared/grounds'
 import { seatId, type Dir, type MapId, type Room } from '../shared/schema'
 import { TABLES, tableSeat, type Side } from '../shared/tables'
 
@@ -50,6 +51,18 @@ export type ObjKind =
   | 'gametable'
   | 'stool'
   | 'noticeboard'
+  /** Undergrowth you can push through (a gap in the treeline). Looks like a bush. */
+  | 'brush'
+  | 'sickbed'
+  /** Out in the far outskirts, where the land dies off towards the treeline. */
+  | 'deadtree'
+  | 'stump'
+  /** The treeline: the forest's own dark trees and undergrowth, at the edge of the grounds. */
+  | 'edgepine'
+  | 'edgetree'
+  | 'edgebush'
+  | 'screen'
+  | 'infirmaryDoor'
 
 export interface Obj {
   k: ObjKind
@@ -99,6 +112,11 @@ export interface GameMap {
   npcs: Npc[]
   outdoor: boolean
   spawn: { x: number; y: number; dir: Dir }
+  /**
+   * The grounds only: how far out each tile is (0 in the established area, 1 at the treeline),
+   * which drains the grass (see FOREST.md "The outskirts").
+   */
+  wild?: Float32Array
 }
 
 function blank(id: MapId, w: number, h: number, fill: number, outdoor: boolean): GameMap {
@@ -210,16 +228,16 @@ export function hash(x: number, y: number, seed = 0): number {
  * each with room for the largest plot size. The gate is two tiles wide, in line with the home's
  * front walk.
  */
-export const GARDEN = { x0: 3, y0: 20, x1: 35, y1: 46, gateX: 23 } as const
+const GARDEN_L = { x0: 3, y0: 20, x1: 35, y1: 46, gateX: 23 } as const
 /** The pond, east of the garden: its centre and radii (water inside, a sandy shore round it). */
-export const POND = { x: 41.6, y: 32, rx: 4.6, ry: 4.9 } as const
-export const HOME_DOOR = { x: 23, y: 9 } as const
-export const KITCHEN_DOOR = { x: 40, y: 15 } as const
+const POND_L = { x: 41.6, y: 32, rx: 4.6, ry: 4.9 } as const
+const HOME_DOOR_L = { x: 23, y: 9 } as const
+const KITCHEN_DOOR_L = { x: 40, y: 15 } as const
 /**
  * The henhouse in the north-west corner: a fenced dirt run (fence on its edge tiles, a gate in the
  * bottom side) with the coop building along the top. The nest boxes are on the coop's front.
  */
-export const HENHOUSE = {
+const HENHOUSE_L = {
   run: { x0: 3, y0: 4, x1: 11, y1: 11 },
   coop: { x: 4, y: 3, w: 4, h: 4 },
   gateX: 7,
@@ -227,11 +245,50 @@ export const HENHOUSE = {
   yard: { x0: 4.3, y0: 7.6, x1: 10.7, y1: 10.8 },
 } as const
 
-/** Top-left tile of the allotment (and so the plot) for `slot`. */
-export function plotOrigin(slot: number): { x: number; y: number } {
+// The same places on the grounds map (the established area sits at EST, see shared/grounds.ts).
+const ex = (x: number) => x + EST.x
+const ey = (y: number) => y + EST.y
+export const GARDEN = {
+  x0: ex(GARDEN_L.x0),
+  y0: ey(GARDEN_L.y0),
+  x1: ex(GARDEN_L.x1),
+  y1: ey(GARDEN_L.y1),
+  gateX: ex(GARDEN_L.gateX),
+} as const
+export const POND = { ...POND_L, x: ex(POND_L.x), y: ey(POND_L.y) } as const
+export const HOME_DOOR = { x: ex(HOME_DOOR_L.x), y: ey(HOME_DOOR_L.y) } as const
+export const KITCHEN_DOOR = { x: ex(KITCHEN_DOOR_L.x), y: ey(KITCHEN_DOOR_L.y) } as const
+export const HENHOUSE = {
+  run: {
+    x0: ex(HENHOUSE_L.run.x0),
+    y0: ey(HENHOUSE_L.run.y0),
+    x1: ex(HENHOUSE_L.run.x1),
+    y1: ey(HENHOUSE_L.run.y1),
+  },
+  coop: { ...HENHOUSE_L.coop, x: ex(HENHOUSE_L.coop.x), y: ey(HENHOUSE_L.coop.y) },
+  gateX: ex(HENHOUSE_L.gateX),
+  yard: {
+    x0: ex(HENHOUSE_L.yard.x0),
+    y0: ey(HENHOUSE_L.yard.y0),
+    x1: ex(HENHOUSE_L.yard.x1),
+    y1: ey(HENHOUSE_L.yard.y1),
+  },
+} as const
+/** Chef Rosa's spot by the Kitchen's cart, on the grounds map. */
+export const ROSA_SPOT = { x: ex(42.5), y: ey(16.9) } as const
+/** Where the grounds' front walk meets the home's door, for coming out of the hallway. */
+export const FRONT_STEP = { x: ex(23.5), y: ey(10.8) } as const
+
+function plotOriginL(slot: number): { x: number; y: number } {
   const c = slot % 3
   const r = Math.floor(slot / 3)
-  return { x: GARDEN.x0 + 2 + c * (PLOT_MAX.w + 1), y: GARDEN.y0 + 2 + r * (PLOT_MAX.h + 1) }
+  return { x: GARDEN_L.x0 + 2 + c * (PLOT_MAX.w + 1), y: GARDEN_L.y0 + 2 + r * (PLOT_MAX.h + 1) }
+}
+
+/** Top-left tile of the allotment (and so the plot) for `slot`. */
+export function plotOrigin(slot: number): { x: number; y: number } {
+  const o = plotOriginL(slot)
+  return { x: ex(o.x), y: ey(o.y) }
 }
 
 /**
@@ -247,11 +304,18 @@ export function allotmentAt(x: number, y: number): { slot: number; dx: number; d
   return null
 }
 
-function buildGrounds(): GameMap {
-  const W = 48
-  const H = 49
+/** The established area, in its own coordinates (placed on the grounds by buildGrounds). */
+function buildEstablished(): GameMap {
+  const W = EST_W
+  const H = EST_H
   const m = blank('grounds', W, H, T.GRASS, true)
   m.spawn = { x: 23.5, y: 11.2, dir: 0 }
+  const GARDEN = GARDEN_L
+  const POND = POND_L
+  const HOME_DOOR = HOME_DOOR_L
+  const KITCHEN_DOOR = KITCHEN_DOOR_L
+  const HENHOUSE = HENHOUSE_L
+  const plotOrigin = plotOriginL
 
   // Wildflower patches.
   for (let y = 0; y < H; y++)
@@ -383,7 +447,8 @@ function buildGrounds(): GameMap {
   m.labels.push({ x: coop.x + coop.w / 2, y: coop.y - 0.6, text: 'Henhouse', near: 7 })
 
   // Board-game tables, a stool either side (see shared/tables.ts).
-  for (const t of TABLES) {
+  for (const { x: wx, y: wy } of TABLES) {
+    const t = { x: wx - EST.x, y: wy - EST.y }
     m.objects.push({ k: 'gametable', x: t.x, y: t.y })
     m.objects.push({ k: 'stool', x: t.x - 1, y: t.y }, { k: 'stool', x: t.x + 1, y: t.y })
     solidRect(m, t.x - 1, t.y, t.x + 1, t.y)
@@ -439,14 +504,17 @@ function buildGrounds(): GameMap {
     m.objects.push({ k, x, y })
     setSolid(m, x, y)
   }
-  for (let x = 0; x < W; x += 2) {
-    tree(x, 0, hash(x, 0) < 0.5 ? 'tree' : 'pine')
-    tree(x + (x % 4 === 0 ? 1 : 0), H - 1, hash(x, 1) < 0.5 ? 'tree' : 'pine')
-  }
-  for (let y = 2; y < H - 1; y += 2) {
-    tree(0, y, hash(0, y) < 0.5 ? 'tree' : 'pine')
-    tree(W - 1, y, hash(1, y) < 0.5 ? 'tree' : 'pine')
-  }
+  // (The established area used to have a border of trees here; now the outskirts open out round
+  // it and the treeline is at the edge of the grounds. A few trees mark its old corners.)
+  for (const [x, y] of [
+    [0, 0],
+    [W - 1, 0],
+    [0, H - 1],
+    [W - 1, H - 1],
+    [1, 24],
+    [W - 2, 30],
+  ])
+    tree(x, y, hash(x, y) < 0.5 ? 'tree' : 'pine')
   for (const y of [3, 6]) for (const x of [37, 40, 43]) tree(x, y)
   // A little wood in the south-east corner, below the pond.
   for (const [j, y] of [40, 43, 46].entries())
@@ -464,10 +532,299 @@ function buildGrounds(): GameMap {
   return m
 }
 
+// --- the outskirts and the treeline -----------------------------------------------------------
+
+/** How far out (0–1) the land starts to die off: dead trees, stumps, grey earth. */
+export const DEAD_FROM = 0.5
+
+/** Which way out of the grounds a gap in the treeline leads (its outward direction). */
+export type Edge = 'n' | 's' | 'w' | 'e'
+export interface Gap {
+  side: Edge
+  /** The gap's first tile along its edge (it's GAP_W tiles wide). */
+  at: number
+}
+const GAP_W = 2
+/**
+ * The hidden gaps in the treeline (FOREST.md "The treeline"), in grounds coordinates along their
+ * edge. Nothing marks them: they're undergrowth you can push through, among bushes you can't.
+ */
+export const GAPS: readonly Gap[] = [
+  { side: 'n', at: ex(6) },
+  { side: 'n', at: ex(43) },
+  { side: 's', at: ex(1) },
+  { side: 's', at: ex(36) },
+  { side: 'w', at: ey(33) },
+  { side: 'e', at: ey(10) },
+]
+
+/** Tiles out from the established area's outline (0 inside it), rounded at the corners. */
+export function outDistance(x: number, y: number): number {
+  const dx = Math.max(EST.x - x, 0, x - (EST.x + EST_W - 1))
+  const dy = Math.max(EST.y - y, 0, y - (EST.y + EST_H - 1))
+  return Math.hypot(dx, dy)
+}
+
+/** How far out you are: 0 in the established area, 1 at the treeline (FOREST.md). */
+export function outskirts(x: number, y: number): number {
+  return Math.min(1, outDistance(x, y) / OUTSKIRTS)
+}
+
+/** Tiles from (x, y) to the treeline's inner edge (0 or less: in the treeline). */
+export function toTreeline(x: number, y: number): number {
+  return Math.min(x, y, GROUNDS_W - x, GROUNDS_H - y) - TREELINE
+}
+
+/** The gap tiles (x, y) is in, if any. */
+export function gapAt(tx: number, ty: number): Gap | null {
+  for (const g of GAPS) {
+    const along = g.side === 'n' || g.side === 's' ? tx : ty
+    const across =
+      g.side === 'n'
+        ? ty
+        : g.side === 's'
+          ? GROUNDS_H - 1 - ty
+          : g.side === 'w'
+            ? tx
+            : GROUNDS_W - 1 - tx
+    if (along >= g.at && along < g.at + GAP_W && across >= 0 && across < TREELINE) return g
+  }
+  return null
+}
+
+/** How close (x, y) is to the nearest gap, in tiles. */
+export function gapDistance(x: number, y: number): number {
+  let best = Infinity
+  for (const g of GAPS) {
+    const c = g.at + GAP_W / 2
+    const gx =
+      g.side === 'n' || g.side === 's' ? c : g.side === 'w' ? TREELINE : GROUNDS_W - TREELINE
+    const gy =
+      g.side === 'w' || g.side === 'e' ? c : g.side === 'n' ? TREELINE : GROUNDS_H - TREELINE
+    best = Math.min(best, Math.hypot(x - gx, y - gy))
+  }
+  return best
+}
+
+/** Where you come back onto the grounds from a gap: just inside it, facing in. */
+export function gapReturn(g: Gap): { x: number; y: number; dir: Dir } {
+  const c = g.at + GAP_W / 2
+  switch (g.side) {
+    case 'n':
+      return { x: c, y: TREELINE + 0.9, dir: 0 }
+    case 's':
+      return { x: c, y: GROUNDS_H - TREELINE - 0.2, dir: 3 }
+    case 'w':
+      return { x: TREELINE + 0.7, y: c + 0.4, dir: 2 }
+    case 'e':
+      return { x: GROUNDS_W - TREELINE - 0.7, y: c + 0.4, dir: 1 }
+  }
+}
+
+/**
+ * The whole grounds: the established area in the middle, open outskirts round it (thinning grass,
+ * the odd tree and fence post, a path that peters out), and the treeline at the edge.
+ */
+function buildGrounds(): GameMap {
+  const W = GROUNDS_W
+  const H = GROUNDS_H
+  const est = buildEstablished()
+  const m = blank('grounds', W, H, T.GRASS, true)
+  m.wild = new Float32Array(W * H)
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const w = outskirts(x, y)
+      m.wild[y * W + x] = w
+      // Wildflowers thin out with the grass.
+      if (w > 0 && hash(x, y, 7) < 0.06 * (1 - w) ** 2) setGround(m, x, y, T.FLOWERS)
+    }
+  // The established area, shifted into place.
+  for (let y = 0; y < EST_H; y++)
+    for (let x = 0; x < EST_W; x++) {
+      const i = (y + EST.y) * W + x + EST.x
+      m.ground[i] = est.ground[y * EST_W + x]
+      m.solid[i] = est.solid[y * EST_W + x]
+    }
+  for (const o of est.objects) m.objects.push({ ...o, x: ex(o.x), y: ey(o.y) })
+  for (const it of est.interacts) {
+    const moved = { ...it, x: ex(it.x), y: ey(it.y) }
+    m.interacts.push(moved)
+  }
+  for (const l of est.labels) m.labels.push({ ...l, x: ex(l.x), y: ey(l.y) })
+  for (const n of est.npcs) m.npcs.push({ ...n, x: ex(n.x), y: ey(n.y) })
+  m.spawn = { ...est.spawn, x: ex(est.spawn.x), y: ey(est.spawn.y) }
+
+  const put = (k: ObjKind, x: number, y: number, solid = true) => {
+    m.objects.push({ k, x, y })
+    if (solid) setSolid(m, x, y)
+  }
+  const free = (x: number, y: number) =>
+    groundAt(m, x, y) === T.GRASS || groundAt(m, x, y) === T.FLOWERS
+
+  // The main path runs on past the Kitchen and the henhouse, breaking up, then peters out.
+  const pathY = ey(17)
+  for (let i = 1; i < 16; i++) {
+    for (const [x, dir] of [
+      [ex(2) - i, -1],
+      [ex(45) + i, 1],
+    ] as const) {
+      // Fewer and fewer stones, and the path wanders a little.
+      if (hash(x, pathY, 611) > 1 - i / 17) continue
+      const y = pathY + (hash(Math.floor(i / 4), dir, 612) < 0.5 ? 0 : 1)
+      setGround(m, x, y, T.PATH)
+      if (i < 6) setGround(m, x, y + (y === pathY ? 1 : -1), T.PATH)
+    }
+  }
+
+  // Open country: a lone tree here and there, and old fence posts in broken lines.
+  for (let y = TREELINE + 2; y < H - TREELINE - 2; y++)
+    for (let x = TREELINE + 2; x < W - TREELINE - 2; x++) {
+      const d = outDistance(x, y)
+      if (d < 3 || !free(x, y) || toTreeline(x, y) < 3) continue
+      const r = hash(x, y, 620)
+      // The far outskirts die off: dead trees and stumps instead of green ones, a little more of
+      // them the closer you get to the treeline.
+      const dying = outskirts(x, y) > DEAD_FROM
+      if (dying) {
+        if (r < 0.007) put('deadtree', x, y)
+        else if (r < 0.011) put('stump', x, y)
+      } else if (r < 0.006) put(hash(x, y, 621) < 0.5 ? 'tree' : 'pine', x, y)
+      else if (r < 0.009) put('bush', x, y)
+    }
+  // Fence posts: a few short runs of what was once a fence, gaps where posts have gone.
+  for (const [x0, y0, dx, dy, n] of [
+    [ex(-14), ey(6), 0, 1, 9],
+    [ex(EST_W + 10), ey(30), 0, 1, 11],
+    [ex(10), ey(-12), 1, 0, 12],
+    [ex(26), ey(EST_H + 12), 1, 0, 10],
+  ] as const)
+    for (let i = 0; i < n; i++) {
+      const x = x0 + dx * i * 2
+      const y = y0 + dy * i * 2
+      if (hash(x, y, 630) < 0.3 || !free(x, y)) continue
+      put('fence', x, y)
+    }
+
+  // The treeline: three rows of trees all round, staggered, with bushes along its inner edge (so
+  // the undergrowth in the gaps looks like more of the same).
+  const treeAt = (x: number, y: number) => {
+    const r = hash(x, y, 640)
+    const k: ObjKind = r < 0.55 ? 'edgepine' : r < 0.85 ? 'edgetree' : 'deadtree'
+    m.objects.push({ k, x, y })
+  }
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      if (toTreeline(x + 0.5, y + 0.5) > 0) continue
+      const g = gapAt(x, y)
+      if (g) {
+        // The gap: undergrowth, walkable, and a tree either side of it so it closes over.
+        m.objects.push({ k: 'brush', x, y })
+        continue
+      }
+      setSolid(m, x, y)
+      if ((x + y * 2) % 3 === 0 || hash(x, y, 641) < 0.12) treeAt(x, y)
+    }
+  // Bushes along the inner edge (some solid, in the treeline; the gap's are brush).
+  for (let i = TREELINE; i < Math.max(W, H) - TREELINE; i++) {
+    for (const [x, y] of [
+      [i, TREELINE - 1],
+      [i, H - TREELINE],
+      [TREELINE - 1, i],
+      [W - TREELINE, i],
+    ]) {
+      if (!inBounds(m, x, y) || gapAt(x, y) || hash(x, y, 650) > 0.35) continue
+      m.objects.push({ k: 'edgebush', x, y })
+    }
+  }
+  return m
+}
+
+// --- the infirmary --------------------------------------------------------------------------
+
+export const INFIRMARY_W = 12
+export const INFIRMARY_H = 8
+/** Where you wake up: beside the first bed. */
+export const INFIRMARY_WAKE = { x: 3.5, y: 5.6, dir: 0 as Dir }
+
+/**
+ * The home's infirmary, off the hallway: where you wake up after the forest (FOREST.md "Getting
+ * lost for real"). Three beds with screens, a cabinet, and Nurse Ada.
+ */
+function buildInfirmary(): GameMap {
+  const W = INFIRMARY_W
+  const H = INFIRMARY_H
+  const m = blank('infirmary', W, H, T.HALL_FLOOR, false)
+  m.spawn = { ...INFIRMARY_WAKE }
+  rect(m, 0, 0, W - 1, 0, T.TRIM)
+  rect(m, 0, 1, W - 1, 2, T.HALL_WALL)
+  rect(m, 0, 0, 0, H - 1, T.TRIM)
+  rect(m, W - 1, 0, W - 1, H - 1, T.TRIM)
+  rect(m, 0, H - 1, W - 1, H - 1, T.TRIM)
+  solidRect(m, 0, 0, W - 1, 2)
+  solidRect(m, 0, 0, 0, H - 1)
+  solidRect(m, W - 1, 0, W - 1, H - 1)
+  solidRect(m, 0, H - 1, W - 1, H - 1)
+  for (const x of [2, 5, 8]) {
+    m.objects.push({ k: 'sickbed', x, y: 3 })
+    solidRect(m, x, 3, x + 1, 4)
+    if (x < 8) {
+      m.objects.push({ k: 'screen', x: x + 2, y: 3 })
+      setSolid(m, x + 2, 3)
+    }
+  }
+  m.objects.push({ k: 'window', x: 3, y: 1 }, { k: 'window', x: 8, y: 1 })
+  m.objects.push({ k: 'plant', x: W - 2, y: 6 })
+  setSolid(m, W - 2, 6)
+  const door = 6
+  m.ground[(H - 1) * W + door] = T.HALL_FLOOR
+  m.objects.push({ k: 'exitMat', x: door, y: H - 1, w: 1 })
+  m.interacts.push({
+    kind: 'door',
+    x: door,
+    y: H - 1,
+    to: 'hall',
+    tx: HALL_INFIRMARY_X + 0.5,
+    ty: 3.6,
+    dir: 0,
+  })
+  m.npcs.push({
+    id: 'nurse-infirmary',
+    x: 9.5,
+    y: 6.2,
+    dir: 1,
+    name: 'Nurse Ada',
+    look: {
+      name: 'Nurse Ada',
+      body: 'female',
+      skin: 4,
+      hair: 'short',
+      hairColor: 5,
+      outfit: 4,
+      pants: 2,
+      accessory: 'none',
+    },
+  })
+  setSolid(m, 9, 6)
+  for (const [x, y] of [
+    [9, 6],
+    [9, 5],
+    [8, 6],
+  ])
+    m.interacts.push({
+      kind: 'sign',
+      x,
+      y,
+      text: 'Nurse Ada: "Take it slowly, dear. Your room is just down the hall when you feel up to it."',
+    })
+  return m
+}
+
 // --- the hallway ---------------------------------------------------------------------------
 
 export const HALL_W = 28
 export const HALL_H = 9
+/** The infirmary's door, at the east end of the hallway. */
+export const HALL_INFIRMARY_X = 26
 export function hallDoorX(slot: number): number {
   return 2 + slot * 2
 }
@@ -497,8 +854,8 @@ function buildHall(): GameMap {
       x,
       y: HALL_H - 1,
       to: 'grounds',
-      tx: x === 13 ? 23.5 : 24.5,
-      ty: 10.8,
+      tx: FRONT_STEP.x + (x === 13 ? 0 : 1),
+      ty: FRONT_STEP.y,
       dir: 0,
     })
   }
@@ -524,14 +881,20 @@ function buildHall(): GameMap {
   })
   setSolid(m, 3, 4)
   m.interacts.push({ kind: 'nurse', x: 3, y: 5 }, { kind: 'nurse', x: 3, y: 4 })
-  m.objects.push(
-    { k: 'plant', x: 1, y: 3 },
-    { k: 'plant', x: HALL_W - 2, y: 3 },
-    { k: 'plant', x: HALL_W - 2, y: 7 },
-  )
+  m.objects.push({ k: 'plant', x: 1, y: 3 }, { k: 'plant', x: HALL_W - 2, y: 7 })
   setSolid(m, 1, 3)
-  setSolid(m, HALL_W - 2, 3)
   setSolid(m, HALL_W - 2, 7)
+  m.objects.push({ k: 'infirmaryDoor', x: HALL_INFIRMARY_X, y: 1 })
+  m.labels.push({ x: HALL_INFIRMARY_X + 0.5, y: 0.75, text: 'Infirmary', near: 2 })
+  m.interacts.push({
+    kind: 'door',
+    x: HALL_INFIRMARY_X,
+    y: 2,
+    to: 'infirmary',
+    tx: 6.5,
+    ty: INFIRMARY_H - 1.8,
+    dir: 3,
+  })
   m.objects.push({ k: 'chairs', x: 20, y: 7, w: 3 })
   solidRect(m, 20, 7, 22, 7)
   m.objects.push({ k: 'hallRug', x: 9, y: 6, w: 4 })
@@ -577,9 +940,18 @@ export function buildRoom(login: string, room: Pick<Room, 'items'>): GameMap {
 
 let grounds: GameMap | null = null
 let hall: GameMap | null = null
+let infirmary: GameMap | null = null
+export function getInfirmary(): GameMap {
+  return (infirmary ??= buildInfirmary())
+}
 export function getGrounds(): GameMap {
   return (grounds ??= buildGrounds())
 }
 export function getHall(): GameMap {
   return (hall ??= buildHall())
+}
+
+/** The forest has no map of its own (forest/gen.ts makes it as you walk): this stands in for one. */
+export function forestStub(): GameMap {
+  return blank('forest', 1, 1, T.GRASS, true)
 }

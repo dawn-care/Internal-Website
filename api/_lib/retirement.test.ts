@@ -7,7 +7,7 @@ import {
   growGarden,
   type Save,
 } from '../../retirement/shared/schema.js'
-import type { TableState } from '../../retirement/shared/tables.js'
+import { TABLES, type TableState } from '../../retirement/shared/tables.js'
 import {
   RECIPES,
   RECIPE_IDS,
@@ -244,6 +244,56 @@ describe('/api/retirement', () => {
     expect(res.statusCode).toBe(400)
   })
 
+  describe('the forest', () => {
+    const sync = (login: string, p: Record<string, unknown>, msg?: string) =>
+      call({
+        method: 'POST',
+        op: 'sync',
+        login,
+        body: { p, look: defaultLook(login), since: 0, ...(msg ? { msg } : {}) },
+      })
+
+    it('accepts the forest and the infirmary as places', async () => {
+      for (const map of ['forest', 'infirmary'])
+        expect((await sync('ada', { ...presence, map })).statusCode, map).toBe(200)
+    })
+
+    it('never shares where someone in the forest is, or what they brought', async () => {
+      await sync('ada', {
+        map: 'forest',
+        x: 57.5,
+        y: -12.25,
+        dir: 2,
+        moving: true,
+        pet: { kind: 'dog', coat: 0, name: 'Rex' },
+        sit: 'bench:19,14:0',
+        sitAt: 1,
+      })
+      const res = await sync('grace', presence)
+      const players = (res.body as { players: Record<string, unknown>[] }).players
+      expect(players).toHaveLength(1)
+      expect(players[0]).toMatchObject({ login: 'ada', map: 'forest', x: 0, y: 0, moving: false })
+      expect(players[0].pet).toBeUndefined()
+      expect(players[0].sit).toBeUndefined()
+    })
+
+    it("doesn't carry chat out of the forest", async () => {
+      const ada = await sync('ada', { ...presence, map: 'forest' }, 'can anyone hear me?')
+      expect(ada.body).toMatchObject({ sent: false })
+      const res = await sync('grace', presence)
+      expect((res.body as { chat: unknown[] }).chat).toEqual([])
+    })
+
+    it('still rejects a forest presence that is not an object', async () => {
+      const res = await call({
+        method: 'POST',
+        op: 'sync',
+        body: { p: 'forest', look: defaultLook('Ada'), since: 0 },
+      })
+      expect(res.statusCode).toBe(400)
+    })
+  })
+
   describe('sitting', () => {
     const sync = (login: string, p: Record<string, unknown>) =>
       call({ method: 'POST', op: 'sync', login, body: { p, look: defaultLook(login), since: 0 } })
@@ -403,7 +453,7 @@ describe('/api/retirement', () => {
   })
 
   describe('board-game tables', () => {
-    const T = 'table:14,13'
+    const T = TABLES[0].id
     const sit = (login: string, side: 0 | 1, sitAt = 100) =>
       call({
         method: 'POST',

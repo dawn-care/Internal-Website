@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import {
+  FOREST_MAP,
   MAX_CHAT_CHARS,
   MAX_SAVE_BYTES,
   SaveError,
@@ -125,7 +126,8 @@ async function sync(req: VercelRequest, res: VercelResponse): Promise<void> {
   const look = validateLook(b.look)
   const since = typeof b.since === 'number' && Number.isFinite(b.since) ? b.since : 0
   const now = Date.now()
-  const text = cleanText(b.msg, MAX_CHAT_CHARS)
+  // Nobody hears you from the forest (FOREST.md "Alone in the forest").
+  const text = presence.map === FOREST_MAP ? '' : cleanText(b.msg, MAX_CHAT_CHARS)
   const msg: ChatMsg | null = text
     ? {
         id: now * 100 + Math.floor(Math.random() * 100),
