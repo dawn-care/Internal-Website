@@ -14,8 +14,11 @@ import {
   MAX_SLOTS,
   OUTFIT_COLORS,
   PANTS_COLORS,
-  PLOT_H,
-  PLOT_W,
+  PLOT_SIZES,
+  POTTABLE,
+  RECIPES,
+  RECIPE_IDS,
+  plotSize,
   ROOM_FLOOR,
   ROOM_WALL,
   SKIN_TONES,
@@ -91,9 +94,15 @@ export interface Save {
   v: 1
   look: Look
   coins: number
-  /** "seed:<crop>" and "crop:<crop>" counts. */
+  /**
+   * "seed:<crop>", "crop:<crop>", "plant:<crop>" (a potted plant you dug up), "meal:<recipe>"
+   * (something you cooked), "egg" and "treat" counts.
+   */
   inv: Record<string, number>
+  /** Your plot, row by row, plotSize(plot).w tiles wide. */
   garden: Tile[]
+  /** Which plot size you've bought up to (an index into PLOT_SIZES); absent is the first. */
+  plot?: number
   room: Room
   stats: { harvested: number; earned: number }
   /**
@@ -108,6 +117,8 @@ export interface Save {
    * LAY_HOUR) and how many of that day's eggs you took. Everyone collects their own eggs.
    */
   coop?: { day: number; taken: number }
+  /** Recipes Chef Rosa has taught you (the starter ones are known without being stored). */
+  recipes?: string[]
   /** Garden plot and hallway door. Assigned by the server, never trusted from the client. */
   slot: number
   createdAt: number
@@ -122,6 +133,8 @@ export interface Profile {
   pet?: PetLook
   slot: number
   garden: Tile[]
+  /** Plot size (see Save.plot); absent is the first. */
+  plot?: number
   room: { wall: string; floor: string; items: RoomItem[] }
 }
 
@@ -190,7 +203,7 @@ export function newSave(look: Look, now: number): Save {
     look,
     coins: START_COINS,
     inv: { 'seed:radish': 6, 'seed:carrot': 2 },
-    garden: Array.from({ length: PLOT_W * PLOT_H }, () => ({ s: 0 as const })),
+    garden: emptyGarden(0),
     room: {
       wall: 'cream',
       floor: 'oak',
@@ -210,6 +223,27 @@ export function newSave(look: Look, now: number): Save {
   }
 }
 
+export function emptyGarden(level: number): Tile[] {
+  const { w, h } = plotSize(level)
+  return Array.from({ length: w * h }, () => ({ s: 0 as const }))
+}
+
+/**
+ * The garden grown to plot size `level`: every tile keeps its row and column, and the new ground
+ * (to the right and below) is grass.
+ */
+export function growGarden(garden: Tile[], from: number, level: number): Tile[] {
+  const a = plotSize(from)
+  const b = plotSize(level)
+  const out = emptyGarden(level)
+  for (let i = 0; i < garden.length; i++) {
+    const r = Math.floor(i / a.w)
+    const c = i % a.w
+    if (r < b.h && c < b.w) out[r * b.w + c] = garden[i]
+  }
+  return out
+}
+
 export function toProfile(login: string, save: Save): Profile {
   return {
     login,
@@ -217,6 +251,7 @@ export function toProfile(login: string, save: Save): Profile {
     ...(save.pet ? { pet: petLook(save.pet) } : {}),
     slot: save.slot,
     garden: save.garden,
+    ...(save.plot ? { plot: save.plot } : {}),
     room: {
       wall: save.room.wall,
       floor: save.room.floor,
@@ -291,6 +326,8 @@ export function validateLook(v: unknown): Look {
 
 const INV_KEYS = new Set([
   ...Object.keys(CROPS).flatMap((c) => [`seed:${c}`, `crop:${c}`]),
+  ...POTTABLE.map((c) => `plant:${c}`),
+  ...RECIPE_IDS.map((r) => `meal:${r}`),
   'treat',
   'egg',
 ])
@@ -335,6 +372,12 @@ function validatePet(v: unknown): Pet {
 function validateCoop(v: unknown): { day: number; taken: number } {
   const o = obj(v, 'coop')
   return { day: int(o.day, 'coop.day', 0, 1e9), taken: int(o.taken, 'coop.taken', 0, HENS) }
+}
+
+function validateRecipes(v: unknown): string[] {
+  const learned = arr(v, 'recipes', RECIPE_IDS.length).map((r) => oneOf(r, RECIPE_IDS, 'recipes'))
+  // Starter recipes are never stored; order follows the catalog so saves compare equal.
+  return RECIPE_IDS.filter((r) => RECIPES[r].lesson > 0 && learned.includes(r))
 }
 
 function validateTile(v: unknown, i: number): Tile {
@@ -386,6 +429,12 @@ function arr(v: unknown, what: string, max: number): unknown[] {
   return v
 }
 
+function recipes(v: unknown): { recipes?: string[] } {
+  if (v === undefined) return {}
+  const r = validateRecipes(v)
+  return r.length ? { recipes: r } : {}
+}
+
 /** A well-formed copy of `v`, or a SaveError. `slot` is kept as given; the server overrides it. */
 export function validateSave(v: unknown): Save {
   const o = obj(v, 'save')
@@ -397,8 +446,10 @@ export function validateSave(v: unknown): Save {
     const count = int(n, `inv.${k}`, 0, 99_999)
     if (count > 0) inv[k] = count
   }
-  const garden = arr(o.garden, 'garden', PLOT_W * PLOT_H).map(validateTile)
-  if (garden.length !== PLOT_W * PLOT_H) throw new SaveError('garden has the wrong size.')
+  const plot = int(o.plot ?? 0, 'plot', 0, PLOT_SIZES.length - 1)
+  const { w, h } = plotSize(plot)
+  const garden = arr(o.garden, 'garden', w * h).map(validateTile)
+  if (garden.length !== w * h) throw new SaveError('garden has the wrong size for the plot.')
   const stats = obj(o.stats, 'stats')
   const intro =
     o.intro === undefined ? undefined : (int(o.intro, 'intro', 0, INTRO.done - 1) as IntroStep)
@@ -408,6 +459,7 @@ export function validateSave(v: unknown): Save {
     coins: int(o.coins, 'coins', 0, 99_999_999),
     inv,
     garden,
+    ...(plot ? { plot } : {}),
     room: validateRoom(o.room),
     stats: {
       harvested: int(stats.harvested, 'stats.harvested', 0, 1e9),
@@ -416,6 +468,7 @@ export function validateSave(v: unknown): Save {
     ...(intro === undefined ? {} : { intro }),
     ...(o.pet === undefined ? {} : { pet: validatePet(o.pet) }),
     ...(o.coop === undefined ? {} : { coop: validateCoop(o.coop) }),
+    ...recipes(o.recipes),
     slot: int(o.slot ?? -1, 'slot', -1, MAX_SLOTS - 1),
     createdAt: num(o.createdAt, 'createdAt', 0, MAX_TIME),
     updatedAt: num(o.updatedAt, 'updatedAt', 0, MAX_TIME),
@@ -438,6 +491,8 @@ export const SEAT_KINDS = {
   chairs: 'hall',
   armchair: 'room',
   rocker: 'room',
+  /** A stool at a board-game table (see tables.ts); the place is the side, 0 west or 1 east. */
+  table: 'grounds',
 } as const
 export type SeatKind = keyof typeof SEAT_KINDS
 
@@ -446,7 +501,7 @@ export function seatId(kind: SeatKind, x: number, y: number, place: number): str
   return `${kind}:${x},${y}:${place}`
 }
 
-const SEAT_RE = /^(bench|chairs|armchair|rocker):(\d{1,3}),(\d{1,3}):([0-2])$/
+const SEAT_RE = /^(bench|chairs|armchair|rocker|table):(\d{1,3}),(\d{1,3}):([0-2])$/
 
 /** Checks a seat id is well-formed and belongs to the kind of place you're in. */
 export function validSeat(seat: unknown, map: MapId): seat is string {

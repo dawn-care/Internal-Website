@@ -48,17 +48,27 @@ export function personSprite(look: Look, dir: Dir, frame: number): HTMLCanvasEle
   return cv
 }
 
-/** Sitting down, facing you (benches, chairs). `doze`: eyes closed. Same 16×24 frame. */
-export function seatedSprite(look: Look, doze: boolean): HTMLCanvasElement {
-  const key = `${lookKey(look)}|sit|${doze}`
+/**
+ * Sitting down: facing you (benches, chairs), or side-on with the hands forward (dir 1 or 2, at a
+ * games table). `doze`: eyes closed. Same 16×24 frame.
+ */
+export function seatedSprite(look: Look, doze: boolean, dir: Dir = 0): HTMLCanvasElement {
+  const side = dir === 1 || dir === 2
+  const key = `${lookKey(look)}|sit|${doze}|${side ? dir : 0}`
   let cv = cache.get(key)
   if (cv) return cv
   cv = document.createElement('canvas')
   cv.width = SPR_W
   cv.height = SPR_H
   const c = cv.getContext('2d')!
-  drawPerson(c, look, 0, 0, true, doze)
-  outline(c)
+  if (dir === 1) {
+    c.translate(SPR_W, 0)
+    c.scale(-1, 1)
+    c.drawImage(seatedSprite(look, doze, 2), 0, 0)
+  } else {
+    drawPerson(c, look, side ? 2 : 0, 0, true, doze)
+    outline(c)
+  }
   cache.set(key, cv)
   return cv
 }
@@ -111,7 +121,10 @@ function drawPerson(
   const legs = skirt ? '#e6d6c2' : pants
 
   // Legs and shoes (they don't bob). Sitting: shins and shoes below the lap.
-  if (sit) {
+  if (sit && side) {
+    f(legs, 10, 21, 2, 1)
+    f(shoe, 10, 22, 4, 2)
+  } else if (sit) {
     f(legs, 5, 21, 2, 1)
     f(legs, 9, 21, 2, 1)
     f(shoe, 4, 22, 3, 2)
@@ -139,10 +152,16 @@ function drawPerson(
     f(top, 5, 11 + y0, 7, 8)
     f(topD, 5, 17 + y0, 7, 1)
     f(topD, 10, 11 + y0, 2, 7)
-    // Arm, swinging with the step.
-    const swing = frame === 1 ? 1 : frame === 3 ? -1 : 0
-    f(topD, 7 + swing, 12 + y0, 3, 5)
-    f(skin, 7 + swing, 17 + y0, 3, 2)
+    if (sit) {
+      // Reaching forward to the board.
+      f(topD, 7, 13 + y0, 5, 3)
+      f(skin, 12, 13 + y0, 2, 2)
+    } else {
+      // Arm, swinging with the step.
+      const swing = frame === 1 ? 1 : frame === 3 ? -1 : 0
+      f(topD, 7 + swing, 12 + y0, 3, 5)
+      f(skin, 7 + swing, 17 + y0, 3, 2)
+    }
   } else {
     f(top, 4, 11 + y0, 8, 8)
     f(topD, 4, 17 + y0, 8, 1)
@@ -162,8 +181,11 @@ function drawPerson(
     }
   }
 
-  // Sitting: the lap (skirt or trousers) with the hands folded on it.
-  if (sit) {
+  // Sitting: the lap (skirt or trousers) with the hands folded on it; side-on, a thigh forward.
+  if (sit && side) {
+    f(pants, 5, 19, 8, 2)
+    f(shade(pants, -0.15), 5, 20, 8, 1)
+  } else if (sit) {
     f(pants, 3, 19, 10, 2)
     f(shade(pants, -0.15), 3, 20, 10, 1)
     f(skin, 5, 19, 2, 1)

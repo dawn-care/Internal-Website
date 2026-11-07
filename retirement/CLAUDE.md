@@ -17,7 +17,10 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
 - shared/catalog.ts: crops, furniture, wallpapers, floors, look options, sizes. Pure data,
   also imported by the server to validate saves.
 - shared/schema.ts: Save / Profile / presence / chat types, newSave, validateSave.
-- src/maps.ts: the grounds (home, Community Kitchen, Community Garden with 12 plots, pond,
+- shared/tables.ts: the board-game tables (positions on the grounds, Connect 4 and checkers rules,
+  who is seated, the table state and its validation). Used by the game, LocalNet and the server.
+- src/maps.ts: the grounds (home, Community Kitchen, Community Garden with 12 allotments that
+  plots grow into (PLOT_SIZES: 5×3, 7×4, 9×5, bought at the garden noticeboard), pond,
   the henhouse in the north-west corner),
   the hallway (12 doors, Nurse Ada), and rooms (14×10, built from a player's furniture).
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an
@@ -32,15 +35,49 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
 - Look: the property is bright and saturated; `MOODS` in src/game.ts sets a colour grade per area
   (the forest will be drained and dark). Night is a multiply tint, not a grey overlay.
 
+## Performance
+
+Keep a frame cheap: the game's own work should stay under 4 ms in the worst case. To check:
+`npm run dev:retirement`, open `/retirement/?stress` (every allotment full at 9 × 5, ten extra
+neighbours with pets, a game on every table), and press ` (backtick) for the readout (src/perf.ts:
+frame graph, fps, work per frame and the slowest sections). Dev builds also log a console warning
+with the breakdown for any frame over 20 ms. `window.perf` and `window.game` are there in dev.
+
+- **Draw once, copy every frame.** Anything with more than a few fillRects goes in a cached
+  sprite (art.ts `cached` / `cachedCtx`, keyed by everything that changes its look) and is drawn
+  with one drawImage. Crops (crop × stage × sway), soil (wet/dry × 4 variants), objects, people,
+  pets, plot frames, glows and name tags/speech bubbles all work this way. No per-tile pixel
+  drawing in the frame loop, and nothing whose look depends on the camera position.
+- **Build caches up front, not on first sight.** `Game.warm(map)` builds a place's ground and
+  sprites when you arrive (under the fade); `warmLook` builds a person's sprites in idle time.
+  Add new sprite kinds to `warm`.
+- **No new gradients, fonts or text layout per frame:** cache them (see `glowSprite`, `tag`,
+  `bubble` in src/game.ts) and fade with `globalAlpha`.
+- **The colour grade (`MOODS`) is applied when the small scene canvas is copied to the screen**
+  (a canvas filter), not as a CSS filter on the scaled-up element (CSS is only the fallback where
+  canvas filters aren't supported).
+- New features that add things to draw in quantity (the forest, more animals) should be checked in
+  `?stress` before they're done.
+
 ## Rules
+- Your plot's size is `save.plot`; the garden array is stored row by row at that size's width
+  (growGarden keeps each tile's row and column when it grows). X digs up a crop; strawberry and
+  tomato plants come up potted (`plant:<crop>`). See COMMUNITY.md "Larger plots".
 - Crops grow in real time only while watered (WATER_MS per watering), computed from
   timestamps, so they grow while you're away and everyone sees the same plot.
 - Day/night is a shared game clock (one day per 24 real minutes, from the timestamp), not
   the viewer's wall clock.
 - Sitting is presence (`sit` + `sitAt`), checked on the server (shared/schema.ts validSeat,
   seatTaken: whoever sat first keeps a seat).
+- Cooking: recipes are `RECIPES` in shared/catalog.ts (ingredients are inventory keys; every meal
+  sells for more than its ingredients). Chef Rosa teaches them (Kitchen "Cook" tab, `save.recipes`;
+  lesson 0 = everyone knows it, never stored) and you cook at the Kitchen or at a stove in your room.
+  Meals are `meal:<id>` in the inventory.
 - Eggs: each hen lays once per game day at LAY_HOUR; each player collects their own share
   (save.coop records the egg day and how many were taken).
+- Board-game tables are the one thing the server referees: it checks every start/move/resign
+  against shared/tables.ts, takes the players from presence (who is on the stools), and writes
+  only if the state's `version` is still the one the player saw (409 otherwise). See COMMUNITY.md.
 - Plot/door slot is assigned by the server (first free of MAX_SLOTS) and never trusted from
   the client. The game is client-authoritative for coins/inventory; the server only checks
   saves are well-formed (validateSave).
@@ -93,9 +130,11 @@ plot upgrades, Chef Rosa's orders, collectibles), also not built yet.
 
 ## Server: api/retirement.ts (one function)
 - GET /retirement → the page (signed-in) or a sign-in page. GET ?op=me, GET ?op=world,
-  POST ?op=save, POST ?op=sync (presence + chat, ~1/s per player, 5s when the tab is hidden).
+  POST ?op=save, POST ?op=sync (presence + chat, ~1/s per player, 5s when the tab is hidden; on
+  the grounds it also returns every games table's state), POST ?op=table (a games-table action).
 - Storage in api/_lib/retirement/store.ts: Upstash Redis over REST when KV_REST_API_URL +
   KV_REST_API_TOKEN (or UPSTASH_REDIS_REST_*) are set; otherwise saves in private Blob
-  (retirement/saves/<login>.json) and presence/chat in function memory (players on
-  different instances may not see each other).
+  (retirement/saves/<login>.json) and presence/chat/tables in function memory (players on
+  different instances may not see each other). In Redis, tables are the `ret:tables` hash, written
+  with an EVAL compare-and-set on the version.
 - Chat: ≤140 chars, cleaned server-side, 1 message per 1.2s per player, last 50 kept.

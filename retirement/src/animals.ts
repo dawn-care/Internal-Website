@@ -2,7 +2,7 @@ import { HENS, LAY_HOUR } from '../shared/catalog'
 import type { Dir, Save } from '../shared/schema'
 import { NEST_SLOTS, TS, outlineCanvas, pen } from './art'
 import { DAY_MS, HOUR_MS } from './clock'
-import { HENHOUSE, T, groundAt, hash, type GameMap } from './maps'
+import { GARDEN, HENHOUSE, POND, T, groundAt, hash, type GameMap } from './maps'
 import type { PetPose } from './pets'
 
 /*
@@ -244,8 +244,9 @@ export class Wildlife {
   private squirrels: Squirrel[] = []
   private butterflies: Butterfly[] = []
   private fireflies: { x: number; y: number; seed: number }[] = []
-  private duckBed = { x: 34.5, y: 28.5 }
-  private pond = { x: 40.2, y: 29.3, rx: 3.2, ry: 1.7 }
+  private duckBed: { x: number; y: number } = { x: POND.x - POND.rx - 0.5, y: POND.y }
+  /** The ducks' loop, well inside the water. */
+  private pond = { x: POND.x, y: POND.y + 0.3, rx: POND.rx - 1.4, ry: POND.ry - 1.6 }
 
   constructor(map: GameMap) {
     // Squirrels live by three leafy trees away from the edges.
@@ -283,8 +284,12 @@ export class Wildlife {
     for (let i = 0; i < 18; i++) {
       const pondSide = i < 10
       this.fireflies.push({
-        x: pondSide ? 33 + hash(i, 1, 903) * 13 : 4 + hash(i, 2, 903) * 24,
-        y: pondSide ? 23 + hash(i, 3, 903) * 12 : 20 + hash(i, 4, 903) * 14,
+        x: pondSide
+          ? POND.x - POND.rx - 1 + hash(i, 1, 903) * (POND.rx * 2 + 2)
+          : GARDEN.x0 + 1 + hash(i, 2, 903) * (GARDEN.x1 - GARDEN.x0 - 2),
+        y: pondSide
+          ? POND.y - POND.ry - 1 + hash(i, 3, 903) * (POND.ry * 2 + 2)
+          : GARDEN.y0 + 1 + hash(i, 4, 903) * (GARDEN.y1 - GARDEN.y0 - 2),
         seed: i,
       })
     }
@@ -293,7 +298,7 @@ export class Wildlife {
     for (let y = 0; y < map.h; y++)
       for (let x = 0; x < map.w; x++) {
         if (groundAt(map, x, y) !== T.SAND || groundAt(map, x + 1, y) !== T.WATER) continue
-        const d = Math.hypot(x - 34, y - 29)
+        const d = Math.hypot(x - (POND.x - POND.rx - 1), y - POND.y)
         if (d < best) {
           best = d
           this.duckBed = { x: x + 0.4, y: y + 0.7 }
@@ -576,7 +581,7 @@ export const HOUSE_CAT = { kind: 'cat' as const, coat: 0, name: 'Mittens' }
 /** Where Mittens naps, by game hour: she follows the sun round the grounds and sleeps inside. */
 const CAT_SPOTS: { from: number; map: 'grounds' | 'hall'; x: number; y: number }[] = [
   { from: 7, map: 'grounds', x: 20.4, y: 12.5 }, // the plaza, morning sun
-  { from: 10, map: 'grounds', x: 12.6, y: 18.4 }, // the path by the garden gate
+  { from: 10, map: 'grounds', x: 21.4, y: 18.4 }, // the path by the garden gate
   { from: 14, map: 'grounds', x: 39.3, y: 17.6 }, // outside the Kitchen (it smells good)
   { from: 18, map: 'grounds', x: 26.6, y: 11.6 }, // the warm front step
   { from: 21, map: 'hall', x: 8.5, y: 6.5 }, // indoors for the night

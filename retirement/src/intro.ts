@@ -1,4 +1,4 @@
-import { CROPS, PLOT_H, PLOT_W } from '../shared/catalog'
+import { CROPS, plotSize } from '../shared/catalog'
 import { INTRO, type IntroStep, type MapId, type Save } from '../shared/schema'
 import * as garden from './garden'
 import { HOME_DOOR, getHall, plotOrigin, roomId, type GameMap, type Npc } from './maps'
@@ -104,7 +104,7 @@ export function hint(
       if (growing.length) {
         const left = Math.min(...growing.map((t) => garden.timeLeft(t, now)))
         const crop = CROPS[growing[0].c!].name.toLowerCase()
-        return `Your ${crop} is growing. About ${Math.max(1, Math.ceil(left / 1000))}s to go while the soil is wet.`
+        return `Your ${crop} is growing: about ${Math.max(1, Math.ceil(left / 1000))}s while the soil is wet. Or press Finish growing.`
       }
       return 'Plant another seed in your plot and grow it.'
     }
@@ -136,7 +136,8 @@ function goal(save: Save, slot: number, login: string): Goal | null {
       if (save.intro === INTRO.sell && hasCrop)
         return { map: 'grounds', x: ROSA.x, y: ROSA.y - 2.25 }
       const o = plotOrigin(slot)
-      return { map: 'grounds', x: o.x + PLOT_W / 2, y: o.y + PLOT_H / 2 - 0.6, plot: true }
+      const { w, h } = plotSize(save.plot)
+      return { map: 'grounds', x: o.x + w / 2, y: o.y + h / 2 - 0.6, plot: true }
     }
     case INTRO.buy:
       // In your own room the Catalog button glows instead.

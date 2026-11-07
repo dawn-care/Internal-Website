@@ -72,6 +72,48 @@ export function harvest(tile: Tile, now: number): { crop: string; count: number 
   return out
 }
 
+/**
+ * Digging up what's growing in a tile (leaving tilled soil). A seed that hasn't sprouted comes back
+ * as a seed; a grown strawberry or tomato plant comes up whole, for a pot (and any ripe fruit is
+ * picked first); anything else unripe is pulled up and lost (`lost`), so the game asks first.
+ */
+export function digUp(
+  tile: Tile,
+  now: number,
+): {
+  seed?: string
+  plant?: string
+  fruit?: { crop: string; count: number }
+  lost?: string
+} | null {
+  if (!tile.c) return null
+  const crop = tile.c
+  const st = stage(tile, now)
+  const out: ReturnType<typeof digUp> = {}
+  if (st === 3) out.fruit = { crop, count: YIELD[crop] ?? 1 }
+  if (st === 0) out.seed = crop
+  else if (CROPS[crop].regrows) out.plant = crop
+  else if (st < 3) out.lost = crop
+  delete tile.c
+  delete tile.g
+  delete tile.t
+  return out
+}
+
+/** Whether digging this tile up would throw away a growing crop (see digUp). */
+export function digLoses(tile: Tile, now: number): boolean {
+  if (!tile.c) return false
+  const st = stage(tile, now)
+  return st > 0 && st < 3 && !CROPS[tile.c].regrows
+}
+
+/** Plants a potted plant (dug up earlier): it's established, so it fruits sooner than a seed. */
+export function transplant(tile: Tile, crop: string, now: number): void {
+  tile.c = crop
+  tile.g = CROPS[crop].growMs * 0.6
+  tile.t = now
+}
+
 export function timeLeft(tile: Tile, now: number): number {
   const def = tile.c ? CROPS[tile.c] : undefined
   return def ? Math.max(0, def.growMs - growthAt(tile, now)) : 0

@@ -6,7 +6,18 @@ export function onMuteChange(fn: (muted: boolean) => void) {
 }
 
 type Sfx =
-  'blip' | 'coin' | 'till' | 'plant' | 'water' | 'harvest' | 'door' | 'chat' | 'nope' | 'crunch'
+  | 'blip'
+  | 'coin'
+  | 'till'
+  | 'plant'
+  | 'water'
+  | 'harvest'
+  | 'door'
+  | 'chat'
+  | 'nope'
+  | 'crunch'
+  | 'clack'
+  | 'sizzle'
 
 let ctx: AudioContext | null = null
 let muted = (() => {
@@ -99,6 +110,16 @@ export function sfx(kind: Sfx) {
       return tone(880, 0.06, 'sine', 0.05)
     case 'nope':
       return tone(200, 0.15, 'square', 0.04, 0, -80)
+    case 'clack':
+      // A piece set down on the board: a short knock with a woody ring.
+      noise(0.04, 0.22, 2200)
+      return tone(330, 0.06, 'triangle', 0.06, 0.01, -60)
+    case 'sizzle':
+      // Something in the pan: a soft hiss, then a little "ding" when it's done.
+      noise(0.5, 0.08, 4200)
+      noise(0.3, 0.06, 3000)
+      tone(1047, 0.25, 'sine', 0.05, 0.45)
+      return tone(1568, 0.3, 'sine', 0.03, 0.5)
     case 'crunch':
       noise(0.05, 0.18, 1800)
       return setTimeout(() => noise(0.05, 0.15, 1500), 90)

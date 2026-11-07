@@ -1,21 +1,31 @@
 import {
   CROPS,
   EGG_PRICE,
+  RECIPES,
+  STOVE,
+  cookable,
+  knowsRecipe,
   FURNITURE,
   GIFT_HEARTS,
   HENS,
   TREAT_PACK,
   HEARTS_MAX,
   MAX_SLOTS,
-  PLOT_H,
-  PLOT_W,
+  PET_COATS,
+  PET_KINDS,
+  PLOT_MAX,
+  PLOT_SIZES,
   ROOM_DOOR_X,
+  plantPrice,
+  plotSize,
+  type PlotSize,
   ROOM_FLOOR,
   ROOM_WALL,
 } from '../shared/catalog'
 import {
   INTRO,
   MAX_CHAT_CHARS,
+  growGarden,
   MAX_ROOM_ITEMS,
   type ChatMsg,
   type Dir,
@@ -29,6 +39,15 @@ import {
   type Save,
 } from '../shared/schema'
 import {
+  canStart,
+  seatedAt,
+  tableOfSeat,
+  type Seated,
+  type Side,
+  type TableAction,
+  type TableState,
+} from '../shared/tables'
+import {
   FLAT_KINDS,
   LAMP_LIGHT_Y,
   TS,
@@ -37,6 +56,8 @@ import {
   drawFurniture,
   drawObject,
   drawSoil,
+  drawStakes,
+  drawTableGame,
   drawWaterGlints,
   plotFrame,
   renderGround,
@@ -53,7 +74,7 @@ import {
   T,
   groundAt,
   inBounds,
-  plotAt,
+  allotmentAt,
   plotOrigin,
   roomId,
   seatsOf,
@@ -78,6 +99,7 @@ import {
   type PetPose,
 } from './pets'
 import { SPR_H, SPR_W, personSprite, seatedSprite } from './people'
+import { perf } from './perf'
 import type { UI } from './ui'
 
 const SPEED = 3.3
@@ -112,7 +134,12 @@ interface Drawable {
 
 export class Game {
   readonly view: HTMLCanvasElement
+  /** The visible canvas; the scene is drawn into `ctx` (an offscreen canvas) and copied here. */
+  private vctx: CanvasRenderingContext2D
+  private scene = document.createElement('canvas')
   private ctx: CanvasRenderingContext2D
+  /** Whether the colour grade can be applied while copying (canvas filters); else it's CSS. */
+  private canvasFilter = 'filter' in CanvasRenderingContext2D.prototype
   readonly overlay: HTMLCanvasElement
   private octx: CanvasRenderingContext2D
   scale = 3
@@ -167,12 +194,15 @@ export class Game {
   ) {
     this.view = document.createElement('canvas')
     this.view.className = 'view'
-    this.ctx = this.view.getContext('2d')!
+    this.vctx = this.view.getContext('2d')!
+    this.ctx = this.scene.getContext('2d')!
     this.overlay = document.createElement('canvas')
     this.overlay.className = 'overlay'
     this.octx = this.overlay.getContext('2d')!
     this.save.slot = slot
-    this.view.style.filter = MOODS.property
+    // The colour grade: applied on the small canvas when copying the scene (far fewer pixels than
+    // filtering the scaled-up element), or as a CSS filter where canvas filters aren't supported.
+    if (!this.canvasFilter) this.view.style.filter = MOODS.property
     for (const o of getGrounds().objects) if (o.k === 'fence') this.fences.add(`${o.x},${o.y}`)
   }
 
@@ -183,6 +213,7 @@ export class Game {
     addEventListener('resize', () => this.resize())
     this.bindInput()
     this.warp('grounds', getGrounds().spawn.x, getGrounds().spawn.y, 0, false)
+    this.warmLooks()
     this.ui.refresh()
     void this.refreshWorld()
     this.scheduleSync(50)
@@ -216,6 +247,9 @@ export class Game {
     this.vh = Math.ceil(h / this.scale)
     this.view.width = this.vw
     this.view.height = this.vh
+    this.scene.width = this.vw
+    this.scene.height = this.vh
+    this.vctx.imageSmoothingEnabled = false
     this.view.style.width = `${this.vw * this.scale}px`
     this.view.style.height = `${this.vh * this.scale}px`
     this.ctx.imageSmoothingEnabled = false
@@ -238,6 +272,8 @@ export class Game {
     addEventListener('keydown', (e) => {
       if (this.typing()) return
       const k = e.key.toLowerCase()
+      // Enter and Space press the focused square or button on a games-table board.
+      if ((k === 'enter' || k === ' ') && this.ui.inBoard(e.target)) return
       if (!this.ui.panelOpen() && this.ui.dialogueKey(e)) return
       if (this.ui.panelOpen()) {
         if (k === 'escape') this.ui.closePanel()
@@ -265,6 +301,10 @@ export class Game {
         this.storeHeld()
         return
       }
+      if (k === 'x') {
+        if (!e.repeat) this.digFacing()
+        return
+      }
       const n = Number(k)
       if (n >= 1 && n <= 9) {
         const id = Object.keys(CROPS)[n - 1]
@@ -279,7 +319,17 @@ export class Game {
     this.overlay.addEventListener('mousemove', (e) => {
       this.decor.mouse = { x: e.clientX, y: e.clientY }
     })
+    // Right-click a tile of your plot next to you to dig up what's growing there.
+    this.overlay.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      if (this.ui.panelOpen() || this.ui.dialogueOpen() || this.decor.active || this.seat) return
+      const t = this.tileAtScreen(e.clientX, e.clientY)
+      if (Math.hypot(t.x + 0.5 - this.me.x, t.y + 0.5 - (this.me.y - 0.3)) > 1.9) return
+      const p = this.plotTile(t.x, t.y)
+      if (p && p.i !== null) this.dig(p.slot, p.i)
+    })
     this.overlay.addEventListener('mousedown', (e) => {
+      if (e.button === 2) return
       if (this.ui.panelOpen()) return
       if (this.ui.dialogueOpen()) return this.ui.advanceDialogue()
       const t = this.tileAtScreen(e.clientX, e.clientY)
@@ -346,6 +396,8 @@ export class Game {
     if (this.petOut) this.myPet.reset(x, y)
     this.remotePets.clear()
     this.resize()
+    // Build this place's cached ground and sprites now, under the fade, not mid-walk.
+    this.warm(this.map)
     if (fade) {
       this.fade = 1
       sfx('door')
@@ -503,6 +555,7 @@ export class Game {
       r.frame = r.anim > 0 ? Math.floor(r.anim) % 4 : 0
     }
     this.updatePets(dt)
+    this.updateWatching()
     if (this.mapId === 'grounds') {
       const threats = [{ x: this.me.x, y: this.me.y }]
       if (this.petOut) threats.push({ x: this.myPet.x, y: this.myPet.y })
@@ -581,6 +634,37 @@ export class Game {
 
   introHint(): string {
     return intro.hint(this.save, this.slot, this.mapId, this.login, Date.now(), this.nearMyPlot())
+  }
+
+  /**
+   * The introduction's "Finish growing" shortcut: offered once something in your plot is planted
+   * and watered but not ripe, while the intro is on its plant or sell task, so new players needn't
+   * wait out a whole growth (watering still has to be done first, so they learn it).
+   */
+  canRushGrowth(): boolean {
+    if (this.save.intro !== INTRO.plant && this.save.intro !== INTRO.sell) return false
+    const now = Date.now()
+    return this.save.garden.some((t) => t.c && garden.isWet(t, now) && garden.stage(t, now) < 3)
+  }
+
+  rushGrowth() {
+    if (!this.canRushGrowth()) return
+    const now = Date.now()
+    let n = 0
+    for (const t of this.save.garden) {
+      if (!t.c || !garden.isWet(t, now) || garden.stage(t, now) === 3) continue
+      t.g = CROPS[t.c].growMs
+      t.t = now
+      n++
+    }
+    sfx('harvest')
+    this.say(
+      n > 1
+        ? "Nurse Ada gives your plants a little encouragement. They're ready to pick!"
+        : "Nurse Ada gives your plant a little encouragement. It's ready to pick!",
+    )
+    this.markDirty()
+    this.ui.refresh()
   }
 
   private startIntro() {
@@ -751,6 +835,15 @@ export class Game {
   private promptText(): string | null {
     if (this.seat) return '[WASD] Get up'
     const pet = this.petInFront()
+    {
+      const ft = this.facingTile()
+      const table = this.tableAtTile(ft.x, ft.y)
+      if (table) {
+        const t = this.tables.get(table)
+        if (this.watching === table) return 'Stop watching'
+        return t && !t.result ? 'Watch the game' : 'Games table · sit on a stool to play'
+      }
+    }
     if (pet) return this.petPrompt(pet)
     const t = this.facingTile()
     const seat = this.seatAtTile(t.x, t.y)
@@ -775,21 +868,45 @@ export class Game {
           return 'Talk to Nurse Ada'
         case 'sign':
           return 'Read'
+        case 'noticeboard':
+          return 'Read the garden noticeboard'
         case 'nest': {
           const n = eggsLeft(this.save, this.gameNow())
           return n ? `Collect ${n} egg${n > 1 ? 's' : ''}` : 'Nest boxes · fresh eggs at 7:00 am'
         }
       }
     }
-    if (this.mapId === 'grounds') {
-      const plot = plotAt(t.x, t.y)
-      if (plot) return this.plotPrompt(plot.slot, plot.i)
+    const plot = this.plotTile(t.x, t.y)
+    if (plot) {
+      if (plot.i !== null) return this.plotPrompt(plot.slot, plot.i)
+      if (plot.slot === this.slot)
+        return 'Room to grow · bigger plots at the noticeboard by the gate'
+      const name = this.slotOwnerName(plot.slot)
+      return name ? `${name}'s allotment` : 'An empty allotment'
     }
     if (this.ownerOf(this.mapId)) {
       const item = this.furnitureAt(t.x, t.y, false)
+      if (item?.k === STOVE && this.inOwnRoom()) return 'Cook at your stove'
       if (item) return FURNITURE[item.k].name
     }
     return null
+  }
+
+  /** The size of the plot in `slot` (yours from your save, others' from their profile). */
+  plotSizeOf(slot: number): PlotSize {
+    return slot === this.slot ? plotSize(this.save.plot) : plotSize(this.profileInSlot(slot)?.plot)
+  }
+
+  /**
+   * The garden tile at (x, y) on the grounds: its slot, and its index in that plot's garden, or
+   * `i: null` for the grass in the allotment beyond a plot that hasn't grown to full size.
+   */
+  private plotTile(x: number, y: number): { slot: number; i: number | null } | null {
+    if (this.mapId !== 'grounds') return null
+    const a = allotmentAt(x, y)
+    if (!a) return null
+    const { w, h } = this.plotSizeOf(a.slot)
+    return { slot: a.slot, i: a.dx < w && a.dy < h ? a.dy * w + a.dx : null }
   }
 
   private plotPrompt(slot: number, i: number): string {
@@ -801,15 +918,17 @@ export class Game {
     const tile = this.save.garden[i]
     if (tile.s === 0) return 'Till the soil'
     if (!tile.c) {
+      const name = CROPS[this.selectedSeed].name
+      if ((this.save.inv[`plant:${this.selectedSeed}`] ?? 0) > 0) return `Replant a potted ${name}`
       const n = this.save.inv[`seed:${this.selectedSeed}`] ?? 0
-      return n > 0
-        ? `Plant ${CROPS[this.selectedSeed].name}`
-        : `No ${CROPS[this.selectedSeed].name} seeds`
+      return n > 0 ? `Plant ${name}` : `No ${name} seeds`
     }
     const st = garden.stage(tile, now)
-    if (st === 3) return `Harvest ${CROPS[tile.c].name}`
-    if (!garden.isWet(tile, now)) return `Water the ${CROPS[tile.c].name}`
-    return `${CROPS[tile.c].name} · ${fmt(garden.timeLeft(tile, now))} to go`
+    const name = CROPS[tile.c].name
+    const dig = ' · [X] Dig up'
+    if (st === 3) return `Harvest ${name}${dig}`
+    if (!garden.isWet(tile, now)) return `Water the ${name}${dig}`
+    return `${name} · ${fmt(garden.timeLeft(tile, now))} to go${dig}`
   }
 
   interact() {
@@ -835,6 +954,12 @@ export class Game {
     if (this.seat) return
     const pet = this.petAt(x, y)
     if (pet) return this.petPet(pet)
+    const table = this.tableAtTile(x, y)
+    if (table) {
+      this.watching = this.watching === table ? null : table
+      sfx('blip')
+      return this.ui.renderTable()
+    }
     const seat = this.seatAtTile(x, y)
     if (seat) {
       if (seat.free) return this.sitDown(seat.free)
@@ -854,16 +979,28 @@ export class Game {
           return this.talkToNurse()
         case 'sign':
           return this.say(it.text)
+        case 'noticeboard':
+          sfx('blip')
+          return this.ui.openNoticeboard()
         case 'nest':
           return this.collectEggs()
       }
     }
-    if (this.mapId === 'grounds') {
-      const plot = plotAt(x, y)
-      if (plot) return this.tend(plot.slot, plot.i)
+    const plot = this.plotTile(x, y)
+    if (plot) {
+      if (plot.i !== null) return this.tend(plot.slot, plot.i)
+      if (plot.slot === this.slot)
+        return this.say(
+          'This part of your allotment is still grass. The noticeboard by the garden gate has bigger plots for sale.',
+        )
+      return this.tend(plot.slot, -1)
     }
     if (this.ownerOf(this.mapId)) {
       const item = this.furnitureAt(x, y, false)
+      if (item?.k === STOVE && this.inOwnRoom()) {
+        sfx('blip')
+        return this.ui.openStove()
+      }
       if (item)
         return this.say(FLAVOR[item.k] ?? `A lovely ${FURNITURE[item.k].name.toLowerCase()}.`)
     }
@@ -961,13 +1098,18 @@ export class Game {
     this.seatedFor = 0
     this.me.x = seat.x
     this.me.y = seat.y
-    this.me.dir = 0
+    this.me.dir = seat.face ?? 0
     this.me.moving = false
     this.me.anim = 0
     this.keys.clear()
     this.myPet.retrail()
     sfx('blip')
     this.scheduleSync(30)
+    if (tableOfSeat(seat.id)) {
+      this.watching = null
+      this.tableSel = []
+      this.ui.renderTable()
+    }
   }
 
   /** Back on your feet, just in front of the seat. */
@@ -990,6 +1132,7 @@ export class Game {
     this.me.dir = 0
     this.myPet.retrail()
     this.scheduleSync(30)
+    if (tableOfSeat(s.id)) this.ui.renderTable()
   }
 
   /** The first of the offsets from (x, y) you could stand on, if any. */
@@ -1015,16 +1158,24 @@ export class Game {
     )
   }
 
-  /** Dozing off: after half a minute sitting still. */
-  private dozing(sitAt: number | undefined, now: number): boolean {
-    return sitAt !== undefined && now - sitAt > 30_000
+  /** Dozing off: after half a minute sitting still (but never at a games table). */
+  private dozing(sitAt: number | undefined, now: number, seat?: string): boolean {
+    return sitAt !== undefined && now - sitAt > 30_000 && !tableOfSeat(seat)
   }
 
-  private drawSeated(look: Look, x: number, y: number, doze: boolean, ox: number, oy: number) {
+  private drawSeated(
+    look: Look,
+    x: number,
+    y: number,
+    doze: boolean,
+    ox: number,
+    oy: number,
+    dir: Dir = 0,
+  ) {
     const c = this.ctx
     const px = Math.round(x * TS + ox)
     const py = Math.round(y * TS + oy)
-    c.drawImage(seatedSprite(look, doze), px - SPR_W / 2, py - SPR_H + 1)
+    c.drawImage(seatedSprite(look, doze, dir), px - SPR_W / 2, py - SPR_H + 1)
     if (doze) {
       const t = (this.time / 1800) % 1
       c.fillStyle = `rgba(59,63,128,${0.9 * (1 - t)})`
@@ -1034,6 +1185,125 @@ export class Game {
       c.fillRect(zx + 1, zy + 1, 1, 1)
       c.fillRect(zx, zy + 2, 3, 1)
     }
+  }
+
+  // --- board-game tables -----------------------------------------------------------------------
+
+  /** Every table's state as last heard from the server (or from your own move). */
+  tables = new Map<string, TableState>()
+  /** A table you're standing by and watching (you face it and press E). */
+  watching: string | null = null
+  /** Checkers: the squares picked so far for your move (the piece, then any jumps). */
+  tableSel: number[] = []
+  tableBusy = false
+
+  /** The id of the games table on tile (x, y), if there is one on this map. */
+  private tableAtTile(x: number, y: number): string | null {
+    if (this.mapId !== 'grounds') return null
+    const o = this.map.objects.find((o) => o.k === 'gametable' && o.x === x && o.y === y)
+    return o ? `table:${o.x},${o.y}` : null
+  }
+
+  /** The table you're sitting at (and on which side), or watching. Null if neither. */
+  tableView(): {
+    id: string
+    state: TableState | null
+    side: Side | null
+    seated: Seated
+    busy: boolean
+  } | null {
+    const at = tableOfSeat(this.seat?.id)
+    const id = at?.id ?? this.watching
+    if (!id) return null
+    const me = { login: this.login, look: this.save.look, map: this.mapId }
+    const people = [...this.others.values()].map((r) => r.p)
+    const seated = seatedAt(
+      id,
+      this.seat ? [...people, { ...me, sit: this.seat.id, sitAt: this.seatAt }] : people,
+    )
+    return {
+      id,
+      state: this.tables.get(id) ?? null,
+      side: at?.side ?? null,
+      seated,
+      busy: this.tableBusy,
+    }
+  }
+
+  canStartTable(): boolean {
+    const v = this.tableView()
+    return !!v && v.side !== null && canStart(v.state, v.seated)
+  }
+
+  /** Sends a start, move or resign for the table you're sitting at. */
+  async tableAction(action: TableAction) {
+    const v = this.tableView()
+    // Resigning works standing up too (you might have wandered off mid-game); the rest needs a stool.
+    if (!v || this.tableBusy || (v.side === null && action.type !== 'resign')) return
+    this.tableBusy = true
+    this.ui.renderTable()
+    try {
+      const { table } = await this.net.table({ id: v.id, version: v.state?.version ?? 0, action })
+      this.tables.set(table.id, table)
+      this.tableSel = []
+      sfx(action.type === 'move' ? 'clack' : 'blip')
+      if (table.result) this.tableOver(table)
+    } catch (err) {
+      this.tableSel = []
+      if (err instanceof NetError && (err.status === 409 || err.status === 400)) {
+        sfx('nope')
+        this.ui.toast(err.message)
+        this.scheduleSync(0)
+      } else this.handleNetError(err)
+    } finally {
+      this.tableBusy = false
+      this.ui.renderTable()
+    }
+  }
+
+  private tableOver(t: TableState) {
+    const mine = t.players[0] === this.login ? 0 : t.players[1] === this.login ? 1 : null
+    if (mine !== null && t.result?.winner === mine) sfx('harvest')
+  }
+
+  /** New states from a sync: plays the opponent's moves and tells you when it's your turn. */
+  private applyTables(list: TableState[]) {
+    const view = this.tableView()
+    let changed = false
+    for (const t of list) {
+      const prev = this.tables.get(t.id)
+      if (prev && prev.version >= t.version) continue
+      this.tables.set(t.id, t)
+      if (t.id !== view?.id) continue
+      changed = true
+      if (prev && prev.game === t.game && t.version === prev.version + 1 && t.last.length)
+        sfx('clack')
+      if (t.result) this.tableOver(t)
+      else if (view.side !== null && t.turn === view.side && t.players[view.side] === this.login)
+        sfx('chat')
+    }
+    if (changed) {
+      this.tableSel = []
+      this.ui.renderTable()
+    }
+  }
+
+  /** Watching ends when you walk away from the table. */
+  private updateWatching() {
+    if (!this.watching) return
+    const [x, y] = this.watching.slice(6).split(',').map(Number)
+    if (
+      this.mapId !== 'grounds' ||
+      Math.hypot(this.me.x - (x + 0.5), this.me.y - (y + 0.5)) > 3.5
+    ) {
+      this.watching = null
+      this.ui.renderTable()
+    }
+  }
+
+  private drawTableTop(id: string, px: number, py: number) {
+    const t = this.tables.get(id)
+    drawTableGame(this.ctx, px, py, t?.game ?? null, t?.board ?? null, t?.first ?? 0)
   }
 
   // --- animals --------------------------------------------------------------------------------
@@ -1117,7 +1387,7 @@ export class Game {
       if (this.seat) {
         const spot = this.feetSpot(this.seat.x, this.seat.y)
         this.myPet.settle(dt, spot.x, spot.y)
-      } else this.myPet.update(dt, this.me.x, this.me.y, (x, y) => this.blocked(x, y))
+      } else this.myPet.update(dt, this.me.x, this.me.y)
       this.petOutFor += dt
       if (!this.giftChecked && this.petOutFor > 4) {
         this.giftChecked = true
@@ -1139,7 +1409,7 @@ export class Game {
       if (r.p.sit) {
         const spot = this.feetSpot(r.p.x, r.p.y)
         fl.settle(dt, spot.x, spot.y)
-      } else fl.update(dt, r.rx, r.ry, (x, y) => this.blocked(x, y))
+      } else fl.update(dt, r.rx, r.ry)
     }
     for (const login of this.remotePets.keys())
       if (!this.others.has(login)) this.remotePets.delete(login)
@@ -1237,7 +1507,7 @@ export class Game {
     if (!p.mine) return `${verb} ${p.look.name}`
     const pet = this.save.pet!
     const treat = (this.save.inv.treat ?? 0) > 0 && pet.fedOn !== petDay(Date.now())
-    return `${verb} ${pet.name}${treat ? ' · F: give a treat' : ''}`
+    return `${verb} ${pet.name}${treat ? ' · [F] Give a treat' : ''}`
   }
 
   private petPet(p: ReturnType<Game['visiblePets']>[number]) {
@@ -1444,6 +1714,15 @@ export class Game {
     if (tile.s === 0) {
       garden.till(tile)
       sfx('till')
+    } else if (!tile.c && (this.save.inv[`plant:${this.selectedSeed}`] ?? 0) > 0) {
+      // A potted plant you dug up goes in before seeds: it's already established.
+      const key = `plant:${this.selectedSeed}`
+      this.save.inv[key] -= 1
+      if (!this.save.inv[key]) delete this.save.inv[key]
+      garden.transplant(tile, this.selectedSeed, now)
+      if (garden.isWet(tile, now)) garden.settle(tile, now)
+      sfx('plant')
+      this.introEvent('plant')
     } else if (!tile.c) {
       const key = `seed:${this.selectedSeed}`
       if ((this.save.inv[key] ?? 0) <= 0)
@@ -1462,13 +1741,103 @@ export class Game {
       this.save.inv[key] = (this.save.inv[key] ?? 0) + got.count
       this.save.stats.harvested += got.count
       sfx('harvest')
-      this.ui.toast(`+${got.count} ${CROPS[got.crop].name}${got.count > 1 ? 's' : ''}`)
+      this.ui.toast(`+${got.count} ${plural(CROPS[got.crop].name, got.count)}`)
     } else if (!garden.isWet(tile, now)) {
       garden.water(tile, now)
       sfx('water')
     } else {
       return this.say(`Growing nicely. About ${fmt(garden.timeLeft(tile, now))} to go.`)
     }
+    this.markDirty()
+    this.ui.refresh()
+  }
+
+  /** Asked to confirm pulling up an unripe crop: the tile, until when. */
+  private digArm: { i: number; until: number } | null = null
+
+  private digFacing() {
+    if (this.decor.active || this.seat || this.ui.panelOpen() || this.ui.dialogueOpen()) return
+    const t = this.facingTile()
+    const p = this.plotTile(t.x, t.y)
+    if (p && p.i !== null) this.dig(p.slot, p.i)
+  }
+
+  /**
+   * Digs up what's growing in tile i of your plot: seeds come back, strawberry and tomato plants
+   * come up potted (to sell to Chef Rosa or replant), anything else unripe needs a second X.
+   */
+  dig(slot: number, i: number) {
+    if (slot !== this.slot) return this.say("That's not your plot to dig up!")
+    const tile = this.save.garden[i]
+    if (!tile?.c) return this.say(tile?.s ? 'Nothing is growing here yet.' : 'Just grass here.')
+    const now = Date.now()
+    const name = CROPS[tile.c].name
+    if (garden.digLoses(tile, now)) {
+      const armed = this.digArm && this.digArm.i === i && Date.now() < this.digArm.until
+      if (!armed) {
+        this.digArm = { i, until: Date.now() + 4000 }
+        sfx('nope')
+        return this.say(`Press X again to pull up the ${name}. It isn't ripe, so it would be lost.`)
+      }
+    }
+    this.digArm = null
+    const got = garden.digUp(tile, now)
+    if (!got) return
+    const add = (key: string, n: number) => (this.save.inv[key] = (this.save.inv[key] ?? 0) + n)
+    const said: string[] = []
+    if (got.fruit) {
+      add(`crop:${got.fruit.crop}`, got.fruit.count)
+      this.save.stats.harvested += got.fruit.count
+      said.push(`+${got.fruit.count} ${plural(name, got.fruit.count)}`)
+    }
+    if (got.seed) {
+      add(`seed:${got.seed}`, 1)
+      said.push(`The ${name} seed goes back in its packet.`)
+    }
+    if (got.plant) {
+      add(`plant:${got.plant}`, 1)
+      said.push(
+        `You pot up the ${name} plant. Chef Rosa buys potted plants, or plant it somewhere else.`,
+      )
+    }
+    if (got.lost) said.push(`You pull up the ${name}. Into the compost it goes.`)
+    sfx('till')
+    this.say(said.join(' '))
+    this.markDirty()
+    this.ui.refresh()
+  }
+
+  /** The next plot size you could buy, if any. */
+  nextPlot(): PlotSize | null {
+    return PLOT_SIZES[(this.save.plot ?? 0) + 1] ?? null
+  }
+
+  /** Buys the next plot size: your plot grows to the right and down, keeping what's planted. */
+  buyPlot(): boolean {
+    const next = this.nextPlot()
+    if (!next || this.slot < 0 || this.save.coins < next.price) return false
+    const from = this.save.plot ?? 0
+    this.save.coins -= next.price
+    this.save.garden = growGarden(this.save.garden, from, from + 1)
+    this.save.plot = from + 1
+    sfx('coin')
+    this.markDirty()
+    void this.flushSave()
+    this.ui.refresh()
+    return true
+  }
+
+  sellPlants(crop: string, count: number) {
+    const key = `plant:${crop}`
+    const have = this.save.inv[key] ?? 0
+    const n = Math.min(have, count)
+    if (n <= 0) return
+    const earned = n * plantPrice(crop)
+    this.save.inv[key] = have - n
+    if (this.save.inv[key] === 0) delete this.save.inv[key]
+    this.save.coins += earned
+    this.save.stats.earned += earned
+    sfx('coin')
     this.markDirty()
     this.ui.refresh()
   }
@@ -1493,11 +1862,12 @@ export class Game {
   nearMyPlot(): boolean {
     if (this.mapId !== 'grounds' || this.slot < 0) return false
     const o = plotOrigin(this.slot)
+    const { w, h } = this.plotSizeOf(this.slot)
     return (
       this.me.x > o.x - 2 &&
-      this.me.x < o.x + PLOT_W + 2 &&
+      this.me.x < o.x + w + 2 &&
       this.me.y > o.y - 1.5 &&
-      this.me.y < o.y + PLOT_H + 2
+      this.me.y < o.y + h + 2
     )
   }
 
@@ -1680,6 +2050,69 @@ export class Game {
     this.ui.refresh()
   }
 
+  // --- cooking --------------------------------------------------------------------------------
+
+  knows(recipe: string): boolean {
+    return knowsRecipe(this.save.recipes, recipe)
+  }
+
+  /** Chef Rosa teaches you a recipe, for its lesson fee. */
+  learnRecipe(recipe: string) {
+    const r = RECIPES[recipe]
+    if (!r || this.knows(recipe)) return
+    if (this.save.coins < r.lesson) {
+      sfx('nope')
+      return this.ui.toast(`You need ${r.lesson - this.save.coins} more coins for that lesson.`)
+    }
+    this.save.coins -= r.lesson
+    this.save.recipes = [...(this.save.recipes ?? []), recipe]
+    sfx('coin')
+    this.markDirty()
+    this.ui.toast(`Chef Rosa shows you how to make ${r.name.toLowerCase()}.`)
+    this.ui.refresh()
+  }
+
+  /** Cooks `count` of a recipe you know from what's in your basket. Returns how many were made. */
+  cook(recipe: string, count: number): number {
+    const r = RECIPES[recipe]
+    if (!r || !this.knows(recipe)) return 0
+    const n = Math.min(count, cookable(this.save.inv, recipe))
+    if (n <= 0) {
+      sfx('nope')
+      this.ui.toast(`You don't have everything for ${r.name.toLowerCase()}.`)
+      return 0
+    }
+    const inv = this.save.inv
+    for (const [k, need] of Object.entries(r.ingredients)) {
+      inv[k] -= need * n
+      if (inv[k] <= 0) delete inv[k]
+    }
+    inv[`meal:${recipe}`] = (inv[`meal:${recipe}`] ?? 0) + n
+    sfx('sizzle')
+    this.markDirty()
+    this.ui.toast(
+      n > 1 ? `You cook ${n} × ${r.name.toLowerCase()}.` : `You cook ${r.name.toLowerCase()}.`,
+    )
+    this.ui.refresh()
+    return n
+  }
+
+  sellMeal(recipe: string, count: number) {
+    const key = `meal:${recipe}`
+    const have = this.save.inv[key] ?? 0
+    const n = Math.min(have, count)
+    if (n <= 0) return
+    const earned = n * RECIPES[recipe].sellPrice
+    this.save.inv[key] = have - n
+    if (!this.save.inv[key]) delete this.save.inv[key]
+    this.save.coins += earned
+    this.save.stats.earned += earned
+    sfx('coin')
+    this.markDirty()
+    this.introEvent('sell')
+    this.ui.refresh()
+  }
+
   buySeeds(crop: string, count: number) {
     const cost = CROPS[crop].seedPrice * count
     if (this.save.coins < cost) {
@@ -1796,6 +2229,8 @@ export class Game {
       if (msg && !res.sent) this.ui.toast('Slow down a little, dear. Try again in a moment.')
       this.applyPlayers(res.players)
       this.applyChat(res.chat)
+      if (res.tables) this.applyTables(res.tables)
+      this.ui.renderTable()
       this.ui.setOnline(true)
     } catch (err) {
       if (msg) this.pendingMsg = msg
@@ -1860,12 +2295,79 @@ export class Game {
   // --- rendering ------------------------------------------------------------------------------
 
   private frame(t: number) {
-    const dt = Math.min(0.05, (t - this.last) / 1000)
+    const gap = t - this.last
+    const dt = Math.min(0.05, gap / 1000)
     this.last = t
     this.time = t
+    perf?.begin(gap)
+    perf?.mark('update')
     if (!this.stopped) this.update(dt)
     this.render()
+    perf?.end()
     requestAnimationFrame((nt) => this.frame(nt))
+  }
+
+  // --- warming caches -------------------------------------------------------------------------
+  //
+  // Sprites are drawn once and cached the first time they're needed. Doing that mid-walk is a
+  // visible hitch (the grounds take a few hundred ms), so it happens up front: a place's ground,
+  // objects, crops and soil when you arrive (under the fade), and people's sprites when they
+  // first appear (in idle time).
+
+  private warmed = new Set<string>()
+  private scratch = document.createElement('canvas').getContext('2d')!
+
+  private warm(m: GameMap) {
+    this.groundFor(m)
+    if (this.warmed.has(m.id)) return
+    this.warmed.add(m.id)
+    const c = this.scratch
+    const fenceAt = (x: number, y: number) => this.fences.has(`${x},${y}`)
+    for (const o of m.objects) drawObject(c, o, -64, -64, 0, fenceAt)
+    for (const n of m.npcs) this.warmLook(n.look)
+    if (m.id !== 'grounds') return
+    for (const crop of Object.keys(CROPS))
+      for (let st = 0; st < 4; st++)
+        for (const time of [0, 700 * 1.6, 700 * 4.7]) drawCrop(c, crop, st, -64, -64, time, 0)
+    for (const wet of [false, true])
+      for (let v = 0; v < 16; v++) drawSoil(c, -64, -64, wet, v, v * 3)
+    for (let lv = 0; lv < PLOT_SIZES.length; lv++) {
+      const { w, h } = plotSize(lv)
+      plotFrame(w, h, true)
+      plotFrame(w, h, false)
+    }
+    glowSprite(24, [255, 170, 80])
+    glowSprite(34, [255, 214, 140])
+  }
+
+  /** Someone's sprites (every direction and step, sitting, dozing), built in idle time. */
+  private warmLook(look: Look) {
+    const key = JSON.stringify(look)
+    if (this.warmed.has(key)) return
+    this.warmed.add(key)
+    const build = () => {
+      for (const dir of [0, 1, 2, 3] as Dir[])
+        for (let f = 0; f < 4; f++) personSprite(look, dir, f)
+      for (const doze of [false, true])
+        for (const d of [0, 1, 2] as Dir[]) seatedSprite(look, doze, d)
+    }
+    if ('requestIdleCallback' in window) requestIdleCallback(build, { timeout: 2000 })
+    else setTimeout(build, 0)
+  }
+
+  /** Your look, Ada's, and every pet, at the start. */
+  private warmLooks() {
+    this.warmLook(this.save.look)
+    this.warmLook(intro.INTRO_ADA.look)
+    const pets = () => {
+      for (const kind of PET_KINDS)
+        for (let coat = 0; coat < PET_COATS[kind].length; coat++)
+          for (const pose of ['walk', 'sit', 'sleep'] as PetPose[])
+            for (const dir of [0, 1, 2, 3] as Dir[])
+              for (let f = 0; f < 4; f++) petSprite(kind, coat, pose, dir, f)
+    }
+    if ('requestIdleCallback' in window) requestIdleCallback(pets, { timeout: 3000 })
+    else setTimeout(pets, 0)
   }
 
   private render() {
@@ -1882,9 +2384,11 @@ export class Game {
     const ox = -this.cam.x
     const oy = -this.cam.y
 
+    perf?.mark('ground')
     c.fillStyle = m.outdoor ? '#3f7d32' : '#231c26'
     c.fillRect(0, 0, this.vw, this.vh)
     c.drawImage(this.groundFor(m), ox, oy)
+    perf?.mark('objects')
 
     const x0 = Math.floor(this.cam.x / TS) - 3
     const y0 = Math.floor(this.cam.y / TS) - 3
@@ -1914,12 +2418,15 @@ export class Game {
           if (seeThrough) c.globalAlpha = 0.45
           drawObject(c, o, px, py, this.time, fenceAt)
           c.globalAlpha = 1
+          if (o.k === 'gametable') this.drawTableTop(`table:${o.x},${o.y}`, px, py)
         },
       })
     }
 
     if (m.id === 'grounds') {
+      perf?.mark('garden')
       this.collectGarden(list, ox, oy, visible)
+      perf?.mark('animals')
       const now = this.gameNow()
       this.wild.collect(list, c, ox, oy, now, gameHour(now), eggsLeft(this.save, now))
     }
@@ -1937,10 +2444,10 @@ export class Game {
     for (const r of this.others.values()) {
       if (r.p.map !== m.id) continue
       if (r.p.sit) {
-        const doze = this.dozing(r.p.sitAt, Date.now())
+        const doze = this.dozing(r.p.sitAt, Date.now(), r.p.sit)
         list.push({
           y: r.ry * TS + 6,
-          draw: () => this.drawSeated(r.p.look, r.rx, r.ry, doze, ox, oy),
+          draw: () => this.drawSeated(r.p.look, r.rx, r.ry, doze, ox, oy, r.p.dir),
         })
         continue
       }
@@ -1950,10 +2457,11 @@ export class Game {
       })
     }
     if (this.seat) {
-      const doze = this.seatedFor > 30
+      const doze = this.seatedFor > 30 && !tableOfSeat(this.seat.id)
       list.push({
         y: this.me.y * TS + 6,
-        draw: () => this.drawSeated(this.save.look, this.me.x, this.me.y, doze, ox, oy),
+        draw: () =>
+          this.drawSeated(this.save.look, this.me.x, this.me.y, doze, ox, oy, this.me.dir),
       })
     } else
       list.push({
@@ -1962,19 +2470,28 @@ export class Game {
           this.drawPerson(this.save.look, this.me.x, this.me.y, this.me.dir, this.me.anim, ox, oy),
       })
 
+    perf?.mark('people')
     list.sort((a, b) => a.y - b.y)
+    perf?.mark('draw')
     for (const d of list) d.draw()
     this.drawPetFx(ox, oy)
 
     if (this.decor.active) this.drawDecorGhost(ox, oy)
     if (!this.decor.active && !this.ui.panelOpen() && !this.ui.dialogueOpen())
       this.drawFacingCursor(ox, oy)
+    perf?.mark('light')
     if (m.outdoor) this.drawDaylight(ox, oy)
     this.drawIntroArrow(ox, oy)
     if (this.fade > 0) {
       c.fillStyle = `rgba(20,16,28,${this.fade})`
       c.fillRect(0, 0, this.vw, this.vh)
     }
+    perf?.mark('present')
+    const v = this.vctx
+    if (this.canvasFilter) v.filter = MOODS.property
+    v.drawImage(this.scene, 0, 0)
+    if (this.canvasFilter) v.filter = 'none'
+    perf?.mark('overlay')
     this.renderOverlay()
   }
 
@@ -1988,22 +2505,29 @@ export class Game {
     const now = Date.now()
     for (let s = 0; s < MAX_SLOTS; s++) {
       const o = plotOrigin(s)
-      if (!visible(o.x - 1, o.y - 1, PLOT_W + 2, PLOT_H + 2)) continue
+      if (!visible(o.x - 1, o.y - 1, PLOT_MAX.w + 2, PLOT_MAX.h + 2)) continue
       const tiles = s === this.slot ? this.save.garden : this.profileInSlot(s)?.garden
       const mine = s === this.slot
+      const { w, h } = this.plotSizeOf(s)
+      // Your allotment's full extent is marked with stakes and string while there's room to grow.
+      if (mine && (w < PLOT_MAX.w || h < PLOT_MAX.h))
+        drawStakes(c, o.x * TS + ox, o.y * TS + oy, PLOT_MAX.w, PLOT_MAX.h)
       // A raised wooden bed round the plot, with brass caps on your own.
-      c.drawImage(plotFrame(PLOT_W, PLOT_H, mine), o.x * TS + ox - 4, o.y * TS + oy - 4)
-      if (!tiles) continue
+      c.drawImage(plotFrame(w, h, mine), o.x * TS + ox - 4, o.y * TS + oy - 4)
+      if (!tiles || tiles.length !== w * h) continue
       tiles.forEach((tile, i) => {
-        const tx = o.x + (i % PLOT_W)
-        const ty = o.y + Math.floor(i / PLOT_W)
+        const tx = o.x + (i % w)
+        const ty = o.y + Math.floor(i / w)
         const px = tx * TS + ox
         const py = ty * TS + oy
-        if (tile.s === 1) drawSoil(c, px, py, garden.isWet(tile, now))
+        if (tile.s === 1) drawSoil(c, px, py, garden.isWet(tile, now), tx, ty)
         if (tile.c) {
           const st = garden.stage(tile, now)
           const crop = tile.c
-          list.push({ y: (ty + 1) * TS - 2, draw: () => drawCrop(c, crop, st, px, py, this.time) })
+          list.push({
+            y: (ty + 1) * TS - 2,
+            draw: () => drawCrop(c, crop, st, px, py, this.time, tx),
+          })
         }
       })
     }
@@ -2098,8 +2622,7 @@ export class Game {
   private drawFacingCursor(ox: number, oy: number) {
     const t = this.facingTile()
     const actionable =
-      !!this.interactAt(t.x, t.y) ||
-      (this.mapId === 'grounds' && plotAt(t.x, t.y)?.slot === this.slot && this.slot >= 0)
+      !!this.interactAt(t.x, t.y) || (this.plotTile(t.x, t.y)?.slot === this.slot && this.slot >= 0)
     if (!actionable) return
     const c = this.ctx
     const px = t.x * TS + ox
@@ -2184,25 +2707,18 @@ export class Game {
     }
     c.globalCompositeOperation = 'lighter'
     if (this.mapId === 'grounds') this.wild.glow(c, ox, oy, this.gameNow(), k)
-    for (const p of panes) {
-      const cx = p.x + p.w / 2
-      const cy = p.y + p.h / 2
-      const g = c.createRadialGradient(cx, cy, 4, cx, cy, 24)
-      g.addColorStop(0, `rgba(255,170,80,${0.35 * k})`)
-      g.addColorStop(1, 'rgba(255,170,80,0)')
-      c.fillStyle = g
-      c.fillRect(cx - 24, cy - 24, 48, 48)
-    }
+    // Glows are cached sprites at full strength, faded with globalAlpha (no gradients per frame).
+    const windowGlow = glowSprite(24, [255, 170, 80])
+    c.globalAlpha = 0.35 * k
+    for (const p of panes)
+      c.drawImage(windowGlow, Math.round(p.x + p.w / 2 - 24), Math.round(p.y + p.h / 2 - 24))
+    const lampGlow = glowSprite(34, [255, 214, 140])
+    c.globalAlpha = Math.min(1, dark * 0.9)
     for (const o of this.map.objects) {
       if (o.k !== 'lamp') continue
-      const px = o.x * TS + 8 + ox
-      const py = o.y * TS + LAMP_LIGHT_Y + oy
-      const g = c.createRadialGradient(px, py, 1, px, py, 34)
-      g.addColorStop(0, `rgba(255,214,140,${dark * 0.9})`)
-      g.addColorStop(1, 'rgba(255,214,140,0)')
-      c.fillStyle = g
-      c.fillRect(px - 34, py - 34, 68, 68)
+      c.drawImage(lampGlow, o.x * TS + 8 + ox - 34, o.y * TS + LAMP_LIGHT_Y + oy - 34)
     }
+    c.globalAlpha = 1
     c.globalCompositeOperation = 'source-over'
   }
 
@@ -2227,8 +2743,9 @@ export class Game {
         const name = this.slotOwnerName(slot)
         if (!name) continue
         const o = plotOrigin(slot)
-        if (Math.hypot(this.me.x - (o.x + PLOT_W / 2), this.me.y - (o.y + 1)) > 7) continue
-        const p = toScreen(o.x + PLOT_W / 2, o.y - 0.25)
+        const { w } = this.plotSizeOf(slot)
+        if (Math.hypot(this.me.x - (o.x + w / 2), this.me.y - (o.y + 1)) > 8) continue
+        const p = toScreen(o.x + w / 2, o.y - 0.25)
         tag(
           c,
           slot === this.slot ? 'Your plot' : name,
@@ -2302,11 +2819,20 @@ const FLAVOR: Record<string, string> = {
   basket: 'A scarf for your grandson, nearly finished.',
   bookshelf: 'Mysteries, gardening guides, and a well-loved atlas.',
   fern: 'It could use a little water. You give it some.',
+  stove: 'Still warm. Something good was cooked here today.',
 }
 
 function inside(it: RoomItem, x: number, y: number): boolean {
   const d = FURNITURE[it.k]
   return x >= it.x && x < it.x + d.w && y >= it.y && y < it.y + d.h
+}
+
+/** "Tomato" → "Tomatoes", "Strawberry" → "Strawberries", "Radish" → "Radishes". */
+function plural(name: string, n: number): string {
+  if (n === 1) return name
+  if (/[^aeiou]y$/.test(name)) return `${name.slice(0, -1)}ies`
+  if (/(o|sh|ch|s)$/.test(name)) return `${name}es`
+  return `${name}s`
 }
 
 function clamp(v: number, a: number, b: number) {
@@ -2363,6 +2889,75 @@ export function fmt(ms: number): string {
 
 const FONT = '"Trebuchet MS", "Segoe UI", system-ui, sans-serif'
 
+/** A soft round glow (for lamps and lit windows), drawn once per size and colour. */
+const glows = new Map<string, HTMLCanvasElement>()
+function glowSprite(r: number, [cr, cg, cb]: number[]): HTMLCanvasElement {
+  const key = `${r}|${cr},${cg},${cb}`
+  let cv = glows.get(key)
+  if (!cv) {
+    cv = document.createElement('canvas')
+    cv.width = cv.height = r * 2
+    const c = cv.getContext('2d')!
+    const g = c.createRadialGradient(r, r, r / 8, r, r, r)
+    g.addColorStop(0, `rgba(${cr},${cg},${cb},1)`)
+    g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
+    c.fillStyle = g
+    c.fillRect(0, 0, r * 2, r * 2)
+    glows.set(key, cv)
+  }
+  return cv
+}
+
+/**
+ * Name tags and speech bubbles are drawn once into bitmaps (at the overlay's pixel ratio) and
+ * copied each frame: text layout every frame for every label adds up.
+ */
+const textCache = new Map<
+  string,
+  { cv: HTMLCanvasElement; w: number; h: number; ax: number; ay: number }
+>()
+function textSprite(
+  key: string,
+  dpr: number,
+  make: (c: CanvasRenderingContext2D) => {
+    w: number
+    h: number
+    ax: number
+    ay: number
+    paint: (c: CanvasRenderingContext2D) => void
+  },
+) {
+  let e = textCache.get(key)
+  if (!e) {
+    if (textCache.size > 300) textCache.clear()
+    const cv = document.createElement('canvas')
+    const m = make(cv.getContext('2d')!)
+    cv.width = Math.ceil(m.w * dpr)
+    cv.height = Math.ceil(m.h * dpr)
+    const c = cv.getContext('2d')!
+    c.scale(dpr, dpr)
+    c.textAlign = 'center'
+    c.textBaseline = 'middle'
+    m.paint(c)
+    e = { cv, w: m.w, h: m.h, ax: m.ax, ay: m.ay }
+    textCache.set(key, e)
+  }
+  return e
+}
+
+/** Draws a cached sprite so its anchor lands on (x, y), snapped to device pixels. */
+function blitText(
+  c: CanvasRenderingContext2D,
+  e: { cv: HTMLCanvasElement; w: number; h: number; ax: number; ay: number },
+  x: number,
+  y: number,
+  dpr: number,
+) {
+  const px = Math.round((x - e.ax) * dpr) / dpr
+  const py = Math.round((y - e.ay) * dpr) / dpr
+  c.drawImage(e.cv, px, py, e.w, e.h)
+}
+
 function tag(
   c: CanvasRenderingContext2D,
   text: string,
@@ -2372,14 +2967,28 @@ function tag(
   fg: string,
   bg: string,
 ) {
-  c.font = `700 ${Math.round(size)}px ${FONT}`
-  const w = c.measureText(text).width + size * 0.9
-  const h = size * 1.45
-  c.fillStyle = bg
-  roundRect(c, x - w / 2, y - h / 2, w, h, h / 3)
-  c.fill()
-  c.fillStyle = fg
-  c.fillText(text, x, y + 1)
+  const dpr = c.getTransform().a || 1
+  const font = `700 ${Math.round(size)}px ${FONT}`
+  const e = textSprite(`t|${text}|${font}|${fg}|${bg}|${dpr}`, dpr, (m) => {
+    m.font = font
+    const w = Math.ceil(m.measureText(text).width + size * 0.9)
+    const h = Math.ceil(size * 1.45)
+    return {
+      w,
+      h,
+      ax: w / 2,
+      ay: h / 2,
+      paint: (g) => {
+        g.font = font
+        g.fillStyle = bg
+        roundRect(g, 0, 0, w, h, h / 3)
+        g.fill()
+        g.fillStyle = fg
+        g.fillText(text, w / 2, h / 2 + 1)
+      },
+    }
+  })
+  blitText(c, e, x, y, dpr)
 }
 
 function bubble(
@@ -2390,14 +2999,45 @@ function bubble(
   size: number,
   alpha: number,
 ) {
+  const dpr = c.getTransform().a || 1
+  const font = `600 ${Math.round(size)}px ${FONT}`
+  const e = textSprite(`b|${text}|${font}|${dpr}`, dpr, (m) => {
+    m.font = font
+    const lines = wrap(m, text, size * 14)
+    const lh = size * 1.25
+    const bw = Math.max(...lines.map((l) => m.measureText(l).width)) + size * 1.2
+    const bh = lines.length * lh + size * 0.8
+    const lw = Math.max(2, size / 6)
+    const w = Math.ceil(bw + lw * 2)
+    const h = Math.ceil(bh + size * 0.55 + lw * 2)
+    return {
+      w,
+      h,
+      // The tail's tip sits size * 0.6 below the bubble; the anchor is where it points.
+      ax: w / 2,
+      ay: lw + bh + size * 0.6,
+      paint: (g) => {
+        g.font = font
+        paintBubble(g, lines, w / 2, lw + bh + size * 0.6, size, bw, bh, lh)
+      },
+    }
+  })
   c.save()
   c.globalAlpha = alpha
-  c.font = `600 ${Math.round(size)}px ${FONT}`
-  const maxW = size * 14
-  const lines = wrap(c, text, maxW)
-  const lh = size * 1.25
-  const w = Math.max(...lines.map((l) => c.measureText(l).width)) + size * 1.2
-  const h = lines.length * lh + size * 0.8
+  blitText(c, e, x, y, dpr)
+  c.restore()
+}
+
+function paintBubble(
+  c: CanvasRenderingContext2D,
+  lines: string[],
+  x: number,
+  y: number,
+  size: number,
+  w: number,
+  h: number,
+  lh: number,
+) {
   const bx = x - w / 2
   const by = y - h - size * 0.6
   c.fillStyle = '#fffdf7'
@@ -2419,7 +3059,6 @@ function bubble(
   c.stroke()
   c.fillStyle = '#2b1d22'
   lines.forEach((l, i) => c.fillText(l, x, by + size * 0.4 + lh * (i + 0.5)))
-  c.restore()
 }
 
 function wrap(c: CanvasRenderingContext2D, text: string, maxW: number): string[] {

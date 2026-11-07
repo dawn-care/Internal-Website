@@ -1,6 +1,7 @@
 import { defaultLook, newSave } from '../shared/schema'
 import { Game } from './game'
 import { LocalNet, NetError, RemoteNet, type MeResult, type Net } from './net'
+import { perf } from './perf'
 import { initMusic } from './music'
 import { initSoundscape } from './soundscape'
 import './style.css'
@@ -78,7 +79,7 @@ async function boot() {
     const game = new Game(net, me.user.login, save, me.slot, ui)
     ui.attach(game)
     game.start(app)
-    if (import.meta.env.DEV) Object.assign(window, { game }) // for poking at it in devtools
+    if (import.meta.env.DEV) Object.assign(window, { game, perf }) // for poking at it in devtools
     ui.renderChat()
     if (net.local) ui.toast('Offline practice mode: progress is kept in this browser only.')
     if (me.slot < 0)

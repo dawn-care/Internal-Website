@@ -16,14 +16,34 @@ import {
   PET_COATS,
   PET_KINDS,
   PET_NAME_MAX,
+  PLOT_SIZES,
+  POTTABLE,
+  RECIPES,
+  RECIPE_IDS,
   TREAT_PACK,
+  cookable,
+  plantPrice,
   type PetKind,
   PANTS_COLORS,
   SKIN_TONES,
   WALLPAPERS,
 } from '../shared/catalog'
 import { INTRO, cleanName, type Dir, type Look, type MapId } from '../shared/schema'
-import { cropIcon, finishSwatch, furnitureIcon } from './art'
+import {
+  C4_COLS,
+  C4_ROWS,
+  CK,
+  GAME_NAMES,
+  c4Drop,
+  ckKing,
+  ckMoves,
+  ckOwner,
+  type GameKind,
+  type Side,
+  type TableState,
+} from '../shared/tables'
+import { TABLE_PIECES } from './art'
+import { cropIcon, finishSwatch, furnitureIcon, mealIcon, plantIcon } from './art'
 import { isMuted, setMuted, sfx, voice } from './audio'
 import { isMusicOn, setMusicOn } from './music'
 import { fmt, type Game } from './game'
@@ -98,6 +118,8 @@ export class UI {
   private chatInput = el('input')
   private toasts = el('div', { class: 'toasts' })
   private quest = el('div', { class: 'quest' })
+  /** The introduction's shortcut (kept as one element so it survives the card's re-renders). */
+  private questGrow = button('Finish growing', () => this.game.rushGrowth(), 'btn small quest-grow')
   private lastQuest = ''
   private dialogueBox = el('div', { class: 'dialogue' })
   private talk: {
@@ -112,6 +134,9 @@ export class UI {
     face: HTMLCanvasElement | null
     faceTimer: number
   } | null = null
+  private boardcard = el('div', { class: 'boardcard' })
+  private lastBoard = ''
+  private resignArmed = false
   private decorbar = el('div', { class: 'decorbar' })
   private backdrop = el('div', { class: 'backdrop' })
   private panel: HTMLElement | null = null
@@ -143,6 +168,9 @@ export class UI {
       if (e.target === this.backdrop) this.closePanel()
     })
     this.decorbar.hidden = true
+    this.boardcard.hidden = true
+    this.boardcard.setAttribute('role', 'region')
+    this.boardcard.setAttribute('aria-label', 'Games table')
     this.quest.hidden = true
     this.quest.setAttribute('aria-live', 'polite')
     this.dialogueBox.hidden = true
@@ -161,6 +189,7 @@ export class UI {
       ),
       this.quest,
       el('div', { class: 'hud-right' }, this.buttons, this.online),
+      this.boardcard,
       this.toasts,
       this.prompt,
       this.hotbar,
@@ -190,6 +219,7 @@ export class UI {
     this.renderDecorbar()
     this.refreshOnline()
     this.renderQuest()
+    this.renderTable()
   }
 
   /** Nurse Ada's checklist, shown while the introduction is running (after her greeting). */
@@ -202,7 +232,8 @@ export class UI {
       return
     }
     const hint = g.introHint()
-    const key = `${step}|${hint}`
+    const rush = g.canRushGrowth()
+    const key = `${step}|${hint}|${rush}`
     if (key === this.lastQuest) return
     this.lastQuest = key
     this.quest.hidden = false
@@ -217,7 +248,280 @@ export class UI {
       ),
       el('div', { class: 'quest-task', text: now?.label ?? '' }),
       el('div', { class: 'quest-hint', text: hint }),
+      rush ? this.questGrow : '',
     )
+  }
+
+  // --- games tables ---------------------------------------------------------------------------
+
+  inBoard(target: EventTarget | null): boolean {
+    return target instanceof Node && this.boardcard.contains(target)
+  }
+
+  /**
+   * The board card, shown while you sit at a games table (or stand watching one): who's playing,
+   * whose turn it is, the board, and buttons to start a game or resign. Rebuilt only on change.
+   */
+  renderTable() {
+    const g = this.game
+    const v = g.tableView()
+    if (!v) {
+      this.boardcard.hidden = true
+      this.lastBoard = ''
+      this.resignArmed = false
+      return
+    }
+    const t = v.state
+    const canStart = g.canStartTable()
+    const key = JSON.stringify([
+      v.id,
+      t?.version,
+      v.side,
+      v.seated,
+      v.busy,
+      g.tableSel,
+      canStart,
+      this.resignArmed,
+    ])
+    if (key === this.lastBoard) return
+    const hadFocus = this.boardcard.contains(document.activeElement)
+    const focusKey = (document.activeElement as HTMLElement | null)?.dataset?.key
+    this.lastBoard = key
+    this.boardcard.hidden = false
+
+    const me = g.login
+    const playing = t && !t.result && t.players.includes(me) && v.side !== null
+    const mySide: Side | null = t && t.players[0] === me ? 0 : t && t.players[1] === me ? 1 : null
+    const live =
+      t && !t.result && (t.players[0] === v.seated[0]?.login || t.players[1] === v.seated[1]?.login)
+    const showGame = t && (t.result || live || !canStart)
+
+    // Who sits where: the game's players if one is on, else whoever is on the stools.
+    const who = (side: Side) => {
+      const name = showGame && t ? t.names[side] : (v.seated[side]?.name ?? null)
+      const login = showGame && t ? t.players[side] : v.seated[side]?.login
+      const chip = el('div', {
+        class: `bc-player${t && showGame && !t.result && t.turn === side ? ' turn' : ''}`,
+      })
+      if (showGame && t) {
+        const dot = el('span', { class: 'bc-dot' })
+        dot.style.background = pieceColor(t.game, side, t.first)
+        chip.append(dot)
+      }
+      chip.append(
+        el('span', {
+          text: name ? `${name}${login === me ? ' (you)' : ''}` : 'Empty stool',
+          class: name ? '' : 'bc-empty',
+        }),
+      )
+      return chip
+    }
+
+    const status = el('div', { class: 'bc-status' })
+    status.setAttribute('aria-live', 'polite')
+    status.textContent = this.tableStatus(
+      v.seated,
+      t,
+      showGame ? t : null,
+      mySide,
+      canStart,
+      v.side,
+    )
+
+    const body: (HTMLElement | null)[] = [
+      el(
+        'div',
+        { class: 'bc-head' },
+        el('strong', { text: showGame && t ? GAME_NAMES[t.game] : 'Games table' }),
+        v.side === null
+          ? button(
+              'Stop watching',
+              () => {
+                g.watching = null
+                this.renderTable()
+              },
+              'btn small',
+            )
+          : el('span', { class: 'bc-hint', text: 'WASD to get up' }),
+      ),
+      el(
+        'div',
+        { class: 'bc-players' },
+        who(0),
+        el('span', { class: 'bc-vs', text: 'vs' }),
+        who(1),
+      ),
+      status,
+    ]
+    if (showGame && t) body.push(this.boardEl(t, playing ? mySide : null, v.busy))
+
+    const controls = el('div', { class: 'bc-controls' })
+    if (v.side !== null && canStart) {
+      for (const game of ['connect4', 'checkers'] as GameKind[])
+        controls.append(
+          button(
+            t && t.result && t.game === game
+              ? `Rematch: ${GAME_NAMES[game]}`
+              : `Play ${GAME_NAMES[game]}`,
+            () => void g.tableAction({ type: 'start', game }),
+            'btn primary',
+          ),
+        )
+    }
+    if (t && !t.result && mySide !== null) {
+      controls.append(
+        button(
+          this.resignArmed ? 'Really resign?' : 'Resign',
+          () => {
+            if (!this.resignArmed) {
+              this.resignArmed = true
+              window.setTimeout(() => {
+                this.resignArmed = false
+                this.renderTable()
+              }, 4000)
+              return this.renderTable()
+            }
+            this.resignArmed = false
+            void g.tableAction({ type: 'resign' })
+          },
+          `btn${this.resignArmed ? ' danger' : ' quiet'}`,
+        ),
+      )
+    }
+    if (v.busy) for (const b of controls.querySelectorAll('button')) b.disabled = true
+    if (controls.childElementCount) body.push(controls)
+    this.boardcard.replaceChildren(...body.filter((b): b is HTMLElement => !!b))
+    if (hadFocus && focusKey)
+      this.boardcard.querySelector<HTMLElement>(`[data-key="${focusKey}"]`)?.focus()
+  }
+
+  private tableStatus(
+    seated: [{ login: string; name: string } | null, { login: string; name: string } | null],
+    t: TableState | null,
+    shown: TableState | null,
+    mySide: Side | null,
+    canStart: boolean,
+    seatSide: Side | null,
+  ): string {
+    const me = this.game.login
+    if (shown && shown.result) {
+      const r = shown.result
+      if (r.winner === null) return "It's a draw. Well played, both!"
+      const winner = shown.players[r.winner] === me ? 'You win' : `${shown.names[r.winner]} wins`
+      const loser = shown.names[r.winner === 0 ? 1 : 0]
+      if (r.why === 'resign')
+        return `${shown.players[r.winner === 0 ? 1 : 0] === me ? 'You' : loser} resigned. ${winner}!`
+      return `${winner}!`
+    }
+    if (shown) {
+      const turnName =
+        shown.players[shown.turn] === me ? 'Your turn' : `${shown.names[shown.turn]}'s turn`
+      if (mySide !== null && shown.turn === mySide && seated[mySide]?.login !== me)
+        return 'Sit back down on your stool to carry on.'
+      if (shown.game === 'checkers' && shown.turn === mySide) {
+        const moves = ckMoves(shown.board, mySide)
+        if (moves.some((m) => m.length > 2 || Math.abs(m[1] - m[0]) > CK + 1))
+          return 'Your turn: you must jump!'
+      }
+      if (shown.game === 'connect4') return `${turnName}: drop a counter in a column.`
+      return turnName
+    }
+    if (seatSide === null) return t ? 'The last game has finished.' : 'Nobody is playing just now.'
+    if (!seated[0] || !seated[1]) return 'Waiting for someone to sit opposite…'
+    return canStart ? 'Pick a game to play.' : ''
+  }
+
+  /** The board itself: Connect 4 columns, or a checkerboard turned so your pieces are nearest you. */
+  private boardEl(t: TableState, mySide: Side | null, busy: boolean): HTMLElement {
+    const g = this.game
+    const myTurn = mySide !== null && t.turn === mySide && !busy
+    const win = t.result?.why === 'win' ? new Set(t.last) : new Set<number>()
+    const last = new Set(t.last)
+    const piece = (side: number, king: boolean, extra = '') => {
+      const p = el('span', { class: `bc-piece${king ? ' king' : ''}${extra}` })
+      p.style.background = pieceColor(t.game, side as Side, t.first)
+      return p
+    }
+    const sideName = (side: number) => (t.players[side] === g.login ? 'yours' : t.names[side])
+
+    if (t.game === 'connect4') {
+      const grid = el('div', { class: 'bc-c4' })
+      for (let c = 0; c < C4_COLS; c++) {
+        const open = c4Drop(t.board, c) >= 0
+        const col = button('', () => void g.tableAction({ type: 'move', path: [c] }), 'bc-col')
+        col.dataset.key = `c${c}`
+        col.disabled = !myTurn || !open
+        col.setAttribute('aria-label', `Column ${c + 1}${open ? '' : ', full'}`)
+        // Keep focus on the board for keyboard play (button() blurs on click).
+        col.addEventListener('click', () => col.focus())
+        for (let r = 0; r < C4_ROWS; r++) {
+          const i = r * C4_COLS + c
+          const v = t.board[i]
+          const cell = el('span', { class: 'bc-hole' })
+          if (v)
+            cell.append(piece(v - 1, false, `${win.has(i) ? ' win' : last.has(i) ? ' last' : ''}`))
+          col.append(cell)
+        }
+        grid.append(col)
+      }
+      return grid
+    }
+
+    const moves = myTurn ? ckMoves(t.board, mySide) : []
+    const sel = g.tableSel
+    const nextSteps = new Set<number>()
+    const movable = new Set<number>()
+    for (const m of moves) {
+      movable.add(m[0])
+      if (sel.length && m.length > sel.length && sel.every((sq, i) => m[i] === sq))
+        nextSteps.add(m[sel.length])
+    }
+    const grid = el('div', { class: 'bc-ck' })
+    // Turned round for the player on side 1, so your own pieces are at the bottom.
+    const flip = mySide === 1
+    for (let rr = 0; rr < CK; rr++)
+      for (let cc = 0; cc < CK; cc++) {
+        const r = flip ? CK - 1 - rr : rr
+        const c = flip ? CK - 1 - cc : cc
+        const i = r * CK + c
+        const dark = (r + c) % 2 === 1
+        const v = t.board[i]
+        const owner = ckOwner(v)
+        const canPick = myTurn && movable.has(i) && sel.length <= 1
+        const canLand = nextSteps.has(i)
+        const cls = `bc-sq ${dark ? 'dark' : 'light'}${sel.includes(i) ? ' sel' : ''}${canLand ? ' to' : ''}${canPick ? ' can' : ''}${last.has(i) && !sel.length ? ' last' : ''}`
+        if (!dark || (!canPick && !canLand)) {
+          const sq = el('span', { class: cls })
+          if (owner !== -1) sq.append(piece(owner, ckKing(v)))
+          if (owner !== -1) sq.title = `${sideName(owner)}${ckKing(v) ? ' (king)' : ''}`
+          grid.append(sq)
+          continue
+        }
+        const sq = button(
+          '',
+          () => {
+            if (canLand) {
+              const path = [...sel, i]
+              const exact = moves.some(
+                (m) => m.length === path.length && m.every((s, k) => s === path[k]),
+              )
+              if (exact) return void g.tableAction({ type: 'move', path })
+              g.tableSel = path
+            } else g.tableSel = sel.length === 1 && sel[0] === i ? [] : [i]
+            this.renderTable()
+            this.boardcard.querySelector<HTMLElement>(`[data-key="s${i}"]`)?.focus()
+          },
+          cls,
+        )
+        sq.dataset.key = `s${i}`
+        sq.setAttribute(
+          'aria-label',
+          `${String.fromCharCode(97 + c)}${CK - r}: ${canLand ? 'move here' : `your ${ckKing(v) ? 'king' : 'piece'}`}`,
+        )
+        if (owner !== -1) sq.append(piece(owner, ckKing(v)))
+        grid.append(sq)
+      }
+    return grid
   }
 
   // --- dialogue -------------------------------------------------------------------------------
@@ -471,16 +775,18 @@ export class UI {
     const g = this.game
     const slots = CROP_IDS.map((id, i) => {
       const n = g.save.inv[`seed:${id}`] ?? 0
+      // Potted plants you dug up are planted from the same slot (before any seeds).
+      const pots = g.save.inv[`plant:${id}`] ?? 0
       const s = el(
         'button',
         {
-          class: `slot${g.selectedSeed === id ? ' selected' : ''}${n ? '' : ' empty'}`,
-          title: `${CROPS[id].name} seeds (${i + 1})`,
+          class: `slot${g.selectedSeed === id ? ' selected' : ''}${n || pots ? '' : ' empty'}`,
+          title: `${CROPS[id].name} seeds (${i + 1})${pots ? `, and ${pots} potted plant${pots > 1 ? 's' : ''} to replant first` : ''}`,
           type: 'button',
         },
         el('span', { class: 'key', text: String(i + 1) }),
         cropIcon(id, false),
-        el('span', { class: 'count', text: String(n) }),
+        el('span', { class: 'count', text: pots ? `${n}+${pots}` : String(n) }),
       )
       s.addEventListener('click', () => {
         s.blur()
@@ -496,6 +802,36 @@ export class UI {
         el('span', { text: `×${g.save.inv[`crop:${id}`]}` }),
       ),
     )
+    for (const id of POTTABLE) {
+      const n = g.save.inv[`plant:${id}`] ?? 0
+      if (n)
+        produce.push(
+          el(
+            'span',
+            {
+              class: 'produce',
+              title: `Potted ${CROPS[id].name.toLowerCase()} plant (pick its seeds and plant it, or sell it to Chef Rosa)`,
+            },
+            plantIcon(id, 24),
+            el('span', { text: `×${n}` }),
+          ),
+        )
+    }
+    for (const id of RECIPE_IDS) {
+      const n = g.save.inv[`meal:${id}`] ?? 0
+      if (n)
+        produce.push(
+          el(
+            'span',
+            {
+              class: 'produce',
+              title: `${RECIPES[id].name} (you cooked it; Chef Rosa buys meals)`,
+            },
+            mealIcon(id, 24),
+            el('span', { text: `×${n}` }),
+          ),
+        )
+    }
     const eggs = g.save.inv.egg ?? 0
     if (eggs)
       produce.push(
@@ -552,12 +888,14 @@ export class UI {
     this.lastPrompt = text
     this.prompt.hidden = !text
     if (text) {
-      // "[Key] text" names a key other than E.
-      const m = /^\[(.+?)\] (.*)$/.exec(text)
-      this.prompt.replaceChildren(
-        el('kbd', { text: m ? m[1] : 'E' }),
-        document.createTextNode(` ${m ? m[2] : text}`),
-      )
+      // Each "[Key]" is shown as a key cap; text that doesn't start with one is for E. A second
+      // action goes after a " · ", e.g. "Water the Tomato · [X] Dig up".
+      const parts = text.split(/\[([^\]]+)\] ?/)
+      const nodes: Node[] = []
+      if (parts[0]) nodes.push(el('kbd', { text: 'E' }), document.createTextNode(` ${parts[0]}`))
+      for (let i = 1; i < parts.length; i += 2)
+        nodes.push(el('kbd', { text: parts[i] }), document.createTextNode(` ${parts[i + 1] ?? ''}`))
+      this.prompt.replaceChildren(...nodes)
     }
   }
 
@@ -750,7 +1088,7 @@ export class UI {
 
   openKitchen() {
     const g = this.game
-    const render = (tab: 'sell' | 'seeds') => {
+    const render = (tab: 'sell' | 'seeds' | 'cook') => {
       const tabs = el(
         'div',
         { class: 'tabs' },
@@ -760,63 +1098,131 @@ export class UI {
           () => render('seeds'),
           `tab${tab === 'seeds' ? ' active' : ''}`,
         ),
+        button('Cook', () => render('cook'), `tab${tab === 'cook' ? ' active' : ''}`),
       )
       const rows =
-        tab === 'sell'
-          ? CROP_IDS.map((id) => {
-              const n = g.save.inv[`crop:${id}`] ?? 0
-              const c = CROPS[id]
-              return el(
+        tab === 'cook'
+          ? this.recipeRows('kitchen', () => render('cook'))
+          : tab === 'sell'
+            ? CROP_IDS.map((id) => {
+                const n = g.save.inv[`crop:${id}`] ?? 0
+                const c = CROPS[id]
+                return el(
+                  'div',
+                  { class: `shop-row${n ? '' : ' dim'}` },
+                  cropIcon(id, true),
+                  el(
+                    'div',
+                    { class: 'grow' },
+                    el('strong', { text: c.name }),
+                    el('div', { class: 'muted', text: `You have ${n}` }),
+                  ),
+                  el(
+                    'div',
+                    { class: 'price' },
+                    coinIcon(),
+                    document.createTextNode(` ${c.sellPrice} each`),
+                  ),
+                  n ? button('Sell 1', () => (g.sell(id, 1), render('sell'))) : null,
+                  n > 1
+                    ? button(
+                        `Sell all (${n * c.sellPrice})`,
+                        () => (g.sell(id, n), render('sell')),
+                        'btn primary',
+                      )
+                    : null,
+                )
+              })
+            : CROP_IDS.map((id) => {
+                const c = CROPS[id]
+                return el(
+                  'div',
+                  { class: `shop-row${g.save.coins >= c.seedPrice ? '' : ' dim'}` },
+                  cropIcon(id, false),
+                  el(
+                    'div',
+                    { class: 'grow' },
+                    el('strong', { text: `${c.name} seeds` }),
+                    el('div', {
+                      class: 'muted',
+                      text: `Ripe in ${fmt(c.growMs)} of watering · sells for ${c.sellPrice}${c.regrows ? ' · keeps producing' : ''}`,
+                    }),
+                  ),
+                  el(
+                    'div',
+                    { class: 'price' },
+                    coinIcon(),
+                    document.createTextNode(` ${c.seedPrice}`),
+                  ),
+                  button('Buy 1', () => (g.buySeeds(id, 1), render('seeds'))),
+                  button('Buy 5', () => (g.buySeeds(id, 5), render('seeds')), 'btn primary'),
+                )
+              })
+      if (tab === 'sell')
+        for (const id of POTTABLE) {
+          const n = g.save.inv[`plant:${id}`] ?? 0
+          if (!n) continue
+          rows.push(
+            el(
+              'div',
+              { class: 'shop-row' },
+              plantIcon(id, 32),
+              el(
                 'div',
-                { class: `shop-row${n ? '' : ' dim'}` },
-                cropIcon(id, true),
-                el(
-                  'div',
-                  { class: 'grow' },
-                  el('strong', { text: c.name }),
-                  el('div', { class: 'muted', text: `You have ${n}` }),
-                ),
-                el(
-                  'div',
-                  { class: 'price' },
-                  coinIcon(),
-                  document.createTextNode(` ${c.sellPrice} each`),
-                ),
-                n ? button('Sell 1', () => (g.sell(id, 1), render('sell'))) : null,
-                n > 1
-                  ? button(
-                      `Sell all (${n * c.sellPrice})`,
-                      () => (g.sell(id, n), render('sell')),
-                      'btn primary',
-                    )
-                  : null,
-              )
-            })
-          : CROP_IDS.map((id) => {
-              const c = CROPS[id]
-              return el(
+                { class: 'grow' },
+                el('strong', { text: `Potted ${CROPS[id].name.toLowerCase()} plant` }),
+                el('div', { class: 'muted', text: `You have ${n} · dug up from your plot` }),
+              ),
+              el(
                 'div',
-                { class: `shop-row${g.save.coins >= c.seedPrice ? '' : ' dim'}` },
-                cropIcon(id, false),
-                el(
-                  'div',
-                  { class: 'grow' },
-                  el('strong', { text: `${c.name} seeds` }),
-                  el('div', {
-                    class: 'muted',
-                    text: `Ripe in ${fmt(c.growMs)} of watering · sells for ${c.sellPrice}${c.regrows ? ' · keeps producing' : ''}`,
-                  }),
-                ),
-                el(
-                  'div',
-                  { class: 'price' },
-                  coinIcon(),
-                  document.createTextNode(` ${c.seedPrice}`),
-                ),
-                button('Buy 1', () => (g.buySeeds(id, 1), render('seeds'))),
-                button('Buy 5', () => (g.buySeeds(id, 5), render('seeds')), 'btn primary'),
-              )
-            })
+                { class: 'price' },
+                coinIcon(),
+                document.createTextNode(` ${plantPrice(id)} each`),
+              ),
+              button('Sell 1', () => (g.sellPlants(id, 1), render('sell'))),
+              n > 1
+                ? button(
+                    `Sell all (${n * plantPrice(id)})`,
+                    () => (g.sellPlants(id, n), render('sell')),
+                    'btn primary',
+                  )
+                : null,
+            ),
+          )
+        }
+      if (tab === 'sell')
+        for (const id of RECIPE_IDS) {
+          const n = g.save.inv[`meal:${id}`] ?? 0
+          if (!n) continue
+          const r = RECIPES[id]
+          rows.push(
+            el(
+              'div',
+              { class: 'shop-row' },
+              mealIcon(id, 32),
+              el(
+                'div',
+                { class: 'grow' },
+                el('strong', { text: r.name }),
+                el('div', { class: 'muted', text: `You have ${n} · home cooked` }),
+              ),
+              el(
+                'div',
+                { class: 'price' },
+                coinIcon(),
+                document.createTextNode(` ${r.sellPrice} each`),
+              ),
+              button('Sell 1', () => (g.sellMeal(id, 1), render('sell'))),
+              n > 1
+                ? button(
+                    `Sell all (${n * r.sellPrice})`,
+                    () => (g.sellMeal(id, n), render('sell')),
+                    'btn primary',
+                  )
+                : null,
+            ),
+          )
+        }
       const eggs = g.save.inv.egg ?? 0
       if (tab === 'sell')
         rows.push(
@@ -881,7 +1287,10 @@ export class UI {
           el('h2', { text: 'Community Kitchen' }),
           el('p', {
             class: 'muted',
-            text: 'Chef Rosa: "Fresh from the garden? I\'ll take it for tonight\'s soup!"',
+            text:
+              tab === 'cook'
+                ? 'Chef Rosa: "Pull up an apron! A home-cooked meal is worth more than what goes into it."'
+                : 'Chef Rosa: "Fresh from the garden? I\'ll take it for tonight\'s soup!"',
           }),
           el(
             'div',
@@ -895,6 +1304,164 @@ export class UI {
       )
     }
     render('sell')
+  }
+
+  /** Your own stove: cook the recipes you know (lessons are at the Kitchen). */
+  openStove() {
+    const render = () =>
+      this.showPanel(
+        el(
+          'div',
+          { class: 'panel-body' },
+          el('h2', { text: 'Your stove' }),
+          el('p', {
+            class: 'muted',
+            text: 'Cook what you know from your basket. Chef Rosa teaches new recipes at the Community Kitchen.',
+          }),
+          el('div', { class: 'shop' }, ...this.recipeRows('stove', render)),
+        ),
+      )
+    render()
+  }
+
+  /**
+   * One row per recipe: the ingredients (what you have of each), the meal's price, and Cook
+   * buttons; at the Kitchen, recipes you don't know yet have a lesson to buy instead.
+   */
+  private recipeRows(where: 'kitchen' | 'stove', rerender: () => void): HTMLElement[] {
+    const g = this.game
+    const inv = g.save.inv
+    const ids = where === 'stove' ? RECIPE_IDS.filter((id) => g.knows(id)) : RECIPE_IDS
+    const rows = ids.map((id) => {
+      const r = RECIPES[id]
+      const known = g.knows(id)
+      const n = known ? cookable(inv, id) : 0
+      const parts = Object.entries(r.ingredients).map(([k, need]) => {
+        const have = inv[k] ?? 0
+        return el(
+          'span',
+          {
+            class: `ingredient${have >= need ? '' : ' short'}`,
+            title: `${ingredientName(k)}: you have ${have}, it needs ${need}`,
+          },
+          ingredientIcon(k),
+          document.createTextNode(`${Math.min(have, 99)}/${need}`),
+        )
+      })
+      const body = el(
+        'div',
+        { class: 'grow' },
+        el('strong', { text: r.name }),
+        el('div', { class: 'ingredients' }, ...parts),
+        el('div', {
+          class: 'muted',
+          text: known
+            ? `“${r.note}” · sells for ${r.sellPrice}`
+            : `Sells for ${r.sellPrice} · Chef Rosa teaches it for ${r.lesson}`,
+        }),
+      )
+      if (!known)
+        return el(
+          'div',
+          { class: `shop-row${g.save.coins >= r.lesson ? '' : ' dim'}` },
+          mealIcon(id, 32),
+          body,
+          el('div', { class: 'price' }, coinIcon(), document.createTextNode(` ${r.lesson}`)),
+          button('Learn', () => (g.learnRecipe(id), rerender()), 'btn primary'),
+        )
+      return el(
+        'div',
+        { class: `shop-row${n ? '' : ' dim'}` },
+        mealIcon(id, 32),
+        body,
+        n ? button('Cook 1', () => (g.cook(id, 1), rerender())) : null,
+        n > 1 ? button(`Cook all (${n})`, () => (g.cook(id, n), rerender()), 'btn primary') : null,
+      )
+    })
+    if (where === 'stove' && ids.length < RECIPE_IDS.length)
+      rows.push(
+        el('p', {
+          class: 'muted',
+          text: `Chef Rosa knows ${RECIPE_IDS.length - ids.length} more recipe${RECIPE_IDS.length - ids.length > 1 ? 's' : ''}. Visit her at the Kitchen to learn them.`,
+        }),
+      )
+    return rows
+  }
+
+  /** The garden noticeboard: your plot's size, and the next size up for sale. */
+  openNoticeboard() {
+    const g = this.game
+    const level = g.save.plot ?? 0
+    const now = PLOT_SIZES[level]
+    const next = g.nextPlot()
+    const sizes = PLOT_SIZES.map((p, i) =>
+      el(
+        'div',
+        { class: `shop-row${i === level ? ' current' : i < level ? ' dim' : ''}` },
+        el('div', { class: 'plot-size', text: `${p.w} × ${p.h}` }),
+        el(
+          'div',
+          { class: 'grow' },
+          el('strong', {
+            text:
+              i === 0
+                ? 'Starter plot'
+                : i === PLOT_SIZES.length - 1
+                  ? 'Full allotment'
+                  : 'Bigger plot',
+          }),
+          el('div', {
+            class: 'muted',
+            text: `${p.w * p.h} squares${i === level ? ' · yours now' : i < level ? ' · done' : ''}`,
+          }),
+        ),
+        i > 0
+          ? el('div', { class: 'price' }, coinIcon(), document.createTextNode(` ${p.price}`))
+          : null,
+        next && i === level + 1
+          ? (() => {
+              const b = button(
+                g.save.coins >= next.price ? 'Buy' : `Need ${next.price - g.save.coins} more`,
+                () => {
+                  if (g.buyPlot()) {
+                    this.closePanel()
+                    this.toast(
+                      `Your plot is now ${next.w} × ${next.h}! The new ground is to the right and below.`,
+                    )
+                  }
+                },
+                'btn primary',
+              )
+              b.disabled = g.save.coins < next.price || g.slot < 0
+              return b
+            })()
+          : null,
+      ),
+    )
+    this.showPanel(
+      el(
+        'div',
+        { class: 'panel-body' },
+        el('h2', { text: 'Community Garden' }),
+        el('p', {
+          class: 'muted',
+          text: "Till, plant, water, harvest, and sell your produce at the Kitchen. Every allotment has room to grow: buy a bigger plot and it spreads out over the grass, keeping everything you've planted where it is.",
+        }),
+        el(
+          'div',
+          { class: 'wallet' },
+          coinIcon(),
+          document.createTextNode(
+            ` ${g.save.coins.toLocaleString()} coins · your plot is ${now.w} × ${now.h}`,
+          ),
+        ),
+        el('div', { class: 'shop' }, ...sizes),
+        el('p', {
+          class: 'muted',
+          text: 'Changed your mind about a plant? Face it and press X (or right-click it) to dig it up. Seeds go back in the packet, and strawberry and tomato plants come up potted, to replant or sell to Chef Rosa.',
+        }),
+      ),
+    )
   }
 
   openCatalog() {
@@ -1112,6 +1679,10 @@ export class UI {
       ['E or Space', 'Use whatever you are facing: doors, soil, crops, Chef Rosa'],
       ['Click', 'Act on a tile right next to you'],
       ['1–6', 'Choose which seeds to plant'],
+      [
+        'X or right-click',
+        'Dig up a plant in your plot (strawberries and tomatoes come up potted)',
+      ],
       ['Enter', 'Chat (shows as a speech bubble)'],
       ['F', 'Give your pet a treat (face it and press E to pet it)'],
       ['E at a bench or chair', 'Sit down (walk to get up)'],
@@ -1123,7 +1694,7 @@ export class UI {
         { class: 'panel-body' },
         el('h2', { text: 'Welcome to Sunset Acres' }),
         el('p', {
-          text: 'Grow vegetables in your plot at the Community Garden (bottom left of the grounds): till, plant, water, wait, harvest. Crops only grow while their soil is wet, and they keep growing while you are away. Sell your harvest to Chef Rosa at the Community Kitchen, then spend your coins on seeds and on making your room cosy (your door is in the hallway of the home).',
+          text: 'Grow vegetables in your plot at the Community Garden (south of the home; the noticeboard at its gate sells bigger plots): till, plant, water, wait, harvest. Crops only grow while their soil is wet, and they keep growing while you are away. Sell your harvest to Chef Rosa at the Community Kitchen, or cook it into meals there (she teaches recipes, and meals sell for more than what goes into them; a stove for your room lets you cook at home), then spend your coins on seeds and on making your room cosy (your door is in the hallway of the home).',
         }),
         el(
           'table',
@@ -1294,4 +1865,19 @@ export function wardrobe(
     error,
     done,
   )
+}
+
+function pieceColor(game: GameKind, side: Side, first: Side): string {
+  return side === first ? TABLE_PIECES[game].first : TABLE_PIECES[game].second
+}
+
+function ingredientName(key: string): string {
+  if (key === 'egg') return 'Eggs'
+  const [, id] = key.split(':')
+  return CROPS[id]?.name ?? key
+}
+
+function ingredientIcon(key: string): HTMLElement {
+  if (key === 'egg') return eggIcon(16)
+  return cropIcon(key.split(':')[1], true, 18)
 }

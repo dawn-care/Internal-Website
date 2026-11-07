@@ -1,13 +1,6 @@
-import {
-  FURNITURE,
-  MAX_SLOTS,
-  PLOT_H,
-  PLOT_W,
-  ROOM_DOOR_X,
-  ROOM_H,
-  ROOM_W,
-} from '../shared/catalog'
+import { FURNITURE, MAX_SLOTS, PLOT_MAX, ROOM_DOOR_X, ROOM_H, ROOM_W } from '../shared/catalog'
 import { seatId, type Dir, type MapId, type Room } from '../shared/schema'
+import { TABLES, tableSeat, type Side } from '../shared/tables'
 
 /*
  * The three kinds of place: the outdoor grounds (home, kitchen, community garden, pond), the
@@ -54,6 +47,9 @@ export type ObjKind =
   | 'cart'
   | 'hallRug'
   | 'coop'
+  | 'gametable'
+  | 'stool'
+  | 'noticeboard'
 
 export interface Obj {
   k: ObjKind
@@ -72,6 +68,7 @@ export type Interact =
   | { kind: 'nurse'; x: number; y: number }
   | { kind: 'sign'; x: number; y: number; text: string }
   | { kind: 'nest'; x: number; y: number }
+  | { kind: 'noticeboard'; x: number; y: number }
 
 export interface Label {
   x: number
@@ -146,17 +143,33 @@ export interface Seat {
   y: number
   tx: number
   ty: number
-  /** Seats on the same bench or row of chairs share a group. */
+  /** Seats on the same bench or row of chairs share a group (a table's stools: the table id). */
   group: string
+  /** Which way you face sitting there (a table's stools face the table); else towards you. */
+  face?: Dir
 }
 
 /**
- * Every seat on a map: two per bench, one per hallway chair, and the armchairs and rocking
- * chairs placed in a room (pass the room's items).
+ * Every seat on a map: two per bench, one per hallway chair, the two stools at each games table,
+ * and the armchairs and rocking chairs placed in a room (pass the room's items).
  */
 export function seatsOf(m: GameMap, items?: { k: string; x: number; y: number }[]): Seat[] {
   const out: Seat[] = []
   for (const o of m.objects) {
+    if (o.k === 'gametable') {
+      const id = `table:${o.x},${o.y}`
+      for (const side of [0, 1] as Side[])
+        out.push({
+          id: tableSeat(id, side),
+          x: o.x + (side === 0 ? -0.5 : 1.5),
+          y: o.y + 0.7,
+          tx: o.x + (side === 0 ? -1 : 1),
+          ty: o.y,
+          group: id,
+          face: side === 0 ? 2 : 1,
+        })
+      continue
+    }
     if (o.k !== 'bench' && o.k !== 'chairs') continue
     const n = o.k === 'bench' ? 2 : (o.w ?? 3)
     for (let i = 0; i < n; i++)
@@ -192,7 +205,14 @@ export function hash(x: number, y: number, seed = 0): number {
 
 // --- the grounds ---------------------------------------------------------------------------
 
-export const GARDEN = { x0: 3, y0: 20, x1: 29, y1: 34, gateX: 16 } as const
+/**
+ * The community garden: a fenced plot of dirt paths with twelve allotments (3 across, 4 down),
+ * each with room for the largest plot size. The gate is two tiles wide, in line with the home's
+ * front walk.
+ */
+export const GARDEN = { x0: 3, y0: 20, x1: 35, y1: 46, gateX: 23 } as const
+/** The pond, east of the garden: its centre and radii (water inside, a sandy shore round it). */
+export const POND = { x: 41.6, y: 32, rx: 4.6, ry: 4.9 } as const
 export const HOME_DOOR = { x: 23, y: 9 } as const
 export const KITCHEN_DOOR = { x: 40, y: 15 } as const
 /**
@@ -207,27 +227,29 @@ export const HENHOUSE = {
   yard: { x0: 4.3, y0: 7.6, x1: 10.7, y1: 10.8 },
 } as const
 
-/** Top-left tile of the garden plot for `slot`. */
+/** Top-left tile of the allotment (and so the plot) for `slot`. */
 export function plotOrigin(slot: number): { x: number; y: number } {
-  const c = slot % 4
-  const r = Math.floor(slot / 4)
-  return { x: 5 + c * 6, y: 22 + r * 4 }
+  const c = slot % 3
+  const r = Math.floor(slot / 3)
+  return { x: GARDEN.x0 + 2 + c * (PLOT_MAX.w + 1), y: GARDEN.y0 + 2 + r * (PLOT_MAX.h + 1) }
 }
 
-/** The slot and tile index of the plot tile at (x, y), if any. */
-export function plotAt(x: number, y: number): { slot: number; i: number } | null {
+/**
+ * The allotment tile at (x, y), if any: its slot and the column and row within it. Whether that's
+ * part of the plot depends on the plot's size (see plotSize).
+ */
+export function allotmentAt(x: number, y: number): { slot: number; dx: number; dy: number } | null {
   for (let s = 0; s < MAX_SLOTS; s++) {
     const o = plotOrigin(s)
-    if (x >= o.x && x < o.x + PLOT_W && y >= o.y && y < o.y + PLOT_H) {
-      return { slot: s, i: (y - o.y) * PLOT_W + (x - o.x) }
-    }
+    if (x >= o.x && x < o.x + PLOT_MAX.w && y >= o.y && y < o.y + PLOT_MAX.h)
+      return { slot: s, dx: x - o.x, dy: y - o.y }
   }
   return null
 }
 
 function buildGrounds(): GameMap {
   const W = 48
-  const H = 38
+  const H = 49
   const m = blank('grounds', W, H, T.GRASS, true)
   m.spawn = { x: 23.5, y: 11.2, dir: 0 }
 
@@ -240,8 +262,9 @@ function buildGrounds(): GameMap {
   rect(m, 23, 10, 24, 18, T.PATH)
   rect(m, 18, 10, 29, 13, T.STONE)
   rect(m, 40, 16, 40, 18, T.PATH)
-  rect(m, GARDEN.gateX, 19, GARDEN.gateX, 19, T.PATH)
-  rect(m, 34, 19, 35, 24, T.PATH)
+  rect(m, GARDEN.gateX, 19, GARDEN.gateX + 1, 19, T.PATH)
+  // Down to the pond, along the garden fence.
+  rect(m, 36, 19, 36, 26, T.PATH)
 
   // The home.
   solidRect(m, 14, 2, 33, 9)
@@ -296,15 +319,15 @@ function buildGrounds(): GameMap {
   setSolid(m, 37, 16)
   setSolid(m, 38, 16)
 
-  // The community garden: fence, dirt paths, plots.
+  // The community garden: fence, dirt paths, and an allotment of grass for each plot.
   rect(m, GARDEN.x0 + 1, GARDEN.y0 + 1, GARDEN.x1 - 1, GARDEN.y1 - 1, T.DIRT)
   for (let s = 0; s < MAX_SLOTS; s++) {
     const o = plotOrigin(s)
-    rect(m, o.x, o.y, o.x + PLOT_W - 1, o.y + PLOT_H - 1, T.PLOT)
+    rect(m, o.x, o.y, o.x + PLOT_MAX.w - 1, o.y + PLOT_MAX.h - 1, T.PLOT)
   }
   for (let x: number = GARDEN.x0; x <= GARDEN.x1; x++) {
     for (const y of [GARDEN.y0, GARDEN.y1]) {
-      if (y === GARDEN.y0 && x === GARDEN.gateX) continue
+      if (y === GARDEN.y0 && (x === GARDEN.gateX || x === GARDEN.gateX + 1)) continue
       m.objects.push({ k: 'fence', x, y })
       setSolid(m, x, y)
     }
@@ -317,21 +340,18 @@ function buildGrounds(): GameMap {
   }
   m.objects.push({ k: 'pump', x: GARDEN.x1 - 1, y: GARDEN.y0 + 1 })
   setSolid(m, GARDEN.x1 - 1, GARDEN.y0 + 1)
-  m.objects.push({ k: 'sign', x: GARDEN.gateX - 2, y: 19 })
-  setSolid(m, GARDEN.gateX - 2, 19)
-  m.interacts.push({
-    kind: 'sign',
-    x: GARDEN.gateX - 2,
-    y: 19,
-    text: 'Community Garden. Till, plant, water, harvest. Sell your produce at the Kitchen!',
-  })
-  m.labels.push({ x: GARDEN.gateX - 1.5, y: 18.2, text: 'Community Garden', near: 6 })
+  // The noticeboard by the gate (plot upgrades), with a tub of flowers on the other side.
+  m.objects.push({ k: 'noticeboard', x: GARDEN.gateX - 1, y: 19 })
+  setSolid(m, GARDEN.gateX - 1, 19)
+  m.interacts.push({ kind: 'noticeboard', x: GARDEN.gateX - 1, y: 19 })
+  m.objects.push({ k: 'flowerbed', x: GARDEN.gateX + 2, y: 19 })
+  setSolid(m, GARDEN.gateX + 2, 19)
+  m.labels.push({ x: GARDEN.gateX + 1, y: 18.2, text: 'Community Garden', near: 6 })
 
   // The pond.
-  const pc = { x: 40, y: 29 }
-  for (let y = 22; y < 37; y++)
-    for (let x = 32; x < 47; x++) {
-      const d = ((x - pc.x) / 5.6) ** 2 + ((y - pc.y) / 3.8) ** 2
+  for (let y = Math.floor(POND.y - POND.ry * 1.3); y <= POND.y + POND.ry * 1.3; y++)
+    for (let x = Math.floor(POND.x - POND.rx * 1.3); x <= POND.x + POND.rx * 1.3; x++) {
+      const d = ((x + 0.5 - POND.x) / POND.rx) ** 2 + ((y + 0.5 - POND.y) / POND.ry) ** 2
       if (d < 1) {
         setGround(m, x, y, T.WATER)
         setSolid(m, x, y)
@@ -362,13 +382,26 @@ function buildGrounds(): GameMap {
     m.interacts.push({ kind: 'nest', x, y: coop.y + coop.h - 1 })
   m.labels.push({ x: coop.x + coop.w / 2, y: coop.y - 0.6, text: 'Henhouse', near: 7 })
 
-  // Benches, lamps, mailbox.
+  // Board-game tables, a stool either side (see shared/tables.ts).
+  for (const t of TABLES) {
+    m.objects.push({ k: 'gametable', x: t.x, y: t.y })
+    m.objects.push({ k: 'stool', x: t.x - 1, y: t.y }, { k: 'stool', x: t.x + 1, y: t.y })
+    solidRect(m, t.x - 1, t.y, t.x + 1, t.y)
+  }
+
+  // Benches, lamps and the mailbox, laid out round the home's centre line (between x 23 and 24):
+  // the plaza, its lawns and the front walk are mirrored left and right, and the other benches come
+  // in pairs facing what there is to look at.
   const benches: [number, number][] = [
+    // Facing out over the plaza.
     [19, 14],
     [27, 14],
-    [38, 24],
-    [43, 34],
-    [11, 14],
+    // On the verge above the garden, either side of its gate (and its noticeboard and flowers).
+    [19, 19],
+    [27, 19],
+    // On the pond's north shore.
+    [37, 24],
+    [41, 24],
   ]
   for (const [x, y] of benches) {
     m.objects.push({ k: 'bench', x, y, w: 2 })
@@ -376,27 +409,32 @@ function buildGrounds(): GameMap {
     setSolid(m, x + 1, y)
   }
   for (const [x, y] of [
+    // The plaza's front corners.
     [17, 13],
     [30, 13],
-    [10, 16],
-    [33, 16],
+    // Either side of the front walk where it meets the main path.
+    [22, 16],
+    [25, 16],
+    // Each end of the main path (the Kitchen's lit windows and the tables' lawns keep the rest).
+    [6, 16],
     [45, 16],
-    [22, 19],
-    [26, 19],
   ] as const) {
     m.objects.push({ k: 'lamp', x, y })
     setSolid(m, x, y)
   }
-  m.objects.push({ k: 'mailbox', x: 26, y: 15 })
-  setSolid(m, 26, 15)
+  // The mailbox at the roadside, beside the front walk's east lamp.
+  m.objects.push({ k: 'mailbox', x: 26, y: 16 })
+  setSolid(m, 26, 16)
   m.interacts.push({
     kind: 'sign',
     x: 26,
-    y: 15,
+    y: 16,
     text: 'The mailbox. Nothing today, but the grandkids promised to write!',
   })
 
-  // Trees: a border, then scattered where there's open grass.
+  // Trees: a border all round, then planted (not scattered): an orchard of apple trees behind the
+  // Kitchen, a little wood below the pond, a pair either side of the henhouse path, and one to
+  // shade the pond's games table. Bushes frame the front of the home.
   const tree = (x: number, y: number, k: 'tree' | 'pine' = 'tree') => {
     m.objects.push({ k, x, y })
     setSolid(m, x, y)
@@ -409,27 +447,17 @@ function buildGrounds(): GameMap {
     tree(0, y, hash(0, y) < 0.5 ? 'tree' : 'pine')
     tree(W - 1, y, hash(1, y) < 0.5 ? 'tree' : 'pine')
   }
-  const open = (x: number, y: number) => {
-    for (let dy = -1; dy <= 1; dy++)
-      for (let dx = -1; dx <= 1; dx++) {
-        const g = groundAt(m, x + dx, y + dy)
-        if (g !== T.GRASS && g !== T.FLOWERS) return false
-        if (m.solid[(y + dy) * W + x + dx]) return false
-      }
-    return true
+  for (const y of [3, 6]) for (const x of [37, 40, 43]) tree(x, y)
+  // A little wood in the south-east corner, below the pond.
+  for (const [j, y] of [40, 43, 46].entries())
+    for (const [i, x] of [38, 41, 44].entries()) tree(x, y, (i + j) % 2 ? 'pine' : 'tree')
+  tree(4, 14)
+  tree(10, 14)
+  tree(44, 21)
+  for (const x of [13, 34]) {
+    m.objects.push({ k: 'bush', x, y: 9 })
+    setSolid(m, x, 9)
   }
-  for (let y = 2; y < H - 2; y++)
-    for (let x = 2; x < W - 2; x++) {
-      const r = hash(x, y, 3)
-      const henhouse = x >= 1 && x <= 13 && y >= 1 && y <= 13
-      if (henhouse) continue
-      if (r < 0.07 && open(x, y) && !(y > 9 && y < 21 && x > 12 && x < 36)) {
-        tree(x, y, hash(x, y, 5) < 0.4 ? 'pine' : 'tree')
-      } else if (r > 0.975 && open(x, y)) {
-        m.objects.push({ k: 'bush', x, y })
-        setSolid(m, x, y)
-      }
-    }
 
   m.labels.push({ x: 24, y: 4.1, text: 'Sunset Acres', near: 12 })
   m.labels.push({ x: 40.5, y: 9.8, text: 'Community Kitchen', near: 8 })

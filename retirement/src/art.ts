@@ -1,4 +1,4 @@
-import { CROPS, FLOORS, FURNITURE, WALLPAPERS, type Finish } from '../shared/catalog'
+import { CROPS, FLOORS, FURNITURE, RECIPES, WALLPAPERS, type Finish } from '../shared/catalog'
 import { T, groundAt, hash, type GameMap, type Obj } from './maps'
 
 /*
@@ -550,7 +550,20 @@ export function drawWaterGlints(
 // --- crops -----------------------------------------------------------------------------------
 
 /** Tilled soil: raised rows with clods, darker and glistening when watered. */
-export function drawSoil(c: Ctx, px: number, py: number, wet: boolean) {
+/**
+ * A tilled tile, wet or dry. Cached as sprites (four variants of where the clods lie, picked by the
+ * tile so they don't shift as the camera moves): one drawImage per tile each frame.
+ */
+export function drawSoil(c: Ctx, px: number, py: number, wet: boolean, tx = 0, ty = 0) {
+  const v = Math.floor(hash(tx, ty, 800) * 4)
+  c.drawImage(
+    cachedCtx(`soil${wet ? 'w' : 'd'}${v}`, TS, TS, (g) => paintSoil(g, 0, 0, wet, v)),
+    px,
+    py,
+  )
+}
+
+function paintSoil(c: Ctx, px: number, py: number, wet: boolean, variant: number) {
   const f = pen(c)
   const [base, furrow, ridge, clod] = wet
     ? ['#5a3620', '#3e2414', '#6e4529', '#7d5333']
@@ -562,8 +575,8 @@ export function drawSoil(c: Ctx, px: number, py: number, wet: boolean) {
     f(furrow, px + 1, py + r + 3, 14, 1)
   }
   for (let i = 0; i < 5; i++) {
-    const cx = px + 2 + Math.floor(hash(px, py, 801 + i) * 11)
-    const cy = py + 2 + Math.floor(hash(py, px, 806 + i) * 11)
+    const cx = px + 2 + Math.floor(hash(variant, 0, 801 + i) * 11)
+    const cy = py + 2 + Math.floor(hash(0, variant, 806 + i) * 11)
     f(clod, cx, cy, 2, 1)
     f(furrow, cx + 1, cy + 1, 1, 1)
   }
@@ -616,13 +629,36 @@ export function plotFrame(w: number, h: number, mine: boolean): HTMLCanvasElemen
 }
 
 /** stage: 0 seed, 1 sprout, 2 growing, 3 ripe. */
-export function drawCrop(c: Ctx, id: string, stage: number, px: number, py: number, time = 0) {
+/** How far a crop sprite reaches beyond its tile (sunflowers stand tall). */
+const CROP_PAD = { x: 4, top: 16, w: 24, h: 34 }
+
+/**
+ * A crop at a growth stage, swaying in the breeze. Each look (crop × stage × sway) is drawn once
+ * and cached, so a garden full of plants costs one drawImage per crop per frame. `tx` (the tile's
+ * column) staggers the sway across a row.
+ */
+export function drawCrop(
+  c: Ctx,
+  id: string,
+  stage: number,
+  px: number,
+  py: number,
+  time = 0,
+  tx = px / TS,
+) {
+  if (!CROPS[id]) return
+  const sway = Math.round(Math.sin(time / 700 + tx * 4.8) * 0.6)
+  const sprite = cachedCtx(`crop${id}${stage}${sway}`, CROP_PAD.w, CROP_PAD.h, (g) =>
+    paintCrop(g, id, stage, CROP_PAD.x, CROP_PAD.top, sway),
+  )
+  c.drawImage(sprite, px - CROP_PAD.x, py - CROP_PAD.top)
+}
+
+function paintCrop(c: Ctx, id: string, stage: number, px: number, py: number, sway: number) {
   const def = CROPS[id]
-  if (!def) return
   const f = pen(c)
   const L = def.leaf
   const LD = '#2f6b2a'
-  const sway = Math.round(Math.sin(time / 700 + px * 0.3) * 0.6)
   if (stage === 0) {
     f('#6b4026', px + 6, py + 10, 4, 2)
     f(L, px + 7, py + 8, 1, 2)
@@ -746,6 +782,102 @@ export function cropIcon(id: string, produce: boolean, size = 32): HTMLCanvasEle
   cv.style.width = cv.style.height = `${size}px`
   cv.style.imageRendering = 'pixelated'
   return cv
+}
+
+/** A cooked meal for the basket and the kitchen: soup in a bowl, cake on a plate, a jar, a pie. */
+export function mealIcon(id: string, size = 32): HTMLCanvasElement {
+  const [cv, c] = canvas(16, 16)
+  const f = pen(c)
+  const r = RECIPES[id]
+  switch (r.dish) {
+    case 'bowl':
+      disc(f, 8, 8, 6, 2.5, r.food)
+      f(r.foodDark, 5, 7, 2, 1)
+      f(r.foodDark, 9, 8, 2, 1)
+      f(r.foodDark, 7, 6, 1, 1)
+      f('#f4efe6', 2, 9, 12, 2)
+      f('#e0d6c4', 3, 11, 10, 2)
+      f('#c9bda6', 5, 13, 6, 1)
+      f('#5b6091', 3, 10, 10, 1)
+      break
+    case 'plate':
+      disc(f, 8, 11, 7, 2.5, '#f4efe6')
+      disc(f, 8, 11, 5, 1.6, '#e0d6c4')
+      f(r.food, 4, 6, 8, 5)
+      f(r.foodDark, 4, 8, 8, 1)
+      f(r.foodDark, 5, 6, 6, 1)
+      f('rgba(255,255,255,0.4)', 5, 7, 3, 1)
+      break
+    case 'jar':
+      // A slice of toast leaning on a jam jar.
+      f(r.foodDark, 1, 7, 7, 7)
+      f('#f3d9a4', 2, 8, 5, 5)
+      f(r.food, 2, 9, 5, 2)
+      f('#e8dfcc', 8, 3, 6, 2)
+      f('#d98b8b', 8, 2, 6, 1)
+      f(r.food, 8, 5, 6, 9)
+      f('#ffffff', 9, 6, 1, 3)
+      f('#a01c30', 8, 13, 6, 1)
+      break
+    case 'pie':
+      disc(f, 8, 10, 7, 4, r.foodDark)
+      disc(f, 8, 9.5, 5.5, 3, r.food)
+      f('#fff1dc', 7, 8, 3, 1)
+      f('#fff1dc', 8, 7, 1, 3)
+      f('#8a5a2e', 2, 12, 12, 1)
+      break
+  }
+  cv.style.width = cv.style.height = `${size}px`
+  cv.style.imageRendering = 'pixelated'
+  return cv
+}
+
+/** A potted plant you dug up (strawberry or tomato): a clay pot with the plant and its fruit. */
+export function plantIcon(id: string, size = 32): HTMLCanvasElement {
+  const [cv, c] = canvas(16, 16)
+  const f = pen(c)
+  const def = CROPS[id]
+  f('#a4532f', 4, 10, 8, 5)
+  f('#c66c43', 3, 9, 10, 2)
+  f('#7e3b20', 5, 14, 6, 1)
+  f('#5a3620', 4, 9, 8, 1)
+  disc(f, 8, 6, 4.5, 3.5, def.leaf)
+  f('#2f6b2a', 6, 7, 1, 2)
+  f('#2f6b2a', 10, 5, 1, 2)
+  f(def.fruit, 5, 5, 2, 2)
+  f(def.fruit, 9, 7, 2, 2)
+  f(def.fruitDark, 6, 6, 1, 1)
+  cv.style.width = cv.style.height = `${size}px`
+  cv.style.imageRendering = 'pixelated'
+  return cv
+}
+
+/**
+ * Stakes at the corners of an allotment (w × h tiles from px, py) with a string between them,
+ * marking how far your plot can grow.
+ */
+export function drawStakes(c: Ctx, px: number, py: number, w: number, h: number) {
+  const f = pen(c)
+  const x1 = px + w * TS - 1
+  const y1 = py + h * TS - 1
+  c.fillStyle = 'rgba(245,236,214,0.55)'
+  for (let x = px + 2; x < x1 - 1; x += 3) {
+    c.fillRect(x, py + 1, 2, 1)
+    c.fillRect(x, y1 - 1, 2, 1)
+  }
+  for (let y = py + 2; y < y1 - 1; y += 3) {
+    c.fillRect(px + 1, y, 1, 2)
+    c.fillRect(x1 - 1, y, 1, 2)
+  }
+  for (const [x, y] of [
+    [px, py],
+    [x1 - 1, py],
+    [px, y1 - 1],
+    [x1 - 1, y1 - 1],
+  ]) {
+    f('#6e4424', x, y - 4, 2, 6)
+    f('#c48a52', x, y - 4, 1, 5)
+  }
 }
 
 function drawProduce(f: Pen, id: string) {
@@ -1053,6 +1185,145 @@ function benchSprite(): HTMLCanvasElement {
   })
 }
 
+/**
+ * A small square games table (18×24, drawn from 1px left of and 8px above its tile): a wooden top
+ * seen from above (rows 0–10, where drawTableGame puts the board), an apron, and four legs.
+ */
+function gameTableSprite(): HTMLCanvasElement {
+  return cachedCtx('gametable', 18, 24, (c) => {
+    const f = pen(c)
+    const wood = '#9a6438'
+    const woodL = '#c48a52'
+    const woodD = '#6e4424'
+    // Legs: the back two shorter and darker, the front two in full.
+    f('#4e301a', 3, 12, 2, 8)
+    f('#4e301a', 13, 12, 2, 8)
+    f(woodD, 1, 13, 2, 9)
+    f(woodD, 15, 13, 2, 9)
+    f(wood, 1, 13, 1, 9)
+    // Apron under the top.
+    f(wood, 0, 11, 18, 3)
+    f(woodD, 0, 13, 18, 1)
+    // The top, with a lighter rim and a little grain.
+    f(woodL, 0, 0, 18, 11)
+    f(wood, 1, 1, 16, 9)
+    for (const [x, y, w] of [
+      [3, 2, 5],
+      [10, 4, 5],
+      [2, 7, 4],
+      [11, 8, 4],
+    ])
+      f('#8a5a32', x, y, w, 1)
+    outlineCanvas(c, 18, 24, [0x2a, 0x1a, 0x10])
+    c.globalCompositeOperation = 'destination-over'
+    pen(c)('rgba(0,0,0,0.2)', 0, 21, 18, 3)
+    c.globalCompositeOperation = 'source-over'
+  })
+}
+
+/** The garden noticeboard (20×26): a little roofed board on two posts with notices pinned up. */
+function noticeboardSprite(): HTMLCanvasElement {
+  return cachedCtx('noticeboard', 20, 26, (c) => {
+    const f = pen(c)
+    f('#5e3d24', 4, 14, 2, 11)
+    f('#5e3d24', 14, 14, 2, 11)
+    // A little roof.
+    f('#7a3a2a', 1, 1, 18, 3)
+    f('#a0503a', 2, 0, 16, 2)
+    // The board, and the notices on it.
+    f('#8a5a35', 2, 4, 16, 11)
+    f('#b07a48', 3, 5, 14, 9)
+    f('#fff6dc', 4, 6, 5, 6)
+    f('#c9b78f', 5, 7, 3, 1)
+    f('#c9b78f', 5, 9, 3, 1)
+    f('#e8f0c0', 10, 6, 6, 4)
+    f('#6aa84f', 11, 7, 4, 2)
+    f('#f6d8d0', 11, 11, 5, 2)
+    f('#d8433a', 6, 6, 1, 1)
+    f('#d8433a', 12, 6, 1, 1)
+    outlineCanvas(c, 20, 26, [0x2a, 0x1a, 0x10])
+    c.globalCompositeOperation = 'destination-over'
+    pen(c)('rgba(0,0,0,0.2)', 2, 23, 16, 3)
+    c.globalCompositeOperation = 'source-over'
+  })
+}
+
+/** A round wooden stool (14×17, drawn 1px in from its tile's left and 1px above it). */
+function stoolSprite(): HTMLCanvasElement {
+  return cachedCtx('stool', 14, 17, (c) => {
+    const f = pen(c)
+    f('#5e3d24', 2, 7, 2, 8)
+    f('#5e3d24', 10, 7, 2, 8)
+    f('#4e301a', 6, 8, 2, 6)
+    f('#7a4e2d', 2, 11, 10, 1)
+    disc(f, 7, 5, 6, 3.2, '#9a6438')
+    disc(f, 7, 4.5, 5, 2.4, '#c48a52')
+    f('#9a6438', 4, 4, 6, 1)
+    outlineCanvas(c, 14, 17, [0x2a, 0x1a, 0x10])
+    c.globalCompositeOperation = 'destination-over'
+    pen(c)('rgba(0,0,0,0.2)', 1, 14, 12, 3)
+    c.globalCompositeOperation = 'source-over'
+  })
+}
+
+/** Piece colours: whoever moves first plays red (Connect 4) or dark (checkers). */
+export const TABLE_PIECES = {
+  connect4: { first: '#d8433a', second: '#f2c23b' },
+  checkers: { first: '#2a2630', second: '#d8433a' },
+} as const
+
+/**
+ * The game on a table's top, in miniature (px, py: the table tile's top-left): a Connect 4 frame
+ * standing up, or a checkerboard with its pieces. `board` null: a closed box of counters.
+ */
+export function drawTableGame(
+  c: Ctx,
+  px: number,
+  py: number,
+  game: 'connect4' | 'checkers' | null,
+  board: number[] | null,
+  first: 0 | 1,
+) {
+  const f = pen(c)
+  if (!game || !board) {
+    // A game box and a few loose counters.
+    f('#2a2630', px + 3, py - 4, 9, 6)
+    f('#c0504d', px + 3, py - 5, 9, 2)
+    f('#f2c23b', px + 5, py - 3, 5, 1)
+    f('#d8433a', px + 13, py - 1, 2, 1)
+    f('#2a2630', px + 13, py + 1, 2, 1)
+    return
+  }
+  const col = (side: number) => {
+    const p = TABLE_PIECES[game]
+    return side === first ? p.first : p.second
+  }
+  if (game === 'connect4') {
+    // Standing on the table, so it rises above the top.
+    const x0 = px + 1
+    const y0 = py - 11
+    f('rgba(0,0,0,0.25)', x0 + 1, py + 2, 15, 1)
+    f('#2f56b5', x0, y0, 15, 13)
+    f('#4a74d6', x0, y0, 15, 1)
+    f('#1f3f8a', x0 - 1, py + 1, 17, 2)
+    for (let r = 0; r < 6; r++)
+      for (let k = 0; k < 7; k++) {
+        const v = board[r * 7 + k]
+        f(v ? col(v - 1) : '#173170', x0 + 1 + k * 2, y0 + 1 + r * 2)
+      }
+    return
+  }
+  const x0 = px + 3
+  const y0 = py - 7
+  f('#5e3d24', x0, y0, 10, 10)
+  for (let r = 0; r < 8; r++)
+    for (let k = 0; k < 8; k++) {
+      const v = board[r * 8 + k]
+      const dark = (r + k) % 2 === 1
+      f(v ? col(v <= 2 ? 0 : 1) : dark ? '#7a8f5a' : '#efe0b8', x0 + 1 + k, y0 + 1 + r)
+    }
+}
+
 /** A Victorian lamp post, 16×60, its glass at LAMP_LIGHT_Y above the tile. */
 function lampSprite(): HTMLCanvasElement {
   return cachedCtx('lamp', 16, 60, (c) => {
@@ -1161,6 +1432,15 @@ export function drawObject(
       break
     case 'bench':
       c.drawImage(benchSprite(), px, py - 8)
+      break
+    case 'gametable':
+      c.drawImage(gameTableSprite(), px - 1, py - 8)
+      break
+    case 'stool':
+      c.drawImage(stoolSprite(), px + 1, py - 1)
+      break
+    case 'noticeboard':
+      c.drawImage(noticeboardSprite(), px - 2, py - 10)
       break
     case 'lamp':
       // About twice a character's height. LAMP_LIGHT_Y is where the glass is.
@@ -1909,6 +2189,34 @@ export function drawFurniture(c: Ctx, k: string, px: number, py: number, time: n
       const swing = Math.round(Math.sin(time / 500) * 2)
       f('#b8862f', px + 8 + swing, py - 7, 1, 10)
       disc(f, px + 8.5 + swing, py + 4, 1.6, 1.6, '#f2d07a')
+      break
+    }
+    case 'stove': {
+      // A little enamel range: oven door, two rings and a kettle that steams now and then.
+      shadow()
+      f('#2f3a4a', px + 1, py - 8, 14, 23)
+      f('#e9e2d3', px + 2, py - 7, 12, 21)
+      f('#cfc6b4', px + 2, py + 12, 12, 2)
+      f('#3c3a46', px + 2, py - 7, 12, 4)
+      disc(f, px + 5, py - 5, 2, 1.2, '#1d1b24')
+      disc(f, px + 11, py - 5, 2, 1.2, '#1d1b24')
+      f('#8a8f9e', px + 4, py + 1, 8, 8)
+      f('#2b2838', px + 5, py + 2, 6, 5)
+      f('#e07a5f', px + 6, py + 5, 4, 1)
+      f('#d8cfbd', px + 5, py - 1, 6, 1)
+      f('#b8483e', px + 3, py - 2, 1, 1)
+      f('#b8483e', px + 12, py - 2, 1, 1)
+      // Kettle on the back ring.
+      f('#6aa0c8', px + 9, py - 10, 5, 4)
+      f('#4a7fa6', px + 9, py - 7, 5, 1)
+      f('#4a7fa6', px + 13, py - 9, 2, 1)
+      f('#3c3a46', px + 10, py - 11, 3, 1)
+      const puff = (time / 700) % 4
+      if (puff < 1.6) {
+        const a = Math.floor(puff * 2)
+        f('rgba(255,255,255,0.7)', px + 14, py - 12 - a * 2, 2, 2)
+        if (a) f('rgba(255,255,255,0.45)', px + 13, py - 15 - a, 2, 2)
+      }
       break
     }
     case 'piano':

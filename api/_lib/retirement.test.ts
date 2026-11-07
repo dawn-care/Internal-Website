@@ -1,6 +1,20 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { newSave, defaultLook, type Save } from '../../retirement/shared/schema.js'
+import {
+  newSave,
+  defaultLook,
+  emptyGarden,
+  growGarden,
+  type Save,
+} from '../../retirement/shared/schema.js'
+import type { TableState } from '../../retirement/shared/tables.js'
+import {
+  RECIPES,
+  RECIPE_IDS,
+  cookable,
+  itemPrice,
+  knowsRecipe,
+} from '../../retirement/shared/catalog.js'
 import handler from '../retirement.js'
 import { createMemoryStore, setStore } from './retirement/store.js'
 import { encryptSession } from './session.js'
@@ -385,6 +399,209 @@ describe('/api/retirement', () => {
         })
         expect(res.statusCode).toBe(400)
       }
+    })
+  })
+
+  describe('board-game tables', () => {
+    const T = 'table:14,13'
+    const sit = (login: string, side: 0 | 1, sitAt = 100) =>
+      call({
+        method: 'POST',
+        op: 'sync',
+        login,
+        body: {
+          p: { ...presence, sit: `${T}:${side}`, sitAt, dir: side === 0 ? 2 : 1 },
+          look: defaultLook(login),
+          since: 0,
+        },
+      })
+    const act = (login: string, version: number, action: unknown, id: unknown = T) =>
+      call({ method: 'POST', op: 'table', login, body: { id, version, action } })
+    const table = (res: FakeRes) => (res.body as { table: TableState }).table
+
+    it('needs two people sitting at the table to start', async () => {
+      await sit('ada', 0)
+      const alone = await act('ada', 0, { type: 'start', game: 'connect4' })
+      expect(alone.statusCode).toBe(400)
+      await sit('grace', 1)
+      const started = await act('ada', 0, { type: 'start', game: 'connect4' })
+      expect(started.statusCode).toBe(200)
+      expect(table(started)).toMatchObject({
+        game: 'connect4',
+        players: ['ada', 'grace'],
+        names: ['ada', 'grace'],
+        turn: 0,
+        version: 1,
+        result: null,
+      })
+      // Someone just walking past can't start one.
+      const passer = await act('lin', 1, { type: 'start', game: 'checkers' })
+      expect(passer.statusCode).toBe(400)
+    })
+
+    it('checks turns, rules and versions, and shares the board through sync', async () => {
+      await sit('ada', 0)
+      await sit('grace', 1)
+      await act('ada', 0, { type: 'start', game: 'connect4' })
+      expect((await act('grace', 1, { type: 'move', path: [3] })).statusCode).toBe(400)
+      expect((await act('ada', 1, { type: 'move', path: [9] })).statusCode).toBe(400)
+      const moved = await act('ada', 1, { type: 'move', path: [3] })
+      expect(table(moved).board[5 * 7 + 3]).toBe(1)
+      // A second click against the old version is refused, not applied twice.
+      const stale = await act('ada', 1, { type: 'move', path: [4] })
+      expect(stale.statusCode).toBe(409)
+      expect(stale.body).toMatchObject({ error: { code: 'changed' } })
+      const synced = await sit('grace', 1)
+      const tables = (synced.body as { tables: TableState[] }).tables
+      expect(tables).toHaveLength(1)
+      expect(tables[0]).toMatchObject({ id: T, version: 2, turn: 1 })
+    })
+
+    it('only sends tables to players on the grounds', async () => {
+      await sit('ada', 0)
+      const hall = await call({
+        method: 'POST',
+        op: 'sync',
+        body: { p: { ...presence, map: 'hall' }, look: defaultLook('Ada'), since: 0 },
+      })
+      expect((hall.body as Record<string, unknown>).tables).toBeUndefined()
+    })
+
+    it('plays Connect 4 to a win, then lets the same two start again', async () => {
+      await sit('ada', 0)
+      await sit('grace', 1)
+      let v = table(await act('ada', 0, { type: 'start', game: 'connect4' })).version
+      for (const [who, col] of [
+        ['ada', 0],
+        ['grace', 1],
+        ['ada', 0],
+        ['grace', 1],
+        ['ada', 0],
+        ['grace', 1],
+        ['ada', 0],
+      ] as const) {
+        const res = await act(who, v, { type: 'move', path: [col] })
+        expect(res.statusCode).toBe(200)
+        v = table(res).version
+      }
+      const t = (await act('grace', v, { type: 'move', path: [1] })).body
+      expect(t).toMatchObject({ error: { code: 'invalid-input' } })
+      const rematch = table(await act('grace', v, { type: 'start', game: 'connect4' }))
+      // Grace goes first this time.
+      expect(rematch).toMatchObject({ round: 2, first: 1, turn: 1, result: null })
+    })
+
+    it('lets a player resign, and only players', async () => {
+      await sit('ada', 0)
+      await sit('grace', 1)
+      await act('ada', 0, { type: 'start', game: 'checkers' })
+      expect((await act('lin', 1, { type: 'resign' })).statusCode).toBe(400)
+      const res = await act('grace', 1, { type: 'resign' })
+      expect(table(res).result).toEqual({ winner: 0, why: 'resign' })
+    })
+
+    it('refuses tables that do not exist and malformed actions', async () => {
+      await sit('ada', 0)
+      expect((await act('ada', 0, { type: 'start', game: 'chess' })).statusCode).toBe(400)
+      expect(
+        (await act('ada', 0, { type: 'start', game: 'checkers' }, 'table:1,1')).statusCode,
+      ).toBe(400)
+      expect((await act('ada', 0, { type: 'dance' })).statusCode).toBe(400)
+      expect(
+        (await call({ method: 'POST', op: 'table', origin: 'https://evil.example', body: {} }))
+          .statusCode,
+      ).toBe(403)
+    })
+
+    it('hands an abandoned game over to whoever sits down next', async () => {
+      await sit('ada', 0)
+      await sit('grace', 1)
+      await act('ada', 0, { type: 'start', game: 'checkers' })
+      // Grace gets up; Lin takes her stool.
+      await call({
+        method: 'POST',
+        op: 'sync',
+        login: 'grace',
+        body: { p: presence, look: defaultLook('grace'), since: 0 },
+      })
+      await sit('lin', 1, 300)
+      const res = await act('lin', 1, { type: 'start', game: 'connect4' })
+      expect(table(res).players).toEqual(['ada', 'lin'])
+    })
+  })
+
+  describe('plot sizes', () => {
+    const put = (sv: unknown) => call({ method: 'POST', op: 'save', body: { save: sv } })
+
+    it('reads saves without a plot size as the starter plot, and keeps a bought size', async () => {
+      expect((await put(save())).statusCode).toBe(200)
+      const bigger = { ...save(), plot: 2, garden: emptyGarden(2) }
+      expect((await put(bigger)).statusCode).toBe(200)
+      const me = await call({ method: 'GET', op: 'me' })
+      const got = (me.body as { save: Save }).save
+      expect(got.plot).toBe(2)
+      expect(got.garden).toHaveLength(45)
+      const world = await call({ method: 'GET', op: 'world' })
+      expect((world.body as { profiles: Record<string, unknown>[] }).profiles[0].plot).toBe(2)
+    })
+
+    it('refuses gardens that do not match the plot size, and sizes that do not exist', async () => {
+      expect((await put({ ...save(), plot: 1 })).statusCode).toBe(400)
+      expect((await put({ ...save(), garden: emptyGarden(1) })).statusCode).toBe(400)
+      expect((await put({ ...save(), plot: 3, garden: emptyGarden(2) })).statusCode).toBe(400)
+    })
+
+    it('keeps potted strawberry and tomato plants, but not other crops', async () => {
+      expect((await put({ ...save(), inv: { 'plant:tomato': 2 } })).statusCode).toBe(200)
+      expect((await put({ ...save(), inv: { 'plant:pumpkin': 1 } })).statusCode).toBe(400)
+    })
+
+    it('grows a garden in place: each tile keeps its row and column', () => {
+      const g = emptyGarden(0)
+      g[0] = { s: 1, c: 'tomato', g: 5, t: 1 }
+      g[14] = { s: 1 }
+      const grown = growGarden(g, 0, 1)
+      expect(grown).toHaveLength(28)
+      expect(grown[0]).toMatchObject({ c: 'tomato' })
+      // Row 2, column 4: 2 * 5 + 4 before, 2 * 7 + 4 after.
+      expect(grown[18]).toEqual({ s: 1 })
+      expect(grown.filter((t) => t.s === 1)).toHaveLength(2)
+    })
+  })
+
+  describe('cooking', () => {
+    const put = (sv: unknown) => call({ method: 'POST', op: 'save', body: { save: sv } })
+
+    it('keeps meals and learned recipes, and drops starter recipes from the save', async () => {
+      const s = { ...save(), recipes: ['pie', 'salad', 'soup', 'pie'], inv: { 'meal:soup': 2 } }
+      expect((await put(s)).statusCode).toBe(200)
+      const got = ((await call({ method: 'GET', op: 'me' })).body as { save: Save }).save
+      expect(got.recipes).toEqual(['soup', 'pie'])
+      expect(got.inv).toEqual({ 'meal:soup': 2 })
+    })
+
+    it('refuses unknown recipes and meals', async () => {
+      expect((await put({ ...save(), recipes: ['gruel'] })).statusCode).toBe(400)
+      expect((await put({ ...save(), recipes: 'soup' })).statusCode).toBe(400)
+      expect((await put({ ...save(), inv: { 'meal:gruel': 1 } })).statusCode).toBe(400)
+    })
+
+    it('makes every meal worth more than its ingredients', () => {
+      for (const id of RECIPE_IDS) {
+        const r = RECIPES[id]
+        const raw = Object.entries(r.ingredients).reduce((t, [k, n]) => t + itemPrice(k) * n, 0)
+        expect(raw, id).toBeGreaterThan(0)
+        expect(r.sellPrice, id).toBeGreaterThan(raw)
+      }
+    })
+
+    it('counts how many you can cook, and who knows what', () => {
+      expect(cookable({ 'crop:radish': 7 }, 'salad')).toBe(2)
+      expect(cookable({ egg: 5, 'crop:carrot': 1 }, 'omelette')).toBe(1)
+      expect(cookable({ egg: 5 }, 'omelette')).toBe(0)
+      expect(knowsRecipe(undefined, 'salad')).toBe(true)
+      expect(knowsRecipe(undefined, 'pie')).toBe(false)
+      expect(knowsRecipe(['pie'], 'pie')).toBe(true)
     })
   })
 })

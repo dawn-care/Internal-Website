@@ -267,7 +267,7 @@ function outline(c: CanvasRenderingContext2D) {
 /** How far behind its owner (along their path, in tiles) a pet walks. */
 const FOLLOW_GAP = 1.9
 const TRAIL_KEEP = 5
-/** It never comes closer than this to its owner, so it isn't hidden behind them. */
+/** It won't walk closer than this to its owner (but stays put if they walk up to it). */
 const MIN_GAP = 1.4
 
 /**
@@ -305,8 +305,7 @@ export class Follower {
     this.still = 1
   }
 
-  /** `blocked` says whether a spot is solid, so stepping aside never goes into a wall. */
-  update(dt: number, ox: number, oy: number, blocked?: (x: number, y: number) => boolean) {
+  update(dt: number, ox: number, oy: number) {
     this.curl = false
     const last = this.trail[this.trail.length - 1]
     if (!last || Math.hypot(ox - last.x, oy - last.y) > 0.12) this.trail.push({ x: ox, y: oy })
@@ -335,31 +334,15 @@ export class Follower {
       }
     }
     if (cut > 0) this.trail.splice(0, cut)
-    // Keep clear of the owner. Too close (they walked into it): step aside, away from them,
-    // sideways if that's a wall. If the point on their path is right beside them or on their
-    // far side (they doubled back), hold still rather than walk through them.
+    // If the owner walks up to it (or right over it), it stays where it is: overlapping is fine,
+    // and backing away looks like it's avoiding them. It also holds still rather than walk through
+    // them when the point on their path is right beside them or on their far side (they doubled
+    // back), and starts trotting after them again once they've walked on past.
     const od = Math.hypot(this.x - ox, this.y - oy)
-    if (od < MIN_GAP) {
-      const [ux, uy] = od < 0.01 ? [0, 1] : [(this.x - ox) / od, (this.y - oy) / od]
-      const ways: [number, number][] = [
-        [ux, uy],
-        [-uy, ux],
-        [uy, -ux],
-      ]
-      const way = ways.find(([wx, wy]) => !blocked?.(ox + wx * MIN_GAP, oy + wy * MIN_GAP))
-      if (way) {
-        tx = ox + way[0] * MIN_GAP
-        ty = oy + way[1] * MIN_GAP
-      } else {
-        tx = this.x
-        ty = this.y
-      }
-    } else {
-      const across = (tx - ox) * (this.x - ox) + (ty - oy) * (this.y - oy) < 0
-      if (across || Math.hypot(tx - ox, ty - oy) < MIN_GAP) {
-        tx = this.x
-        ty = this.y
-      }
+    const across = (tx - ox) * (this.x - ox) + (ty - oy) * (this.y - oy) < 0
+    if (od < MIN_GAP || across || Math.hypot(tx - ox, ty - oy) < MIN_GAP) {
+      tx = this.x
+      ty = this.y
     }
     this.walkTo(dt, tx, ty)
   }

@@ -400,7 +400,8 @@ Rules (both themes):
   retirement/CLAUDE.md has the details. vite.retirement.config.ts builds it into
   dist/retirement; scripts/finalize-game-build.mjs moves its index.html to api/_retirement;
   vercel.json rewrites /retirement to /api/retirement?page=1, which serves it signed-in only.
-  Progress is keyed by the session's GitHub login. Live presence/chat need Upstash Redis
+  Progress is keyed by the session's GitHub login. Board-game tables (Connect 4, checkers) are
+  refereed by the same function (?op=table). Live presence/chat/tables need Upstash Redis
   (KV_REST_API_URL / KV_REST_API_TOKEN, optional); without it saves use the Blob store and
   presence is per function instance. `npm run dev:retirement` runs it offline.
 

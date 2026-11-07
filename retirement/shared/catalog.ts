@@ -3,9 +3,27 @@
  * validate saves). Pure data: no DOM, no Node APIs.
  */
 
-/** Each player's plot in the community garden, in tiles. */
-export const PLOT_W = 5
-export const PLOT_H = 3
+/**
+ * Garden plot sizes, in tiles, smallest first. Everyone starts on the first; each later size is
+ * bought in turn from the garden noticeboard. Every allotment in the garden has room for the
+ * largest, so a plot grows in place (to the right and down) without moving anyone else's.
+ */
+export interface PlotSize {
+  w: number
+  h: number
+  price: number
+}
+export const PLOT_SIZES: readonly PlotSize[] = [
+  { w: 5, h: 3, price: 0 },
+  { w: 7, h: 4, price: 600 },
+  { w: 9, h: 5, price: 1500 },
+]
+export const PLOT_MAX = PLOT_SIZES[PLOT_SIZES.length - 1]
+
+/** The size of plot `level` (an index into PLOT_SIZES; out-of-range reads as the first). */
+export function plotSize(level: number | undefined): PlotSize {
+  return PLOT_SIZES[level ?? 0] ?? PLOT_SIZES[0]
+}
 /** Plots in the garden and doors in the hallway. */
 export const MAX_SLOTS = 12
 export const START_COINS = 60
@@ -97,6 +115,13 @@ export const CROPS: Record<string, CropDef> = {
   },
 }
 export const CROP_IDS = Object.keys(CROPS)
+/** Crops that can be dug up and potted once grown (they keep fruiting, so they're worth moving). */
+export const POTTABLE = CROP_IDS.filter((c) => CROPS[c].regrows)
+
+/** What Chef Rosa pays for a potted plant you dug up: a little more than its seed. */
+export function plantPrice(crop: string): number {
+  return Math.round(CROPS[crop].seedPrice * 1.2)
+}
 
 export interface FurnitureDef {
   id: string
@@ -135,6 +160,8 @@ export const FURNITURE: Record<string, FurnitureDef> = {
   fishtank: { id: 'fishtank', name: 'Fish tank', price: 200, w: 2, h: 1 },
   clock: { id: 'clock', name: 'Grandfather clock', price: 220, w: 1, h: 1 },
   piano: { id: 'piano', name: 'Upright piano', price: 400, w: 2, h: 1 },
+  // Cook your known recipes at home (face it and press E).
+  stove: { id: 'stove', name: 'Little stove', price: 250, w: 1, h: 1 },
 }
 export const FURNITURE_IDS = Object.keys(FURNITURE)
 
@@ -311,3 +338,134 @@ export const HENS = 3
 export const LAY_HOUR = 7
 /** What Chef Rosa pays for an egg. */
 export const EGG_PRICE = 15
+
+// --- cooking ---------------------------------------------------------------------------------
+
+/**
+ * A recipe: what goes in (inventory keys, e.g. "crop:carrot" or "egg") and what the meal sells
+ * for. Meals always sell for more than their ingredients would, so cooking pays even if you never
+ * go into the forest. Chef Rosa teaches each recipe for `lesson` coins (0: everyone knows it).
+ * What a meal does in the forest is FOREST.md "Meals"; forest-ingredient recipes (mushroom broth,
+ * herbal tea) come with the forest.
+ */
+export interface RecipeDef {
+  id: string
+  name: string
+  ingredients: Record<string, number>
+  sellPrice: number
+  lesson: number
+  /** Chef Rosa's tip, shown with the recipe. */
+  note: string
+  /** Colours for the meal's icon: the bowl or plate, and the food on it. */
+  dish: 'bowl' | 'plate' | 'jar' | 'pie'
+  food: string
+  foodDark: string
+}
+
+export const RECIPES: Record<string, RecipeDef> = {
+  salad: {
+    id: 'salad',
+    name: 'Radish salad',
+    ingredients: { 'crop:radish': 3 },
+    sellPrice: 45,
+    lesson: 0,
+    note: 'Sliced thin, with a pinch of salt. Everyone starts somewhere!',
+    dish: 'bowl',
+    food: '#e0475b',
+    foodDark: '#5fae3e',
+  },
+  omelette: {
+    id: 'omelette',
+    name: 'Garden omelette',
+    ingredients: { egg: 2, 'crop:carrot': 1 },
+    sellPrice: 75,
+    lesson: 40,
+    note: 'Fresh eggs from the henhouse and a grated carrot.',
+    dish: 'plate',
+    food: '#f6d65a',
+    foodDark: '#f08a24',
+  },
+  soup: {
+    id: 'soup',
+    name: 'Vegetable soup',
+    ingredients: { 'crop:radish': 1, 'crop:carrot': 1, 'crop:tomato': 1 },
+    sellPrice: 100,
+    lesson: 60,
+    note: 'My mother’s recipe. It warms you right through.',
+    dish: 'bowl',
+    food: '#d9573a',
+    foodDark: '#f08a24',
+  },
+  cake: {
+    id: 'cake',
+    name: 'Carrot cake',
+    ingredients: { 'crop:carrot': 2, egg: 1 },
+    sellPrice: 95,
+    lesson: 80,
+    note: 'The secret is a little cinnamon.',
+    dish: 'plate',
+    food: '#c98a4a',
+    foodDark: '#fff1dc',
+  },
+  jam: {
+    id: 'jam',
+    name: 'Strawberry jam toast',
+    ingredients: { 'crop:strawberry': 3 },
+    sellPrice: 90,
+    lesson: 80,
+    note: 'Boil the berries down slowly and spread it thick.',
+    dish: 'jar',
+    food: '#c81f3a',
+    foodDark: '#e0a95e',
+  },
+  seeds: {
+    id: 'seeds',
+    name: 'Roasted sunflower seeds',
+    ingredients: { 'crop:sunflower': 1 },
+    sellPrice: 120,
+    lesson: 100,
+    note: 'Roast them until they crackle. A lovely thing to share on a bench.',
+    dish: 'bowl',
+    food: '#7a4a1d',
+    foodDark: '#e9d3a0',
+  },
+  pie: {
+    id: 'pie',
+    name: 'Pumpkin pie',
+    ingredients: { 'crop:pumpkin': 1, egg: 2 },
+    sellPrice: 260,
+    lesson: 150,
+    note: 'The pride of the autumn fair. Make it for someone you love.',
+    dish: 'pie',
+    food: '#e07a24',
+    foodDark: '#c98a4a',
+  },
+}
+export const RECIPE_IDS = Object.keys(RECIPES)
+/** Recipes everyone knows from the start (they're never stored in the save). */
+export const STARTER_RECIPES = RECIPE_IDS.filter((r) => RECIPES[r].lesson === 0)
+/** The furniture you cook on at home. */
+export const STOVE = 'stove'
+
+/** What Chef Rosa pays for one of an inventory item (0 for things she doesn't buy). */
+export function itemPrice(key: string): number {
+  const [kind, id] = key.split(':')
+  if (key === 'egg') return EGG_PRICE
+  if (kind === 'crop' && CROPS[id]) return CROPS[id].sellPrice
+  if (kind === 'plant' && POTTABLE.includes(id)) return plantPrice(id)
+  if (kind === 'meal' && RECIPES[id]) return RECIPES[id].sellPrice
+  return 0
+}
+
+/** How many of a recipe you could cook with what's in `inv`. */
+export function cookable(inv: Record<string, number>, recipe: string): number {
+  let n = Infinity
+  for (const [k, need] of Object.entries(RECIPES[recipe].ingredients))
+    n = Math.min(n, Math.floor((inv[k] ?? 0) / need))
+  return n === Infinity ? 0 : n
+}
+
+/** Whether you know a recipe: a starter one, or one Chef Rosa taught you. */
+export function knowsRecipe(learned: readonly string[] | undefined, recipe: string): boolean {
+  return RECIPES[recipe]?.lesson === 0 || (learned ?? []).includes(recipe)
+}

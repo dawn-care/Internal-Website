@@ -13,6 +13,13 @@ import {
   validateSave,
   type ChatMsg,
 } from '../retirement/shared/schema.js'
+import {
+  TABLE_MAP,
+  applyTableAction,
+  isTableId,
+  seatedAt,
+  validateTableAction,
+} from '../retirement/shared/tables.js'
 import { requireSameOrigin, sendError, sendJson, withErrors } from './_lib/http.js'
 import { freeSlot, getStore } from './_lib/retirement/store.js'
 import { getSession, getValidAuth } from './_lib/session.js'
@@ -34,7 +41,8 @@ const SIGN_IN_HTML = `<!doctype html><meta charset="utf-8"><meta name="viewport"
  *   GET  ?op=me               → { user, save | null, slot, storage, now }
  *   GET  ?op=world            → { profiles, now }   everyone's look, garden and room
  *   POST ?op=save   { save }  → { slot, now }
- *   POST ?op=sync   { p, look, msg?, since } → { players, chat, sent, now }
+ *   POST ?op=sync   { p, look, msg?, since } → { players, chat, sent, tables?, now }
+ *   POST ?op=table  { id, version, action } → { table, now }   (409 "changed" if not the latest)
  *
  * Signed-in only. Saves are keyed by GitHub login from the session, never from the body.
  */
@@ -46,6 +54,7 @@ export default withErrors(async (req, res) => {
     if (op === 'world' && req.method === 'GET') return await world(req, res)
     if (op === 'save' && req.method === 'POST') return await save(req, res)
     if (op === 'sync' && req.method === 'POST') return await sync(req, res)
+    if (op === 'table' && req.method === 'POST') return await table(req, res)
   } catch (err) {
     if (err instanceof SaveError) return sendError(res, 400, 'invalid-input', err.message)
     throw err
@@ -127,8 +136,48 @@ async function sync(req: VercelRequest, res: VercelResponse): Promise<void> {
         t: now,
       }
     : null
-  const result = await getStore().sync({ ...presence, login: user.login, look, t: now }, msg, since)
+  // Players on the grounds get the board-game tables' states too (they're drawn on the tables).
+  const result = await getStore().sync(
+    { ...presence, login: user.login, look, t: now },
+    msg,
+    since,
+    presence.map === TABLE_MAP,
+  )
   // Two people can't share a seat: whoever sat down first keeps it.
   const taken = seatTaken({ ...presence, login: user.login }, result.players)
   sendJson(res, 200, { ...result, ...(taken ? { seatTaken: true } : {}), now })
+}
+
+/**
+ * A move (or start, or resign) at a board-game table. The rules are checked here, the players are
+ * whoever is sitting on the stools according to presence, and the write only lands if the table is
+ * still at the version the player saw (otherwise 409, and the next sync brings the latest board).
+ */
+async function table(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (!requireSameOrigin(req, res)) return
+  const { user } = await getValidAuth(req, res)
+  const b = body(req)
+  if (!isTableId(b.id)) throw new SaveError('There is no table there.')
+  const version = b.version
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 0)
+    throw new SaveError('Send the version of the board you saw.')
+  const action = validateTableAction(b.action)
+  const store = getStore()
+  const ctx = await store.tableContext(b.id)
+  if ((ctx.table?.version ?? 0) !== version) return changed(res)
+  const now = Date.now()
+  const next = applyTableAction(
+    b.id,
+    ctx.table,
+    action,
+    user.login,
+    seatedAt(b.id, ctx.players),
+    now,
+  )
+  if (!(await store.putTable(next, version))) return changed(res)
+  sendJson(res, 200, { table: next, now })
+}
+
+function changed(res: VercelResponse): void {
+  sendError(res, 409, 'changed', 'The board changed just now. Have another look!')
 }

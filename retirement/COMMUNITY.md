@@ -1,7 +1,8 @@
 # Community: cozy ideas for Sunset Acres
 
-Status: **being built, in the suggested order.** Built so far: the introduction, a brighter look and feel, pets, animals on the property, and
-benches. These are the additions that make the property worth
+Status: **being built, in the suggested order.** Built so far: the introduction, a brighter look and feel, pets, animals on the property,
+benches, board-game tables (Connect 4 and checkers), larger plots as upgrades (with digging
+plants up), and cooking (garden recipes; forest ingredients come with the forest). These are the additions that make the property worth
 coming back to (the forest, in FOREST.md, is the other half). Suggested order: build the
 introduction first, then the rest roughly in the order listed.
 
@@ -41,6 +42,10 @@ spend time with each other (benches, board games).
   room the Catalog button glows instead.
 - **Order is strict:** a task only counts while it's the current one (e.g. a fern bought before
   you've planted doesn't tick off "buy"). Simple, and the intro is short enough that it's fine.
+- **Finish growing:** once a plant in your plot is planted and watered (but not ripe) during the
+  plant or sell task, Nurse Ada's list shows a "Finish growing" button that ripens it at once, so
+  new players needn't wait out a whole growth. Watering still has to be done first, so the intro
+  still teaches it. The hint mentions the button. It only exists during the introduction.
 - **Gift:** finishing gives a Flower painting (worth 30) into room storage, or 30 coins if storage
   is full. Ada's goodbye waits until you've closed the Catalog and put down what you bought.
 - **No plot, no tour:** if the home is full (no garden slot), the intro is skipped.
@@ -52,6 +57,35 @@ choices })`) in a carved wooden frame. The speaker's **portrait is on the left**
   goes on; Esc skips to the end; arrow keys move between choices. With reduced motion the text
   appears at once and the portrait holds still. FOREST.md's encounter dialogue builds on it.
 - Replaces the two welcome pop-ups new players used to get.
+
+## Layout of the grounds (done)
+
+Things used to be scattered (trees and bushes were placed by noise, benches and lamps wherever
+there was room). Now everything is placed on purpose in src/maps.ts `buildGrounds`, round the
+home's centre line (between x 23 and 24):
+
+- **Plaza and front walk, mirrored:** lamps on the plaza's front corners (17,13) and (30,13);
+  benches facing out at (19,14) and (27,14); a lamp either side of the front walk where it meets
+  the main path, (22,16) and (25,16), with the mailbox at the roadside beside the east one (26,16).
+- **Garden gate, on the same line:** the Community Garden's gate is two tiles wide at (23–24,20),
+  straight down from the front walk, with the noticeboard (22,19) and a tub of flowers (25,19)
+  either side of it.
+- **Games tables:** a matching pair on the lawns either side of the plaza, (14,13) and (33,13), and
+  one by the pond in line with the Kitchen's path (40,21), shaded by a tree at (44,21).
+- **Benches in pairs, facing what's worth looking at:** the plaza (above), the garden (on the verge
+  either side of its gate, (19,19) and (27,19)) and the pond (on its north shore, (37,24) and
+  (41,24)). Six in all.
+- **Garden and pond:** the garden fills the south-west (x 3–35, y 20–46; see "Larger plots"), the
+  pond the east (`POND` in src/maps.ts, centre (41.6,32)), reached by a path down the garden's east
+  fence (x 36).
+- **Lamps:** the four above, plus one at each end of the main path, (6,16) and (45,16).
+- **Trees:** the border ring all round; an orchard of six apple trees behind the Kitchen (x 37, 40,
+  43 by y 3, 6); a little wood below the pond (x 38, 41, 44 by y 40, 43, 46, tree and pine in
+  turn); a tree either side of the henhouse path, (4,14) and (10,14). Two bushes frame the front of the home
+  (13,9) and (34,9). There are no random trees or bushes any more; wildflower patches are still
+  scattered, as they're meant to look wild.
+- To add something to the grounds, give it a place in this plan (a pair, a row, or on a line)
+  rather than an open spot.
 
 ## Look and feel (done)
 
@@ -110,8 +144,9 @@ drawing; the adoption panel in src/ui.ts). How it works and the calls made:
 - **Its bed:** a free Pet bed (new furniture, price 0 so it's not in the Catalog) is put in the
   first free floor spot from the bottom right of your room, or in storage if there's no room. The
   old "Cat (with bed)" stays a separate decoration (Mittens, the house cat).
-- **Following:** the pet trots along your path about two tiles behind you (never closer than 1.4, so you
-  don't hide it; if you double back or walk into it, it waits or steps aside, never into a wall), sits (wagging)
+- **Following:** the pet trots along your path about two tiles behind you (it won't walk closer than 1.4 tiles;
+  if you double back or walk up to it, it stays where it is and you can stand right on top of it,
+  then it trots after you once you've gone past), sits (wagging)
   when you stop, and comes with you into the hallway and other people's rooms. In your own room
   it's asleep in its bed (z's drifting up). At night on the shared clock (9 pm to 6 am) it's
   asleep at home; in the morning it comes out of the front door to find you.
@@ -154,9 +189,8 @@ Every animal's position comes from the shared game clock, so everyone sees the s
 nothing synced; only eggs touch the save. How it works and the calls made:
 
 - **Henhouse** in the north-west corner, west of the home: a fenced dirt run (picket fence, a
-  gate at the bottom, a path down to the main path) with a red-roofed coop along the top. The
-  bench that stood at (7,15) moved to (11,14) to make room for the path. Random trees stay out of
-  that corner.
+  gate at the bottom, a path down to the main path) with a red-roofed coop along the top. A tree
+  stands either side of its path (see "Layout of the grounds").
 - **Hens:** three (white, brown, speckled grey) wander the run from 6 am to 8 pm, stopping to peck;
   overnight they're in the coop.
 - **Eggs:** each hen lays one egg a game day at 7 am (`LAY_HOUR`), so up to 3 per player per game
@@ -189,12 +223,12 @@ nothing synced; only eggs touch the save. How it works and the calls made:
 - Easy, and good for the social side: you can **sit on benches**, and **neighbours see you sitting
   together**, with speech bubbles going back and forth.
 
-Notes: "sitting" is a pose sent with presence. The grounds already have five benches.
+Notes: "sitting" is a pose sent with presence.
 
 **Built** (seats in src/maps.ts `seatsOf`, sitting in src/game.ts, seated frames in
 src/people.ts, the seat check in shared/schema.ts). How it works and the calls made:
 
-- **Seats:** the five benches on the grounds (two places each, so neighbours sit side by side),
+- **Seats:** the six benches on the grounds (two places each, so neighbours sit side by side),
   the three hallway chairs, and any armchair or rocking chair placed in a room (yours or one
   you're visiting). Face one and press E: "Sit down". If that place is taken you get the other
   half of the bench; if it's full, "There's no room here just now". The hallway chairs back onto
@@ -227,6 +261,54 @@ Notes: add to the existing /api/retirement function (Vercel Hobby allows 12 func
 be checked on the server and carry a version number, like team to-dos, so two players can't
 overwrite each other's moves.
 
+**Built** (rules and table positions in shared/tables.ts; the table, stools and tabletop miniature
+in src/art.ts; the board card in src/ui.ts; wired up in src/game.ts; `POST ?op=table` in
+api/retirement.ts). How it works and the calls made:
+
+- **Tables:** three on the grounds, each a small wooden table with a stool either side: west of
+  the plaza (14,13), east of the plaza (33,13) and by the pond (40,21). Built ahead of plot upgrades, Rosa's orders and cooking (the order above was a
+  suggestion).
+- **Sitting down:** a stool is a seat like a bench place (`table:14,13:0` west, `:1` east), so it
+  uses the same presence, `seatTaken` rule and "WASD Get up". You sit side-on, facing the table,
+  reaching for the board (a new side-on seated sprite in src/people.ts), and you never doze off at
+  a table.
+- **The board card:** while you sit at a table a card on the right shows both stools (name, piece
+  colour, a ring round whoever's turn it is), a status line, the board, and buttons. With someone
+  opposite and no game on: "Play Connect 4" / "Play Checkers". After a game: "Rematch: …" and the
+  other game. During your game: "Resign", which asks "Really resign?" first.
+- **Watching:** face a table (not a stool) and press E to watch the game on it; the card shows it
+  read-only, with "Stop watching". Walking more than a few tiles away stops it.
+- **On the table itself:** everyone on the grounds sees the game in miniature on the tabletop (a
+  blue Connect 4 frame with the real counters, or a checkerboard with the real pieces), or a game
+  box when nothing has been played there.
+- **Who plays:** the two people on the stools when a game starts. The game then belongs to those
+  two logins; only they can move, only on their turn, and only while sitting at that table (stand
+  up and the card says "Sit back down on your stool to carry on"). A game counts as abandoned once
+  either of its players is off their stool, and then whoever is sitting there can start a new one.
+  Who goes first alternates each game at a table (red in Connect 4, dark in checkers).
+- **Connect 4:** 7 × 6; click a column to drop. Four in a row (any direction) wins and is ringed
+  in gold; a full board is a draw.
+- **Checkers:** American rules on 8 × 8: men move diagonally forward, kings both ways; captures are
+  compulsory and a capture must carry on while it can; a man reaching the far row is crowned and
+  that ends the move. You win when the other side has no move left (no pieces, or blocked). 40
+  moves each with no capture and no man moving is a draw. The board is turned for the east player
+  so your own pieces are always nearest you. Click a piece (your movable ones are ringed), then
+  where it goes (dots); a multiple jump is clicked one landing at a time. Kings have a crown.
+- **Server:** `POST ?op=table { id, version, action }` with action `start` (game), `move` (path:
+  `[column]`, or the squares a checkers piece visits) or `resign`. The server works out who is on
+  the stools from presence, checks the action with the shared rules and stores it only if the
+  table is still at `version` (else 409 "changed", and the next sync brings the latest board).
+  Storage: in Redis a `ret:tables` hash written with a small compare-and-set script; without Redis,
+  in the function instance's memory (like presence). Syncs from the grounds return every table's
+  state, so the opponent's move shows up within about a second (with a click, and a chime when
+  it's your turn).
+- **Sounds:** a synthesized "clack" for each move, the harvest jingle when you win.
+- **Offline:** sit at any table and Grandpa Walt walks over and sits opposite. He plays both games
+  (Connect 4: takes a win, blocks yours, likes the middle; checkers: the longest capture, else a
+  random move that doesn't break his back row), and gets up a couple of seconds after you do.
+- **Chess later:** add `'chess'` to `GAME_KINDS` with its board and move rules in shared/tables.ts;
+  the table, card and server need no other change beyond drawing the board.
+
 ## Larger plots, as upgrades
 
 - Don't just make every plot bigger: make **expansions something you buy: 5×3, then 7×4, then
@@ -236,6 +318,44 @@ overwrite each other's moves.
 Notes: the garden today fits 12 plots of 5×3 in a fixed grid. Room for 9×5 plots means a bigger
 garden area or a new layout. Saves need the plot size, and the server's save validation must allow
 the larger garden.
+
+**Built** (sizes and prices in shared/catalog.ts `PLOT_SIZES`; `plot`, `growGarden` and validation in
+shared/schema.ts; the new garden in src/maps.ts; buying, digging and potted plants in src/game.ts;
+the noticeboard panel in src/ui.ts). How it works and the calls made:
+
+- **A bigger garden:** the grounds grew 11 tiles south (48 × 49). The garden is now twelve
+  **allotments** of 9 × 5 (3 across, 4 down, dirt paths between), each with room for the largest
+  plot, so a plot grows in place and never moves anyone else's. Slot n is column n % 3, row n / 3.
+  The grass in an allotment beyond your plot is marked out with stakes and string (yours only)
+  while there's room to grow. The pond moved east of the garden, a little rounder, and the ducks,
+  fireflies and Mittens' "garden gate" spot moved with it.
+- **Sizes:** 5 × 3 (everyone starts here), then 7 × 4 for 600 coins, then 9 × 5 for 1,500, bought in
+  that order. Your plot grows to the right and down; every planted tile keeps its row and column.
+- **Where to buy:** the noticeboard by the garden gate (it replaces the old garden sign). It lists
+  the three sizes, which one is yours, and a Buy button for the next (or how many coins short you
+  are). It also explains digging up.
+- **Saves:** `plot` is the size you've bought (an index into PLOT_SIZES; absent means the first, so
+  old saves are 5 × 3). The garden is stored row by row at that width; the server refuses a garden
+  whose length doesn't match its size, and sizes that don't exist. Profiles carry `plot` so
+  everyone draws your plot the right size.
+- **Offline:** Grandpa Walt has bought the 7 × 4.
+
+**Digging up and potted plants** (so strawberries and tomatoes don't hold a tile forever):
+
+- Face a crop in your plot and press **X** (or right-click it, next to you). The prompt shows a
+  second key cap for it: "[E] Water the Tomato · [X] Dig up" (the prompt draws every `[Key]` in its
+  text as a key cap, as with "[F] Give a treat" for your pet).
+  - A **seed that hasn't sprouted** comes back into its packet.
+  - A grown **strawberry or tomato** comes up whole, **potted** (`plant:<crop>` in the inventory),
+    and any ripe fruit is picked first.
+  - Anything else **unripe** would be lost, so the first X only warns ("Press X again…"); a second
+    X within 4 seconds pulls it up. Ripe crops are simply harvested.
+  - The tile is left tilled, ready for something else.
+- **Potted plants** show in your basket (and as "seeds+pots" on that crop's hotbar slot).
+  Chef Rosa buys them (Sell produce tab) for a little more than the seed (30 for strawberry, 36 for
+  tomato), or plant one again: with that crop selected, E on empty soil replants the potted plant
+  before using a seed. A replanted plant is established, so it starts most of the way to its next
+  crop (where a harvested plant regrows from).
 
 ## Daily orders from Chef Rosa
 
@@ -260,6 +380,38 @@ order that day.
 Notes: recipes are shared data in `shared/catalog.ts`; meals are inventory items in the save
 (`meal:<id>` alongside `seed:` and `crop:`), validated by the server like the rest.
 
+**Built** (garden recipes only; the forest ones arrive with the forest). How it works:
+
+- **Recipes** (`RECIPES` in shared/catalog.ts): each has its ingredients (inventory keys), a sell
+  price and a lesson fee. Cooking is instant (a sizzle and a ding) and takes the ingredients from
+  your basket.
+
+  | Meal                    | Made from              | Sells for | Ingredients' worth | Lesson |
+  | ----------------------- | ---------------------- | --------- | ------------------ | ------ |
+  | Radish salad            | 3 radishes             | 45        | 36                 | free   |
+  | Garden omelette         | 2 eggs, 1 carrot       | 75        | 56                 | 40     |
+  | Vegetable soup          | radish, carrot, tomato | 100       | 72                 | 60     |
+  | Carrot cake             | 2 carrots, 1 egg       | 95        | 67                 | 80     |
+  | Strawberry jam toast    | 3 strawberries         | 90        | 66                 | 80     |
+  | Roasted sunflower seeds | 1 sunflower            | 120       | 90                 | 100    |
+  | Pumpkin pie             | 1 pumpkin, 2 eggs      | 260       | 190                | 150    |
+
+  A test checks every meal sells for more than its ingredients. Mushroom broth and herbal tea
+  (FOREST.md) need forest ingredients, so they're left out until the forest exists.
+
+- **Chef Rosa teaches:** the Kitchen panel has a **Cook** tab beside Sell produce and Buy seeds.
+  It lists every recipe with its ingredients as icons and "have/need" (red when you're short).
+  Recipes you know have Cook 1 / Cook all (n); the rest have a **Learn** button for the lesson fee.
+  Radish salad is known by everyone, so a new player can cook straight after the introduction's
+  first harvest. Learned recipes are `save.recipes` (starter recipes are never stored; the server
+  keeps only known, non-starter ids, in catalog order).
+- **A stove for your room:** "Little stove" (250 coins) in the Catalog. In your own room, face it
+  and press E ("Cook at your stove") to cook the recipes you know; lessons stay at the Kitchen.
+  In someone else's room it's just furniture. Its kettle steams now and then.
+- **Meals** go in your basket and sell to Chef Rosa (Sell produce tab). Eating them, and what they
+  do in the forest, comes with the forest. Rosa's daily orders (not built yet) can reward new
+  recipes later.
+
 ## Things to collect
 
 - **Rare furniture, pets, outfits.**
@@ -268,14 +420,10 @@ Notes: recipes are shared data in `shared/catalog.ts`; meals are inventory items
 - Pets matter beyond the property: rarely, your pet finds you when you're lost in the forest, and
   it's always safe (FOREST.md, "Your pet").
 
-## Plot upgrades
-
-See "Larger plots, as upgrades" above.
-
 ## Suggested order
 
 1. Introduction
 2. Pets, animals on the property (with chickens and eggs), benches
-3. Plot upgrades, Chef Rosa's daily orders and cooking
-4. Board-game tables: Connect 4 and checkers, chess later
+3. Plot upgrades (built), Chef Rosa's daily orders and cooking
+4. Board-game tables: Connect 4 and checkers (built), chess later
 5. Collectibles, added alongside the others as they're built

@@ -566,6 +566,26 @@ kbd {
   font-weight: 800;
 }
 
+/* A recipe's ingredients: icon and "have/need", struck through in red when you're short. */
+.ingredients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.ingredient {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ingredient.short {
+  color: #a8322a;
+}
+
 .dim {
   opacity: 0.6;
 }
@@ -992,4 +1012,276 @@ table.keys td {
       0 2px 0 var(--wood-dark),
       0 0 0 4px rgba(242, 184, 75, 0.85);
   }
+}
+
+/* --- games tables -------------------------------------------------------------------------- */
+
+.boardcard {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-45%);
+  width: min(300px, calc(100vw - 24px));
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  background: var(--paper);
+  border: 3px solid var(--wood);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 0 0 2px var(--paper-2),
+    0 3px 0 var(--wood-dark);
+}
+
+.bc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.bc-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.btn.small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.bc-players {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bc-player {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.bc-player span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bc-player.turn {
+  border-color: var(--accent);
+  background: #fffaf0;
+}
+
+.bc-empty {
+  color: var(--muted);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.bc-vs {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.bc-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #2b1d22;
+}
+
+.bc-status {
+  font-weight: 700;
+  min-height: 1.3em;
+}
+
+.bc-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn.quiet {
+  background: transparent;
+  box-shadow: none;
+}
+
+.btn.danger {
+  background: #c0504d;
+  color: #fff8ef;
+}
+
+/* Connect 4: seven columns you click to drop a counter. */
+.bc-c4 {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  padding: 5px;
+  background: #2f56b5;
+  border: 3px solid #1f3f8a;
+  border-radius: 8px;
+}
+
+.bc-col {
+  display: grid;
+  grid-template-rows: repeat(6, 1fr);
+  gap: 3px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.bc-col:not(:disabled):hover,
+.bc-col:not(:disabled):focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.bc-col:disabled {
+  cursor: default;
+}
+
+.bc-hole {
+  display: block;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #173170;
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.bc-piece {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.45);
+  box-shadow:
+    inset 0 -2px 0 rgba(0, 0, 0, 0.25),
+    inset 0 2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.bc-piece.last {
+  outline: 2px solid #fff8ef;
+  outline-offset: 1px;
+}
+
+.bc-piece.win {
+  outline: 3px solid var(--gold);
+  outline-offset: 1px;
+}
+
+/* Checkers: an 8×8 board; your movable pieces and where they can go are ringed. */
+.bc-ck {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  border: 4px solid var(--wood-dark);
+  border-radius: 4px;
+}
+
+.bc-sq {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 3px;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  font: inherit;
+}
+
+.bc-sq.light {
+  background: #efe0b8;
+}
+
+.bc-sq.dark {
+  background: #7a8f5a;
+}
+
+button.bc-sq {
+  cursor: pointer;
+}
+
+.bc-sq.last {
+  background: #9aa968;
+}
+
+.bc-sq.can .bc-piece {
+  outline: 2px solid #fff8ef;
+}
+
+.bc-sq.sel {
+  background: #c79a3b;
+}
+
+.bc-sq.to::after {
+  content: '';
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  background: rgba(255, 248, 239, 0.85);
+  border: 2px solid #2b1d22;
+}
+
+.bc-sq .bc-piece {
+  width: 82%;
+  height: 82%;
+}
+
+.bc-piece.king {
+  border-color: var(--gold);
+  border-width: 3px;
+}
+
+.bc-piece.king::after {
+  content: '♛';
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--gold);
+}
+
+/* --- garden noticeboard -------------------------------------------------------------------- */
+
+.shop-row.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.plot-size {
+  min-width: 56px;
+  font-weight: 800;
+  font-size: 16px;
+  text-align: center;
+}
+
+/* --- dev performance readout (src/perf.ts; press `) ---------------------------------------- */
+
+.perf {
+  position: fixed;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* Nurse Ada's list: the "Finish growing" shortcut during the introduction. */
+.quest .quest-grow {
+  margin-top: 6px;
+  pointer-events: auto;
 }
