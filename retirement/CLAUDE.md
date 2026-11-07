@@ -31,6 +31,10 @@ marks which are built.
   the infirmary (where you wake after the forest), and rooms (14×10, built from a player's
   furniture). Use the exported constants (GARDEN, HOME_DOOR, ROSA_SPOT, ...) or EST, never raw
   grounds coordinates.
+- src/family.ts: your family photo's people (FOREST.md "Your family"): relationships, what they
+  call you by default, random looks and Randomize. Saved as `save.family` (2–3 relatives, `lost`,
+  `reprintAt`); the photo is on your wall unless `save.pocket` has it or it's lost (`photoWhere`
+  in shared/schema.ts). Neighbours see it through their Profile while it's on the wall.
 - src/forest/: the forest (FOREST.md), generated only in your browser. tuning.ts (every number),
   gen.ts (chunks from the visit's seed, the way home, the point of no return), art.ts (its ground
   and sprites), light.ts (darkness, your light, fog, the colour grades), sound.ts (its synthesized

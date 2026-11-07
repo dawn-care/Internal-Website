@@ -365,6 +365,90 @@ describe('/api/retirement', () => {
     })
   })
 
+  describe('family', () => {
+    const member = (name: string, rel: string, calls = 'Mum') => ({
+      rel,
+      calls,
+      look: defaultLook(name),
+    })
+    const family = { members: [member('Tom', 'son'), member('Lily', 'granddaughter', 'Gran')] }
+    const post = (s: unknown) => call({ method: 'POST', op: 'save', body: { save: s } })
+
+    it('keeps a family and the photo in your pocket, and loads saves without them', async () => {
+      const s = { ...save(), family, pocket: ['photo'] }
+      expect((await post(s)).statusCode).toBe(200)
+      expect((await call({ method: 'GET', op: 'me' })).body).toMatchObject({
+        save: { family: { members: [{ rel: 'son', calls: 'Mum' }, { rel: 'granddaughter' }] } },
+      })
+      expect(
+        ((await call({ method: 'GET', op: 'me' })).body as { save: Save }).save.pocket,
+      ).toEqual(['photo'])
+      expect(save().family).toBeUndefined()
+      expect((await post(save())).statusCode).toBe(200)
+    })
+
+    it('hangs a new family photo in new rooms', () => {
+      expect(save().room.items).toContainEqual({ k: 'familyphoto', x: 4, y: 1 })
+    })
+
+    it('keeps a lost photo and a reprint time', async () => {
+      const s = { ...save(), family: { ...family, lost: true, reprintAt: 1_700_000_100_000 } }
+      expect((await post(s)).statusCode).toBe(200)
+      expect((await call({ method: 'GET', op: 'me' })).body).toMatchObject({
+        save: { family: { lost: true, reprintAt: 1_700_000_100_000 } },
+      })
+    })
+
+    it('refuses families that are not well-formed', async () => {
+      const bad = [
+        { members: [member('Tom', 'son')] },
+        {
+          members: [member('A', 'son'), member('B', 'son'), member('C', 'son'), member('D', 'son')],
+        },
+        { members: [member('Tom', 'uncle'), member('Lily', 'daughter')] },
+        { members: [member('Tom', 'son', '   '), member('Lily', 'daughter')] },
+        { members: [{ ...member('Tom', 'son'), look: { ...defaultLook('Tom'), hairColor: 99 } }] },
+        { members: 'everyone' },
+        { ...family, reprintAt: 'tomorrow' },
+      ]
+      for (const f of bad)
+        expect((await post({ ...save(), family: f })).statusCode, JSON.stringify(f)).toBe(400)
+    })
+
+    it('refuses a pocket that is not well-formed', async () => {
+      const bad = [
+        { family, pocket: ['photo', 'photo'] },
+        { family, pocket: ['sandwich'] },
+        { family, pocket: ['photo', 'photo', 'photo', 'photo'] },
+        // A photo you don't have, or have lost, can't be in your pocket.
+        { pocket: ['photo'] },
+        { family: { ...family, lost: true }, pocket: ['photo'] },
+      ]
+      for (const b of bad)
+        expect((await post({ ...save(), ...b })).statusCode, JSON.stringify(b)).toBe(400)
+    })
+
+    it('shows neighbours your photo only while it hangs on your wall', async () => {
+      const world = async () =>
+        (
+          (await call({ method: 'GET', op: 'world' })).body as {
+            profiles: { family?: { rel: string; look: { name: string } }[] }[]
+          }
+        ).profiles[0]
+      await post({ ...save(), family })
+      const shown = await world()
+      expect(shown.family?.map((m) => [m.rel, m.look.name])).toEqual([
+        ['son', 'Tom'],
+        ['granddaughter', 'Lily'],
+      ])
+      expect(JSON.stringify(shown)).not.toContain('calls')
+      await post({ ...save(), family, pocket: ['photo'] })
+      expect((await world()).family).toBeUndefined()
+      await post({ ...save(), family: { ...family, lost: true } })
+      expect((await world()).family).toBeUndefined()
+    })
+  })
+
   describe('pets', () => {
     const pet = {
       kind: 'dog',

@@ -27,8 +27,22 @@ import {
   PANTS_COLORS,
   SKIN_TONES,
   WALLPAPERS,
+  FAMILY_MAX,
+  FAMILY_MIN,
+  POCKET_SLOTS,
+  RELATIONS,
+  type Relation,
 } from '../shared/catalog'
-import { INTRO, cleanName, type Dir, type Look, type MapId } from '../shared/schema'
+import {
+  INTRO,
+  cleanName,
+  photoWhere,
+  type Dir,
+  type Look,
+  type MapId,
+  type Relative,
+} from '../shared/schema'
+import { REL, looksOld, randomFamily, randomRelative } from './family'
 import {
   C4_COLS,
   C4_ROWS,
@@ -43,7 +57,7 @@ import {
   type TableState,
 } from '../shared/tables'
 import { TABLE_PIECES } from './art'
-import { cropIcon, finishSwatch, furnitureIcon, mealIcon, plantIcon } from './art'
+import { cropIcon, finishSwatch, furnitureIcon, mealIcon, photoIcon, plantIcon } from './art'
 import { isMuted, setMuted, sfx, voice } from './audio'
 import { isMusicOn, setMusicOn } from './music'
 import { fmt, type Game } from './game'
@@ -867,8 +881,36 @@ export class UI {
           'btn water',
         )
       : null
+    const pocket = g.save.pocket ?? []
+    const pocketSlots = Array.from({ length: POCKET_SLOTS }, (_, i) => {
+      const it = pocket[i]
+      if (it === 'photo') {
+        const b = button('', () => this.openPhoto(), 'slot pocket-slot')
+        b.title = 'Your family photo (click to look at it)'
+        b.setAttribute('aria-label', 'Your family photo: look at it')
+        b.append(
+          photoIcon(
+            (g.save.family?.members ?? []).map((m) => m.look),
+            36,
+          ),
+        )
+        return b
+      }
+      return el('span', { class: 'slot pocket-slot empty', title: 'Empty pocket' })
+    })
     this.hotbar.replaceChildren(
       el('div', { class: 'seeds' }, el('span', { class: 'label', text: 'Seeds' }), ...slots),
+      // The pocket shows once you have something worth carrying (your family photo).
+      ...(g.save.family || pocket.length
+        ? [
+            el(
+              'div',
+              { class: 'pocket' },
+              el('span', { class: 'label', text: 'Pocket' }),
+              ...pocketSlots,
+            ),
+          ]
+        : []),
       el(
         'div',
         { class: 'bag' },
@@ -1572,7 +1614,86 @@ export class UI {
           g.setLook(look)
           this.closePanel()
         },
+        extra: [button('Family photo…', () => this.openFamilyEditor(), 'btn')],
       }),
+    )
+  }
+
+  /**
+   * Who's in your family photo. `then` runs once it's saved (the forest uses it to carry on in).
+   * The first time, the family is random to start from; after that it's the one you have.
+   */
+  openFamilyEditor(opts: { intro?: string; confirm?: string; then?: () => void } = {}) {
+    const g = this.game
+    this.showPanel(
+      familyEditor(g.save.look, g.save.family?.members, {
+        title: "Who's in your family photo?",
+        intro:
+          opts.intro ??
+          'Two or three of the people you love most. Their photo hangs on your wall. Randomize for ideas, or make them yourself.',
+        confirm: opts.confirm ?? 'Save the photo',
+        onDone: (members) => {
+          g.setFamily(members)
+          this.closePanel()
+          opts.then?.()
+        },
+      }),
+    )
+  }
+
+  /** The family photo up close (from the wall or your pocket), with what you can do with it. */
+  openPhoto() {
+    const g = this.game
+    const fam = g.save.family
+    if (!fam) return
+    const where = photoWhere(g.save)
+    const close = button('Close', () => this.closePanel(), 'btn')
+    if (where === 'lost')
+      return this.showPanel(
+        el(
+          'div',
+          { class: 'panel-body center' },
+          el('h2', { text: 'An empty frame' }),
+          el('p', {
+            text: fam.reprintAt
+              ? `Nurse Ada is having a copy printed. It'll be on your wall ${reprintWhen(fam.reprintAt)}.`
+              : 'You lost the photo out there somewhere. Nurse Ada keeps a copy in your file. She could have it reprinted.',
+          }),
+          close,
+        ),
+      )
+    const inRoom = g.inOwnRoom() && g.facingPhoto()
+    const actions: HTMLElement[] = []
+    if (where === 'wall' && inRoom)
+      actions.push(
+        button(
+          'Take it with you',
+          () => {
+            if (g.takePhoto()) this.closePanel()
+          },
+          'btn primary',
+        ),
+      )
+    if (where === 'pocket' && inRoom)
+      actions.push(
+        button(
+          'Hang it back up',
+          () => {
+            g.hangPhoto()
+            this.closePanel()
+          },
+          'btn primary',
+        ),
+      )
+    actions.push(close)
+    this.showPanel(
+      familyCard(
+        fam.members,
+        where === 'pocket'
+          ? 'You have it in your pocket. Real family look exactly like this.'
+          : 'If you take it with you, it goes in your pocket. You can look at it wherever you are.',
+        actions,
+      ),
     )
   }
 
@@ -1725,11 +1846,15 @@ export class UI {
 
 // --- the character editor (also used to create a character) ------------------------------------
 
-export function wardrobe(
-  start: Look,
-  opts: { title: string; intro?: string; confirm: string; onDone: (look: Look) => void },
-): HTMLElement {
-  const look: Look = { ...start }
+/**
+ * The character editor's parts for one Look (edited in place): a turnable preview and the
+ * fields (name, body, skin, hair, clothes, extras). Shared by the Wardrobe, the first visit and
+ * the family photo editor. Call `dispose` when it's taken off screen.
+ */
+export function lookFields(
+  look: Look,
+  opts: { nameLabel?: string; onChange?: () => void } = {},
+): { preview: HTMLElement; fields: HTMLElement; name: HTMLInputElement; dispose: () => void } {
   const preview = el('div', { class: 'preview' })
   // The character stands still and only turns when you press an arrow.
   const TURN: Dir[] = [0, 1, 3, 2] // front, left, back, right
@@ -1742,6 +1867,7 @@ export function wardrobe(
     cv.getContext('2d')!.drawImage(personSprite(look, TURN[facing], 0), 0, 0)
     cv.className = 'sprite'
     sprite.replaceChildren(cv)
+    opts.onChange?.()
   }
   const turn = (step: number) => {
     facing = (facing + step + TURN.length) % TURN.length
@@ -1754,8 +1880,8 @@ export function wardrobe(
   preview.append(turnLeft, sprite, turnRight)
   draw()
   const onKey = (e: KeyboardEvent) => {
-    if (!preview.isConnected) return document.removeEventListener('keydown', onKey)
-    if (e.target instanceof HTMLInputElement) return
+    if (!preview.isConnected) return document.removeEventListener('keydown', onKey, true)
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault()
       e.stopPropagation()
@@ -1768,8 +1894,11 @@ export function wardrobe(
   const name = el('input')
   name.value = look.name
   name.maxLength = 20
-  name.setAttribute('aria-label', 'Name')
-  name.addEventListener('input', () => (look.name = name.value))
+  name.setAttribute('aria-label', opts.nameLabel ?? 'Name')
+  name.addEventListener('input', () => {
+    look.name = name.value
+    opts.onChange?.()
+  })
   name.addEventListener('keydown', (e) => e.stopPropagation())
 
   const swatches = (
@@ -1829,7 +1958,41 @@ export function wardrobe(
   }
 
   const bottoms = swatches(look.body === 'female' ? 'Skirt' : 'Trousers', PANTS_COLORS, 'pants')
+  const fields = el(
+    'div',
+    { class: 'fields' },
+    el('div', { class: 'field' }, el('label', { text: opts.nameLabel ?? 'Name' }), name),
+    choices('Body', BODIES, BODY_NAMES, 'body', () => {
+      bottoms.querySelector('label')!.textContent = look.body === 'female' ? 'Skirt' : 'Trousers'
+    }),
+    swatches('Skin', SKIN_TONES, 'skin'),
+    choices('Hair', HAIR_STYLES, HAIR_NAMES, 'hair'),
+    swatches('Hair colour', HAIR_COLORS, 'hairColor'),
+    swatches('Cardigan', OUTFIT_COLORS, 'outfit'),
+    bottoms,
+    choices('Extra', ACCESSORIES, ACCESSORY_NAMES, 'accessory'),
+  )
+  return {
+    preview,
+    fields,
+    name,
+    dispose: () => document.removeEventListener('keydown', onKey, true),
+  }
+}
 
+export function wardrobe(
+  start: Look,
+  opts: {
+    title: string
+    intro?: string
+    confirm: string
+    onDone: (look: Look) => void
+    /** Extra buttons beside the confirm button (the Wardrobe's "Family photo"). */
+    extra?: HTMLElement[]
+  },
+): HTMLElement {
+  const look: Look = { ...start }
+  const parts = lookFields(look)
   const error = el('div', { class: 'error' })
   const done = button(
     opts.confirm,
@@ -1837,12 +2000,12 @@ export function wardrobe(
       const n = cleanName(look.name)
       if (!n) {
         error.textContent = 'Please give your character a name.'
-        name.focus()
+        parts.name.focus()
         return
       }
       look.name = n
       sfx('coin')
-      document.removeEventListener('keydown', onKey, true)
+      parts.dispose()
       opts.onDone({ ...look })
     },
     'btn primary big',
@@ -1853,29 +2016,199 @@ export function wardrobe(
     { class: 'panel-body wardrobe' },
     el('h2', { text: opts.title }),
     opts.intro ? el('p', { text: opts.intro }) : null,
-    el(
-      'div',
-      { class: 'wardrobe-grid' },
-      preview,
+    el('div', { class: 'wardrobe-grid' }, parts.preview, parts.fields),
+    error,
+    opts.extra?.length ? el('div', { class: 'row-buttons' }, done, ...opts.extra) : done,
+  )
+}
+
+/**
+ * "Who's in your family photo?" (FOREST.md "Your family"): 2–3 relatives, each with a
+ * relationship, a name, what they call you and a look, and a Randomize button for the lot.
+ */
+export function familyEditor(
+  you: Look,
+  start: Relative[] | undefined,
+  opts: { title: string; intro: string; confirm: string; onDone: (members: Relative[]) => void },
+): HTMLElement {
+  const members: Relative[] = (start ?? randomFamily(you)).map((m) => ({
+    ...m,
+    look: { ...m.look },
+  }))
+  let current = 0
+  let parts: ReturnType<typeof lookFields> | null = null
+  const body = el('div', { class: 'family-member' })
+  const tabs = el('div', { class: 'tabs family-tabs' })
+  const error = el('div', { class: 'error' })
+
+  const renderTabs = () =>
+    tabs.replaceChildren(
+      ...members.map((m, i) =>
+        button(
+          m.look.name.trim() || `Person ${i + 1}`,
+          () => {
+            current = i
+            render()
+          },
+          `tab${i === current ? ' active' : ''}`,
+        ),
+      ),
+      ...(members.length < FAMILY_MAX
+        ? [
+            button(
+              '+ Add someone',
+              () => {
+                members.push(
+                  randomRelative(
+                    'granddaughter',
+                    you,
+                    members.map((m) => m.look.name),
+                  ),
+                )
+                current = members.length - 1
+                render()
+              },
+              'tab add',
+            ),
+          ]
+        : []),
+    )
+
+  const render = () => {
+    parts?.dispose()
+    const m = members[current]
+    parts = lookFields(m.look, { onChange: renderTabs })
+    const rel = el('select')
+    rel.setAttribute('aria-label', 'Relationship')
+    for (const r of RELATIONS) {
+      const o = el('option', { text: `Your ${REL[r].name}` })
+      o.value = r
+      o.selected = r === m.rel
+      rel.append(o)
+    }
+    const calls = el('input')
+    calls.maxLength = 20
+    calls.value = m.calls
+    calls.setAttribute('aria-label', 'What they call you')
+    calls.addEventListener('input', () => (m.calls = calls.value))
+    calls.addEventListener('keydown', (e) => e.stopPropagation())
+    rel.addEventListener('change', () => {
+      // Keep what they call you in step with the relationship, unless it was changed by hand.
+      const was = REL[m.rel].calls(you)
+      m.rel = rel.value as Relation
+      if (m.calls === was) calls.value = m.calls = REL[m.rel].calls(you)
+    })
+    body.replaceChildren(
       el(
         'div',
-        { class: 'fields' },
-        el('div', { class: 'field' }, el('label', { text: 'Name' }), name),
-        choices('Body', BODIES, BODY_NAMES, 'body', () => {
-          bottoms.querySelector('label')!.textContent =
-            look.body === 'female' ? 'Skirt' : 'Trousers'
-        }),
-        swatches('Skin', SKIN_TONES, 'skin'),
-        choices('Hair', HAIR_STYLES, HAIR_NAMES, 'hair'),
-        swatches('Hair colour', HAIR_COLORS, 'hairColor'),
-        swatches('Cardigan', OUTFIT_COLORS, 'outfit'),
-        bottoms,
-        choices('Extra', ACCESSORIES, ACCESSORY_NAMES, 'accessory'),
+        { class: 'family-who' },
+        el('div', { class: 'field' }, el('label', { text: 'Who are they?' }), rel),
+        el('div', { class: 'field' }, el('label', { text: 'They call you' }), calls),
+        members.length > FAMILY_MIN
+          ? button(
+              'Remove from photo',
+              () => {
+                members.splice(current, 1)
+                current = Math.min(current, members.length - 1)
+                render()
+              },
+              'btn small',
+            )
+          : null,
       ),
-    ),
+      el('div', { class: 'wardrobe-grid' }, parts.preview, parts.fields),
+    )
+    renderTabs()
+  }
+  render()
+
+  const randomize = button(
+    'Randomize',
+    () => {
+      members.splice(0, members.length, ...randomFamily(you))
+      current = 0
+      sfx('blip')
+      render()
+    },
+    'btn',
+  )
+  const done = button(
+    opts.confirm,
+    () => {
+      for (const [i, m] of members.entries()) {
+        const n = cleanName(m.look.name)
+        const c = cleanName(m.calls)
+        if (!n || !c) {
+          current = i
+          render()
+          error.textContent = !n
+            ? 'Everyone in the photo needs a name.'
+            : 'Please say what they call you.'
+          return
+        }
+        m.look.name = n
+        m.calls = c
+      }
+      parts?.dispose()
+      sfx('coin')
+      opts.onDone(members.map((m) => ({ ...m, look: { ...m.look } })))
+    },
+    'btn primary big',
+  )
+  return el(
+    'div',
+    { class: 'panel-body wardrobe family' },
+    el('h2', { text: opts.title }),
+    el('p', { text: opts.intro }),
+    el('div', { class: 'family-top' }, tabs, randomize),
+    body,
     error,
     done,
   )
+}
+
+/**
+ * The family photo, up close: each relative's portrait, name, who they are and what they call
+ * you. It's the forest's answer key. `actions` go underneath (take it, put it back, close).
+ */
+export function familyCard(members: Relative[], note: string, actions: HTMLElement[]): HTMLElement {
+  return el(
+    'div',
+    { class: 'panel-body family-card' },
+    el('h2', { text: 'Your family photo' }),
+    el(
+      'div',
+      { class: 'family-faces' },
+      ...members.map((m) => {
+        const face = el('canvas', { class: 'family-face' })
+        face.width = PORTRAIT
+        face.height = PORTRAIT
+        face.getContext('2d')!.drawImage(portrait(m.look, { old: looksOld(m.rel) }), 0, 0)
+        face.setAttribute('aria-hidden', 'true')
+        return el(
+          'figure',
+          { class: 'family-person' },
+          face,
+          el(
+            'figcaption',
+            {},
+            el('strong', { text: m.look.name }),
+            el('span', { text: `your ${REL[m.rel].name}` }),
+            el('span', { class: 'muted', text: `calls you "${m.calls}"` }),
+          ),
+        )
+      }),
+    ),
+    note ? el('p', { class: 'muted', text: note }) : null,
+    el('div', { class: 'row-buttons' }, ...actions),
+  )
+}
+
+/** "in a few minutes" / "tomorrow" for a reprint that's ready at `at` (24 real minutes a day). */
+function reprintWhen(at: number): string {
+  const min = Math.ceil((at - Date.now()) / 60_000)
+  if (min <= 1) return 'any moment now'
+  return `in about ${min} minutes`
 }
 
 function pieceColor(game: GameKind, side: Side, first: Side): string {

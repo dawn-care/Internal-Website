@@ -114,6 +114,12 @@ export const PET_WARN_COOLDOWN_MS = 20_000
 /** How long the hackles-up warning lasts. */
 export const PET_WARN_MS = 3800
 
+// --- your family photo (stage 2) -----------------------------------------------------------
+
+/** A reprint from Nurse Ada: free after this long (a game day), or straight away for coins. */
+export const REPRINT_WAIT_MS = 24 * 60_000
+export const REPRINT_COST = 40
+
 // --- the collapse -----------------------------------------------------------------------------
 
 /** Fading to black, holding on the black screen with its line, then waking. */

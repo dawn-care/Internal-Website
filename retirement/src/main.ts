@@ -5,7 +5,7 @@ import { perf } from './perf'
 import { initMusic } from './music'
 import { initSoundscape } from './soundscape'
 import './style.css'
-import { UI, wardrobe } from './ui'
+import { UI, familyEditor, wardrobe } from './ui'
 
 /*
  * Sunset Acres: boot. Signs in through the site's GitHub session (the page itself is only
@@ -97,20 +97,33 @@ async function boot() {
   // First visit: make your character.
   loading.replaceChildren()
   const first = me.user.name.split(' ')[0] || me.user.login
+  const wrap = document.createElement('div')
+  wrap.className = 'panel boot-panel'
+  // Two steps: who you are, then who's in your family photo (FOREST.md "Your family").
   const editor = wardrobe(defaultLook(first), {
     title: 'Welcome to Sunset Acres!',
     intro: "You've just moved in. Who are you?",
-    confirm: 'Move in',
+    confirm: 'Next',
     onDone: (look) => {
-      const save = newSave(look, Date.now())
-      const game = start(save)
-      game.markDirty()
-      void game.flushSave()
-      // Nurse Ada takes it from here (src/intro.ts).
+      wrap.replaceChildren(
+        familyEditor(look, undefined, {
+          title: "Who's in your family photo?",
+          intro:
+            'Two or three of the people you love most. Their photo will hang on your wall. Randomize for ideas, or make them yourself.',
+          confirm: 'Move in',
+          onDone: (members) => {
+            const save = newSave(look, Date.now())
+            save.family = { members }
+            const game = start(save)
+            game.markDirty()
+            void game.flushSave()
+            // Nurse Ada takes it from here (src/intro.ts).
+          },
+        }),
+      )
+      wrap.scrollTop = 0
     },
   })
-  const wrap = document.createElement('div')
-  wrap.className = 'panel boot-panel'
   wrap.append(editor)
   loading.append(wrap)
 }

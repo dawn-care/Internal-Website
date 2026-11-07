@@ -1,6 +1,7 @@
 import { CROP_IDS, CROPS, HAIR_STYLES, MAX_SLOTS, PLOT_SIZES, plotSize } from '../shared/catalog'
 import { EST } from '../shared/grounds'
 import { getGrounds, seatsOf, type Seat } from './maps'
+import { randomFamily } from './family'
 import { petBedtime } from './pets'
 import {
   defaultLook,
@@ -13,6 +14,7 @@ import {
   type Player,
   type PresenceIn,
   type Profile,
+  type Relative,
   type Save,
 } from '../shared/schema'
 import {
@@ -329,6 +331,8 @@ export class LocalNet implements Net {
     return { user: { login: 'you', name: 'You', avatarUrl: '' }, save, slot: 0, storage: 'local' }
   }
 
+  private families = new Map<string, Relative[]>()
+
   async world(): Promise<Profile[]> {
     return this.bots
       .filter((b) => b.slot >= 0)
@@ -345,6 +349,10 @@ export class LocalNet implements Net {
         )
         if (b.pet)
           s.pet = { kind: b.pet.kind, coat: b.pet.coat, name: b.pet.name, adoptedAt: 0, hearts: 5 }
+        // A family photo on their wall, made up once and kept.
+        let members = this.families.get(b.login)
+        if (!members) this.families.set(b.login, (members = randomFamily(b.look)))
+        s.family = { members }
         return toProfile(b.login, s)
       })
   }

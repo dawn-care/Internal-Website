@@ -21,10 +21,14 @@ import {
   type PlotSize,
   ROOM_FLOOR,
   ROOM_WALL,
+  POCKET_SLOTS,
 } from '../shared/catalog'
 import {
   INTRO,
   MAX_CHAT_CHARS,
+  photoOnWall,
+  photoWhere,
+  type Relative,
   growGarden,
   MAX_ROOM_ITEMS,
   type ChatMsg,
@@ -59,6 +63,7 @@ import {
   drawStakes,
   drawTableGame,
   drawWaterGlints,
+  familyPhotoSprite,
   plotFrame,
   renderGround,
 } from './art'
@@ -98,6 +103,8 @@ import {
   SEE_THROUGH_H,
   SEE_THROUGH_W,
   PET_RUMBLE,
+  REPRINT_COST,
+  REPRINT_WAIT_MS,
   TWIG_CHANCE,
   WIND_AT_TREELINE,
   WIND_FROM,
@@ -134,6 +141,7 @@ import {
 import { HOUSE_CAT, Wildlife, eggDay, eggsLeft, houseCat } from './animals'
 import { gameHour } from './clock'
 import * as intro from './intro'
+import { REL } from './family'
 import { NetError, type Net } from './net'
 import {
   Follower,
@@ -961,7 +969,16 @@ export class Game {
       return name ? `${name}'s allotment` : 'An empty allotment'
     }
     if (this.ownerOf(this.mapId)) {
-      const item = this.furnitureAt(t.x, t.y, false)
+      const item = this.furnitureAt(t.x, t.y, false, true)
+      if (item?.k === 'familyphoto') {
+        if (!this.inOwnRoom()) return 'Their family photo'
+        const where = photoWhere(this.save)
+        return where === 'wall'
+          ? 'Look at your family photo'
+          : where === 'none'
+            ? 'An empty photo frame'
+            : 'Your photo frame (empty)'
+      }
       if (item?.k === STOVE && this.inOwnRoom()) return 'Cook at your stove'
       if (item) return FURNITURE[item.k].name
     }
@@ -1072,7 +1089,8 @@ export class Game {
       return this.tend(plot.slot, -1)
     }
     if (this.ownerOf(this.mapId)) {
-      const item = this.furnitureAt(x, y, false)
+      const item = this.furnitureAt(x, y, false, true)
+      if (item?.k === 'familyphoto') return this.lookAtPhoto()
       if (item?.k === STOVE && this.inOwnRoom()) {
         sfx('blip')
         return this.ui.openStove()
@@ -1103,6 +1121,43 @@ export class Game {
       return this.warp(roomId(this.login), ROOM_DOOR_X + 0.5, 8.2, 3)
     }
     const ada = { pitch: intro.ADA_VOICE, look: intro.INTRO_ADA.look, old: false }
+    const fam = this.save.family
+    if (fam?.lost && fam.reprintAt)
+      return this.ui.dialogue(
+        'Nurse Ada',
+        [
+          "Your photo's being printed, dear. I'll hang it on your wall myself as soon as it's ready.",
+        ],
+        ada,
+      )
+    if (fam?.lost)
+      return this.ui.dialogue(
+        'Nurse Ada',
+        [
+          `Oh, ${this.save.look.name}. Your family photo's gone missing, hasn't it?`,
+          "Don't you worry. We keep a copy in your file. I can have it printed by tomorrow, or there's the quick machine in the office, but that costs a little.",
+        ],
+        {
+          ...ada,
+          choices: [
+            {
+              label: 'Tomorrow is fine',
+              onPick: () => {
+                this.orderReprint(false)
+                this.say("Nurse Ada: It'll be on your wall by tomorrow, dear.")
+              },
+            },
+            {
+              label: `Right away (${REPRINT_COST} coins)`,
+              onPick: () => {
+                if (!this.orderReprint(true))
+                  this.say(`You need ${REPRINT_COST} coins for the quick machine.`)
+              },
+            },
+            { label: 'Not now', onPick: () => {} },
+          ],
+        },
+      )
     const pet = this.save.pet
     if (!pet) {
       return this.ui.dialogue(
@@ -1518,8 +1573,12 @@ export class Game {
     const wag = Math.floor(this.time / 260) % 2
     const follower = (look: PetLook, owner: string, f: Follower, mine: boolean) => {
       // Growling or hissing at the treeline: standing, stiff, facing the trees.
+      // Once it has stopped to face the trees, the warning ends the moment it moves off again,
+      // so it never slides along frozen in its warning pose.
       const alarm = this.petAlarm.get(owner)
-      if (alarm && alarm.until > this.time) {
+      if (alarm && !f.moving) alarm.settled = true
+      if (alarm && f.moving && alarm.settled) this.petAlarm.delete(owner)
+      if (alarm && alarm.settled && !f.moving && alarm.until > this.time) {
         out.push({ look, mine, owner, x: f.x, y: f.y, pose: 'walk', dir: alarm.dir, frame: 0 })
         return
       }
@@ -1766,7 +1825,7 @@ export class Game {
   private drawPet(p: ReturnType<Game['visiblePets']>[number], ox: number, oy: number) {
     const c = this.ctx
     const alarm = this.petAlarm.get(p.owner)
-    const tense = !!alarm && alarm.until > this.time
+    const tense = !!alarm?.settled && alarm.until > this.time && p.pose === 'walk' && p.frame === 0
     // A tense little tremble while it growls.
     const shake = tense ? (Math.floor(this.time / 70) % 2 ? 1 : 0) : 0
     const px = Math.round(p.x * TS + ox) + shake
@@ -1992,14 +2051,25 @@ export class Game {
 
   // --- room decorating ------------------------------------------------------------------------
 
-  private furnitureAt(x: number, y: number, includeFlat: boolean): RoomItem | undefined {
+  /** The piece of furniture at (x, y). `reach`: facing the wall reaches pictures hung above. */
+  private furnitureAt(
+    x: number,
+    y: number,
+    includeFlat: boolean,
+    reach = false,
+  ): RoomItem | undefined {
     const owner = this.ownerOf(this.mapId)
     const room = owner ? this.roomOf(owner) : null
     if (!room) return undefined
     const hits = room.items.filter((it) => {
       const d = FURNITURE[it.k]
-      return d && it.x >= 0 && x >= it.x && x < it.x + d.w && y >= it.y && y < it.y + d.h
+      if (!d || it.x < 0 || x < it.x || x >= it.x + d.w) return false
+      // Facing the wall reaches anything hung above you in that column, not only the bottom row.
+      if (reach && d.wall && y >= ROOM_WALL.y0 && y <= ROOM_WALL.y1) return y >= it.y
+      return y >= it.y && y < it.y + d.h
     })
+    // The lowest (nearest) piece on the wall first.
+    hits.sort((a, b) => b.y - a.y)
     return hits.find((h) => !FURNITURE[h.k].flat) ?? (includeFlat ? hits[0] : undefined)
   }
 
@@ -2253,6 +2323,132 @@ export class Game {
     this.ui.refresh()
   }
 
+  // --- your family photo (FOREST.md "Your family") ----------------------------------------------
+
+  /** Sets who's in your family photo (keeping where the photo is), and makes sure it's hung. */
+  setFamily(members: Relative[]) {
+    this.save.family = { ...this.save.family, members }
+    this.ensurePhotoInRoom()
+    this.markDirty()
+    this.refreshRoom()
+    this.ui.refresh()
+  }
+
+  /** Every room has the family photo: older rooms get one on a free bit of wall (or in storage). */
+  private ensurePhotoInRoom() {
+    const items = this.save.room.items
+    if (items.some((i) => i.k === 'familyphoto')) return
+    if (items.length >= MAX_ROOM_ITEMS) return
+    items.push({ k: 'familyphoto', x: -1, y: -1 })
+    const i = items.length - 1
+    for (let y = ROOM_WALL.y0; y <= ROOM_WALL.y1; y++)
+      for (let x = ROOM_WALL.x0; x <= ROOM_WALL.x1; x++)
+        if (this.canPlace(i, x, y)) {
+          items[i] = { k: 'familyphoto', x, y }
+          return
+        }
+  }
+
+  /** Whose faces are in `owner`'s photo frame right now (null: the frame is empty). */
+  private photoLooks(owner: string): Look[] | null {
+    if (owner === this.login)
+      return photoOnWall(this.save) ? this.save.family!.members.map((m) => m.look) : null
+    return this.profiles.get(owner)?.family?.map((m) => m.look) ?? null
+  }
+
+  /** Whether you're facing your family photo (in your own room). */
+  facingPhoto(): boolean {
+    const t = this.facingTile()
+    return this.inOwnRoom() && this.furnitureAt(t.x, t.y, false, true)?.k === 'familyphoto'
+  }
+
+  private lookAtPhoto() {
+    sfx('blip')
+    const owner = this.ownerOf(this.mapId)
+    if (owner && owner !== this.login) {
+      const fam = this.profiles.get(owner)?.family
+      const name = this.profiles.get(owner)?.look.name ?? owner
+      if (!fam) return this.say(`${name}'s photo frame is empty.`)
+      const who = fam.map((m) => `${m.look.name} (${REL[m.rel].name})`).join(', ')
+      return this.say(`${name}'s family: ${who}.`)
+    }
+    if (!this.save.family)
+      return this.ui.openFamilyEditor({
+        intro: 'An empty frame, waiting for a photo. Who should be in it?',
+      })
+    this.ui.openPhoto()
+  }
+
+  /** Takes the photo off your wall into your pocket. */
+  takePhoto(): boolean {
+    if (photoWhere(this.save) !== 'wall') return false
+    const pocket = (this.save.pocket ??= [])
+    if (pocket.length >= POCKET_SLOTS) {
+      this.say('Your pocket is full.')
+      return false
+    }
+    pocket.push('photo')
+    this.say('You take the photo off the wall and tuck it in your pocket.')
+    this.photoChanged()
+    return true
+  }
+
+  /** Hangs the photo from your pocket back on the wall. */
+  hangPhoto() {
+    if (photoWhere(this.save) !== 'pocket') return
+    this.save.pocket = this.save.pocket!.filter((p) => p !== 'photo')
+    if (!this.save.pocket.length) delete this.save.pocket
+    this.say('You hang the photo back on the wall.')
+    this.photoChanged()
+  }
+
+  /**
+   * The photo is lost in the forest: out of your pocket, and the frame stays empty until it's
+   * found or reprinted. (Being caught does this from stage 3; `window.game.losePhoto()` in dev.)
+   */
+  losePhoto() {
+    if (!this.save.family) return
+    if (this.save.pocket) {
+      this.save.pocket = this.save.pocket.filter((p) => p !== 'photo')
+      if (!this.save.pocket.length) delete this.save.pocket
+    }
+    this.save.family.lost = true
+    delete this.save.family.reprintAt
+    this.photoChanged()
+  }
+
+  /** Nurse Ada reprints the photo: `pay` for it straight away, or free after REPRINT_WAIT_MS. */
+  orderReprint(pay: boolean): boolean {
+    const fam = this.save.family
+    if (!fam?.lost || fam.reprintAt) return false
+    if (pay) {
+      if (this.save.coins < REPRINT_COST) return false
+      this.save.coins -= REPRINT_COST
+      sfx('coin')
+      fam.reprintAt = Date.now()
+    } else fam.reprintAt = Date.now() + REPRINT_WAIT_MS
+    this.markDirty()
+    this.checkReprint()
+    this.ui.refresh()
+    return true
+  }
+
+  /** A reprint that's ready goes up on your wall. */
+  private checkReprint() {
+    const fam = this.save.family
+    if (!fam?.lost || !fam.reprintAt || Date.now() < fam.reprintAt) return
+    delete fam.lost
+    delete fam.reprintAt
+    this.say('Nurse Ada has hung a new copy of your family photo on your wall.')
+    this.photoChanged()
+  }
+
+  private photoChanged() {
+    this.markDirty()
+    this.ui.refresh()
+    this.scheduleSync(30)
+  }
+
   // --- saving ---------------------------------------------------------------------------------
 
   markDirty() {
@@ -2265,6 +2461,7 @@ export class Game {
   }
 
   private saveTick() {
+    this.checkReprint()
     const now = Date.now()
     if (
       this.dirty &&
@@ -2679,7 +2876,8 @@ export class Game {
       if (!def || it.x < 0) continue
       const px = it.x * TS + ox
       const py = it.y * TS + oy
-      if (def.flat || def.wall) drawFurniture(c, it.k, px, py, this.time)
+      if (it.k === 'familyphoto') c.drawImage(familyPhotoSprite(this.photoLooks(owner)), px, py)
+      else if (def.flat || def.wall) drawFurniture(c, it.k, px, py, this.time)
       else
         list.push({
           y: (it.y + def.h) * TS - 1,
@@ -2865,7 +3063,19 @@ export class Game {
   private checkTreeline() {
     if (this.fade > 0.3 || this.seat) return
     const g = gapAt(Math.floor(this.me.x), Math.floor(this.me.y - 0.1))
-    if (g && toTreeline(this.me.x, this.me.y) < -(TREELINE - 0.8)) this.enterForest(g)
+    if (!g || toTreeline(this.me.x, this.me.y) >= -(TREELINE - 0.8)) return
+    if (this.save.family) return this.enterForest(g)
+    // Characters from before families existed set theirs up now, on the way in (stage 2). Step
+    // back out of the gap first, so closing the panel doesn't leave you in it.
+    const back = gapReturn(g)
+    this.me.x = back.x
+    this.me.y = back.y
+    this.ui.openFamilyEditor({
+      intro:
+        "Pushing through the branches, you find yourself thinking of home, and the photo on your wall. Who's in it?",
+      confirm: 'Go on',
+      then: () => this.enterForest(g),
+    })
   }
 
   /** The recorded growl or hiss playing at the treeline, so crossing over can cut it off. */
@@ -2979,7 +3189,7 @@ export class Game {
 
   /** When each pet last warned at the treeline, and its current warning (until, facing). */
   private petWarned = new Map<string, number>()
-  private petAlarm = new Map<string, { until: number; dir: Dir }>()
+  private petAlarm = new Map<string, { until: number; dir: Dir; settled?: boolean }>()
 
   /**
    * A pet right by the treeline stops and growls (dog) or hisses (cat) at the trees: anywhere

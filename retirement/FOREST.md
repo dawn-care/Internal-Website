@@ -1,6 +1,6 @@
 # The Forest: design decisions
 
-Status: **being built. Stage 1 (the forest itself) is done**; see "Build status" at the end for
+Status: **being built. Stages 1 (the forest itself) and 2 (family) are done**; see "Build status" at the end for
 what's built and the judgement calls made along the way. This records what we've decided for the
 forest beyond the Sunset Acres grounds and why. Numbers marked _(tune)_ are starting points to adjust after
 play-testing. The story outline near the end is a **draft** for the team to react to.
@@ -125,8 +125,11 @@ in to piece together a story, and you only keep what you learned if you make it 
 - The family appears in a **photo on your room wall.** Walking up to it shows their names, and
   their faces are the ones in the photo.
 - The photo is the **answer key** for the forest: real relatives look exactly like it.
-- Existing characters without a family get the step the next time they open the Wardrobe or
-  enter the forest _(decide which)_.
+- Each relative also has **what they call you** ("Mum", "Gran", your name), shown on the photo:
+  a fake can get it wrong (see the tells, and Maggie's _"If they call you something your family
+  never called you, run."_).
+- Existing characters without a family get the step **the first time they go into the forest**
+  (decided): it opens at the gap, before the forest.
 
 ### Carrying the family photo
 
@@ -490,10 +493,9 @@ Each stage is playable before the next:
 - Real/fake ratio, speeds, stamina, light radius, the point-of-no-return distance, encounter
   cadence and collapse time.
 - Whether light can be bought on the property or only found.
-- When existing characters set up their family.
 - The full story text: the story above is a first version that will be revised as we go; more
   fragments and events still need writing, consistent with the story bible.
-- Pocket size (how many slots) and the cost or wait for a photo reprint from Nurse Ada.
+- Pocket size: 3 slots for now (only the photo exists yet); revisit when light and meals arrive.
 - Whether the camera or lighting changes too near the treeline (e.g. a slight vignette). (The
   outskirts' width and fading, and the pet's warning, were settled in stage 1: see "Build
   status".)
@@ -595,3 +597,45 @@ Judgement calls (change freely):
   synthesized growl/hiss and pitched-down grass steps if those files are ever missing.
 - **Not in stage 1:** the disorientation touches (they come with encounters and notes), light
   sources, and everything from stage 2 on.
+
+### Stage 2: family (built)
+
+Built: the "Who's in your family photo?" step after "Who are you?" when you move in, with
+Randomize; the photo on your room wall; the photo up close (each relative's portrait, name, who
+they are and what they call you); editing your family from the Wardrobe ("Family photo…");
+taking the photo with you (a 3-slot **Pocket** in the hotbar, where clicking the photo shows it
+anywhere) and hanging it back; a lost photo's empty frame; and the reprint from Nurse Ada.
+
+Decisions (yours) and judgement calls (mine, change freely):
+
+- **Existing characters** set up their family the first time they push through a gap: the
+  family step opens there ("Pushing through the branches, you find yourself thinking of home, and
+  the photo on your wall. Who's in it?"). You're stepped back just inside the treeline first, so
+  closing it leaves you on the grounds; "Go on" carries you into the forest. Their room gets the
+  photo on the first free bit of wall (or in storage if the wall is full).
+- **Reprints** (decided: coins or a wait): Nurse Ada offers "Tomorrow is fine" (free, on your wall
+  after a game day, 24 real minutes) or "Right away (40 coins)". She hangs it herself; a toast says
+  so. `REPRINT_WAIT_MS` and `REPRINT_COST` are in src/forest/tuning.ts.
+- **Collapsing never loses the photo** (decided). Only being caught does (stage 3). Until then,
+  `window.game.losePhoto()` (dev) loses it for testing.
+- **"Calls you"** (my addition): every relative has what they call you, filled in from the
+  relationship (children: Mum or Dad; grandchildren: Gran or Grandad; nieces and nephews: Auntie
+  or Uncle and your name; partners and siblings: your name), editable. Mum/Dad and the rest are
+  picked from your body type (skirt or trousers) only as a starting point.
+- **Relationships:** son, daughter, husband, wife, partner, grandson, granddaughter, sister,
+  brother, niece, nephew. 2–3 people.
+- **Randomize** always picks a child, then a spouse, partner or grandchild, and (about two times
+  in three) a third: a grandchild, sibling, niece or nephew. Names suit their age; your generation
+  gets greys, younger people natural hair colours; children and grandchildren mostly share your
+  skin tone. Portraits of your own generation get smile lines.
+- **New hair colours:** black, brown, auburn and blonde were added (at the end of the list, so
+  old saves are unchanged) for younger relatives. Players can pick them too.
+- **The photo piece** is a new wall item, "Your family photo": free, not in the Catalog, movable
+  like other wall pieces. New rooms have it where the old "Family photos" piece used to start
+  (that piece is still sold in the Catalog). It's drawn as a gilt frame with tiny figures in each
+  relative's skin, hair and clothes colours, or an empty board when the photo's away.
+- **Neighbours see your photo** in your room while it's on your wall (their Profiles carry the
+  relatives' looks and relationships, never what they call you); facing it says whose family it
+  is. The offline neighbours have families too.
+- **Pictures hung high:** facing the wall now reaches anything hung above you in that column
+  (before, a picture in the top wall row couldn't be looked at). Decorating is unchanged.

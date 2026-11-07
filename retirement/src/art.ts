@@ -1,4 +1,15 @@
-import { CROPS, FLOORS, FURNITURE, RECIPES, WALLPAPERS, type Finish } from '../shared/catalog'
+import {
+  CROPS,
+  FLOORS,
+  FURNITURE,
+  HAIR_COLORS,
+  OUTFIT_COLORS,
+  RECIPES,
+  SKIN_TONES,
+  WALLPAPERS,
+  type Finish,
+} from '../shared/catalog'
+import type { Look } from '../shared/schema'
 import { T, groundAt, hash, type GameMap, type Obj } from './maps'
 
 /*
@@ -2288,6 +2299,10 @@ export function drawFurniture(c: Ctx, k: string, px: number, py: number, time: n
       f('#f3d38a', px + 4, py - 8, 8, 6)
       f('#e3bd6a', px + 4, py - 3, 8, 1)
       break
+    case 'familyphoto':
+      // In storage and the decorating views (the room draws it with your family in it).
+      c.drawImage(familyPhotoSprite(null), px, py)
+      break
     case 'photos':
       for (const [x, y, w, h] of [
         [2, 2, 5, 6],
@@ -2575,5 +2590,60 @@ export function finishSwatch(kind: 'wall' | 'floor', id: string): HTMLCanvasElem
     }
   cv.style.width = cv.style.height = '64px'
   cv.style.imageRendering = 'pixelated'
+  return cv
+}
+
+// --- the family photo (FOREST.md "Your family") -----------------------------------------------
+
+/** Tiny head-and-shoulders figures for a photo, side by side, in each person's own colours. */
+function photoPeople(f: Pen, looks: Look[], x0: number, y0: number, w: number, h: number) {
+  f('#d9cdb2', x0, y0, w, h)
+  f('#c7b998', x0, y0 + h - 3, w, 3)
+  const n = looks.length
+  looks.forEach((look, i) => {
+    const cx = x0 + Math.round(((i + 0.5) * w) / n)
+    const skin = SKIN_TONES[look.skin] ?? SKIN_TONES[0]
+    const hair = HAIR_COLORS[look.hairColor] ?? HAIR_COLORS[0]
+    const top = OUTFIT_COLORS[look.outfit] ?? OUTFIT_COLORS[0]
+    const cy = y0 + h - 7 + (i % 2)
+    f(top, cx - 2, cy + 3, 4, h - (cy + 3 - y0))
+    f(skin, cx - 1, cy, 3, 3)
+    if (look.hair !== 'bald') f(hair, cx - 1, cy - 1, 3, 1)
+    if (look.hair === 'long') f(hair, cx - 2, cy, 1, 3)
+  })
+}
+
+/**
+ * The family photo on the wall: a gilt frame with your relatives in it, or an empty frame (the
+ * photo is in your pocket, or lost). 16 × 16, cached per family.
+ */
+export function familyPhotoSprite(looks: Look[] | null): HTMLCanvasElement {
+  const key = looks ? `fphoto|${looks.map((l) => JSON.stringify(l)).join('|')}` : 'fphoto|empty'
+  return cached(key, 16, 16, (f) => {
+    f('#5a3a22', 1, 1, 14, 13)
+    f('#b8893f', 2, 2, 12, 11)
+    f('#e0b86a', 2, 2, 12, 1)
+    if (looks?.length) photoPeople(f, looks, 3, 3, 10, 9)
+    else {
+      // Just the backing board, a little paler where the photo used to be.
+      f('#8a6a4a', 3, 3, 10, 9)
+      f('#9a7a58', 4, 4, 8, 7)
+    }
+    f('rgba(0,0,0,0.18)', 2, 14, 12, 1)
+  })
+}
+
+/** The photo as it looks in your pocket (a little print with a white border), `size` px wide. */
+export function photoIcon(looks: Look[], size = 32): HTMLCanvasElement {
+  const cv = document.createElement('canvas')
+  cv.width = 16
+  cv.height = 14
+  cv.style.width = `${size}px`
+  cv.style.height = `${(size * 14) / 16}px`
+  cv.style.imageRendering = 'pixelated'
+  const f = pen(cv.getContext('2d')!)
+  f('#6b5a48', 0, 0, 16, 14)
+  f('#f4efe4', 1, 1, 14, 12)
+  photoPeople(f, looks, 2, 2, 12, 9)
   return cv
 }

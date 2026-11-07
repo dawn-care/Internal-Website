@@ -24,10 +24,17 @@ import {
   SKIN_TONES,
   START_COINS,
   WALLPAPERS,
+  FAMILY_MAX,
+  FAMILY_MIN,
+  POCKET_ITEMS,
+  POCKET_SLOTS,
+  RELATIONS,
   type Accessory,
   type Body,
   type HairStyle,
   type PetKind,
+  type PocketItem,
+  type Relation,
 } from './catalog.js'
 
 /*
@@ -119,6 +126,10 @@ export interface Save {
   coop?: { day: number; taken: number }
   /** Recipes Chef Rosa has taught you (the starter ones are known without being stored). */
   recipes?: string[]
+  /** Who's in your family photo (FOREST.md "Your family"). Absent until you've set it up. */
+  family?: Family
+  /** What you're carrying in your pocket (POCKET_SLOTS at most, each item once). */
+  pocket?: PocketItem[]
   /** Garden plot and hallway door. Assigned by the server, never trusted from the client. */
   slot: number
   createdAt: number
@@ -126,9 +137,30 @@ export interface Save {
 }
 
 /** What other players can see of someone: their look, garden and room. */
+/** One person in your family photo. Their name is `look.name`. */
+export interface Relative {
+  rel: Relation
+  /** What they call you ("Mum", "Grandad", your first name): a fake can get it wrong. */
+  calls: string
+  look: Look
+}
+
+export interface Family {
+  members: Relative[]
+  /**
+   * The photo was lost in the forest: the frame on your wall is empty. (The photo is otherwise on
+   * your wall, or in your pocket if `pocket` has it.)
+   */
+  lost?: true
+  /** A free reprint from Nurse Ada is ready at this time (epoch ms). */
+  reprintAt?: number
+}
+
 export interface Profile {
   login: string
   look: Look
+  /** Their family photo, as it hangs on their wall (absent when the frame is empty or unset). */
+  family?: { rel: Relation; look: Look }[]
   /** Shown asleep in its bed when you visit their room and it isn't out with them. */
   pet?: PetLook
   slot: number
@@ -215,7 +247,7 @@ export function newSave(look: Look, now: number): Save {
       items: [
         { k: 'bed', x: 1, y: 3 },
         { k: 'nightstand', x: 3, y: 3 },
-        { k: 'photos', x: 4, y: 1 },
+        { k: 'familyphoto', x: 4, y: 1 },
       ],
       walls: ['cream'],
       floors: ['oak'],
@@ -249,6 +281,17 @@ export function growGarden(garden: Tile[], from: number, level: number): Tile[] 
   return out
 }
 
+/** Where your family photo is: on your wall, in your pocket, lost, or not set up yet. */
+export function photoWhere(save: Save): 'wall' | 'pocket' | 'lost' | 'none' {
+  if (!save.family) return 'none'
+  if (save.pocket?.includes('photo')) return 'pocket'
+  return save.family.lost ? 'lost' : 'wall'
+}
+
+export function photoOnWall(save: Save): boolean {
+  return photoWhere(save) === 'wall'
+}
+
 export function toProfile(login: string, save: Save): Profile {
   return {
     login,
@@ -257,6 +300,9 @@ export function toProfile(login: string, save: Save): Profile {
     slot: save.slot,
     garden: save.garden,
     ...(save.plot ? { plot: save.plot } : {}),
+    ...(photoOnWall(save)
+      ? { family: save.family!.members.map((m) => ({ rel: m.rel, look: m.look })) }
+      : {}),
     room: {
       wall: save.room.wall,
       floor: save.room.floor,
@@ -474,10 +520,48 @@ export function validateSave(v: unknown): Save {
     ...(o.pet === undefined ? {} : { pet: validatePet(o.pet) }),
     ...(o.coop === undefined ? {} : { coop: validateCoop(o.coop) }),
     ...recipes(o.recipes),
+    ...familyAndPocket(o.family, o.pocket),
     slot: int(o.slot ?? -1, 'slot', -1, MAX_SLOTS - 1),
     createdAt: num(o.createdAt, 'createdAt', 0, MAX_TIME),
     updatedAt: num(o.updatedAt, 'updatedAt', 0, MAX_TIME),
   }
+}
+
+function validateRelative(v: unknown, i: number): Relative {
+  const o = obj(v, `family.members[${i}]`)
+  const calls = cleanName(o.calls)
+  if (!calls) throw new SaveError(`family.members[${i}].calls is missing.`)
+  return {
+    rel: oneOf(o.rel, RELATIONS, `family.members[${i}].rel`),
+    calls,
+    look: validateLook(o.look),
+  }
+}
+
+export function validateFamily(v: unknown): Family {
+  const o = obj(v, 'family')
+  const raw = arr(o.members, 'family.members', FAMILY_MAX)
+  if (raw.length < FAMILY_MIN)
+    throw new SaveError(`Your family photo needs at least ${FAMILY_MIN} people.`)
+  return {
+    members: raw.map(validateRelative),
+    ...(o.lost === true ? { lost: true as const } : {}),
+    ...(o.reprintAt === undefined
+      ? {}
+      : { reprintAt: num(o.reprintAt, 'family.reprintAt', 0, MAX_TIME) }),
+  }
+}
+
+function familyAndPocket(f: unknown, p: unknown): { family?: Family; pocket?: PocketItem[] } {
+  const family = f === undefined ? undefined : validateFamily(f)
+  const pocket =
+    p === undefined
+      ? []
+      : arr(p, 'pocket', POCKET_SLOTS).map((it, i) => oneOf(it, POCKET_ITEMS, `pocket[${i}]`))
+  if (new Set(pocket).size !== pocket.length) throw new SaveError('pocket has something twice.')
+  if (pocket.includes('photo') && (!family || family.lost))
+    throw new SaveError("You can't carry a family photo you don't have.")
+  return { ...(family ? { family } : {}), ...(pocket.length ? { pocket } : {}) }
 }
 
 export function isMapId(v: unknown): v is MapId {

@@ -139,6 +139,8 @@ export const FURNITURE: Record<string, FurnitureDef> = {
   bed: { id: 'bed', name: 'Quilted bed', price: 0, w: 2, h: 3 },
   nightstand: { id: 'nightstand', name: 'Nightstand', price: 0, w: 1, h: 1 },
   photos: { id: 'photos', name: 'Family photos', price: 15, w: 1, h: 1, wall: true },
+  // Your family photo (FOREST.md "Your family"): everyone has one, it can't be bought (price 0).
+  familyphoto: { id: 'familyphoto', name: 'Your family photo', price: 0, w: 1, h: 1, wall: true },
   fern: { id: 'fern', name: 'Potted fern', price: 20, w: 1, h: 1 },
   basket: { id: 'basket', name: 'Knitting basket', price: 25, w: 1, h: 1 },
   painting: { id: 'painting', name: 'Flower painting', price: 30, w: 1, h: 1, wall: true },
@@ -196,7 +198,22 @@ export const FLOORS: Record<string, Finish> = {
 }
 
 export const SKIN_TONES = ['#f7d7c0', '#eec1a0', '#d9a27a', '#b97d55', '#8d5a3b', '#5e3b26']
-export const HAIR_COLORS = ['#f4f1ea', '#d2d0cc', '#a9a8a6', '#c9c3e6', '#b9d3e8', '#6b6158']
+/**
+ * Hair colours: the residents' whites, greys and rinses first, then (added for younger family
+ * members, FOREST.md "Your family") black, brown, auburn and blonde. New ones only go at the end.
+ */
+export const HAIR_COLORS = [
+  '#f4f1ea',
+  '#d2d0cc',
+  '#a9a8a6',
+  '#c9c3e6',
+  '#b9d3e8',
+  '#6b6158',
+  '#2b2420',
+  '#5a3a22',
+  '#8a4a2a',
+  '#d9b36a',
+]
 export const OUTFIT_COLORS = [
   '#d4423c',
   '#e98131',
@@ -469,3 +486,28 @@ export function cookable(inv: Record<string, number>, recipe: string): number {
 export function knowsRecipe(learned: readonly string[] | undefined, recipe: string): boolean {
   return RECIPES[recipe]?.lesson === 0 || (learned ?? []).includes(recipe)
 }
+
+// --- family (FOREST.md "Your family") -------------------------------------------------------
+
+/** Who can be in your family photo. */
+export const RELATIONS = [
+  'son',
+  'daughter',
+  'husband',
+  'wife',
+  'partner',
+  'grandson',
+  'granddaughter',
+  'sister',
+  'brother',
+  'niece',
+  'nephew',
+] as const
+export type Relation = (typeof RELATIONS)[number]
+export const FAMILY_MIN = 2
+export const FAMILY_MAX = 3
+
+/** Your pocket: a few small things you carry (the family photo, later light and meals). */
+export const POCKET_SLOTS = 3
+export const POCKET_ITEMS = ['photo'] as const
+export type PocketItem = (typeof POCKET_ITEMS)[number]
