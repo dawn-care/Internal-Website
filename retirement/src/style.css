@@ -1441,3 +1441,20 @@ button.bc-sq {
   text-align: center;
   font-size: 13px;
 }
+
+/* The forest's jumpscare when something catches you (src/forest/scare.ts), as in /game. */
+.scare {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: black;
+}
+
+.scare img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

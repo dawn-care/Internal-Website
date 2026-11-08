@@ -2,15 +2,18 @@
 
 A shared, Stardew-style pixel game about life in a nursing home, unrelated to D.A.W.N.
 Plain TypeScript + canvas, no React, no new dependencies, no image files (all art is drawn in
-code). Built by vite.retirement.config.ts into dist/retirement; `npm run dev:retirement`
+code), with one exception: the forest's jumpscare images in retirement/scares (copies of
+jumpscare/media, with jumpscare/sounds as scare-1..7.mp3; src/forest/scare.ts). Built by vite.retirement.config.ts into dist/retirement; `npm run dev:retirement`
 serves it alone at localhost:5173/retirement/ in offline mode (localStorage save, two fake
 neighbours who wander and chat, see src/net.ts LocalNet).
 
-The forest beyond the grounds is being built in stages (FOREST.md "Build stages"; stage 1, the
-forest itself, is done). FOREST.md records every decision (alone in the forest, no combat, real vs
-fake nurses and family, run-only chases, story notes kept only on a safe return, the draft Hollow
-Pines story) and, under "Build status", every judgement call made while building it. Read it
-before working on the forest and keep it current.
+The forest beyond the grounds is being built in stages (FOREST.md "Build stages"; stages 1–3 are
+done). FOREST.md records every decision (alone in the forest, no combat, real vs fake nurses and
+family, run-only chases, story notes kept only on a safe return) and, under "Build status", every
+judgement call made while building it. Read it before working on the forest and keep it current.
+STORY.md holds the forest's story (Hollow Pines, Maggie, what players can learn, the spoiler story
+bible), kept separate so it can be edited on its own; anything in the forest that carries story
+must stay consistent with it.
 COMMUNITY.md lists the agreed cozy additions (intro, pets, animals, benches, board games,
 plot upgrades, cooking, Chef Rosa's orders, reasons to come home to your room, collectibles) and
 marks which are built.
@@ -40,7 +43,9 @@ marks which are built.
   and sprites), light.ts (darkness, your light, fog, the colour grades), sound.ts (its synthesized
   ambience, twig snaps, stand-in growl/hiss), encounter.ts (people who find you: real or fake,
   dialogue, the transformation, being led, the chase) and encounters.ts (their words, tells and
-  voices, as data). Game holds `forest` and `trip` (with the encounters and stamina) while you're
+  voices, as data), threats.ts (footsteps behind you with the reaching arm, and the face in the dark: cues that are
+  sometimes real), scare.ts (the jumpscare when you're caught).
+  Game holds `forest` and `trip` (with the encounters and stamina) while you're
   in it.
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an
   auto outline), src/game.ts (loop, movement, interaction, decorating, sync, rendering),
@@ -153,6 +158,17 @@ with the breakdown for any frame over 20 ms. `window.perf` and `window.game` are
     synthesized growl/hiss (src/forest/sound.ts). The forest's ambience is synthesized
     (src/forest/sound.ts); the music and birdsong fade across the outskirts (src/game.ts
     updateSound).
+  - The forest's recorded moments (cut-sfx.sh, played with `playClip`): `forest-bones`
+    (bones_cracking 0–1.9s, 120ms out, -18 dB) as a fake stretches at its last stage and at the grab
+    when you're caught; `forest-flesh` (flesh_growing 0–3.18s, 400ms out, -22 dB) as a fake's face
+    changes (stages 2 and 3); `forest-rise` (scary_transition 0–3.0s, 300ms out, -18 dB) as it stands
+    still before it comes for you, peaking as it starts; `forest-impact` (impact_sound 0–2.53s, 600ms
+    out, -18 dB) at the grab; `forest-moan` (horror_ghost 0–8.7s, 900ms out, -22 dB) as a chaser you've
+    lost fades away; `forest-breath` (ghost_breathing 0–15.2s, 800ms out, -24 dB) behind you while the
+    arm reaches in (stopped when it's over). Drone beds: `amb-forest-deep` (horror_drone 0.47–45s) and
+    `amb-forest-lost` (ominous_drone 0–69.9s), ffmpeg `loudnorm=I=-26:TP=-2` with 2s fades baked in,
+    looped like the birdsong (`setForestBeds`). sounds/dreadful_prayer.mp3 isn't used yet (kept for
+    the chapel, stage 5).
   - To add footsteps for a new surface (e.g. the forest), cut single steps into
     `step-<group>-<n>.mp3` and add the surface to SURFACES.
 

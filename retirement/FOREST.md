@@ -3,7 +3,7 @@
 Status: **being built. Stages 1 (the forest itself), 2 (family) and 3 (encounters) are done**; see "Build status" at the end for
 what's built and the judgement calls made along the way. This records what we've decided for the
 forest beyond the Sunset Acres grounds and why. Numbers marked _(tune)_ are starting points to adjust after
-play-testing. The story outline near the end is a **draft** for the team to react to.
+play-testing. The story is in [STORY.md](STORY.md), a **draft** for the team to react to.
 
 ## The idea in one line
 
@@ -18,9 +18,11 @@ in to piece together a story, and you only keep what you learned if you make it 
 - **Helplessness, not combat.** There are **no weapons, no armour and no fighting** of any kind.
   You can't fight confusion; you can only hold on to what you know and hope someone brings you
   home. What you have is light, your notes, your judgement, and your legs.
-- **Slow dread, no jumpscares.** Tension comes from darkness, sound, things at the edge of the
+- **Slow dread, and one jumpscare.** Tension comes from darkness, sound, things at the edge of the
   light, people who are subtly wrong, and small decisions with uncertain outcomes. Nothing leaps at
-  the screen.
+  the screen, with one exception (changed after play-testing stage 3): **being caught** is a
+  jumpscare, the way /game does them (a random image filling the screen, a random scream). It only
+  ever happens as the result of a mistake you made, never out of nowhere.
 - **A surprise, not a feature.** No opt-in, no gate, no warning sign. It's for the internal team,
   and finding it by wandering off the edge of the map is part of the fun. (Your pet growling or
   hissing at the treeline, below, is an in-world hint, not a sign: it never stops you.)
@@ -219,7 +221,7 @@ Each refusal (they ask again) pushes it a stage further:
 
 ### Caught
 
-- Fade to black. Then, fading in on the black screen, the truth: **"That was not your son."** /
+- A jumpscare (see "Build status"), then black. Then, fading in on the black screen, the truth: **"That was not your son."** /
   **"That was not your daughter."** / **"That was not a nurse."** (using the real relationship).
 - You **wake up in the home's infirmary** with the real Nurse Ada: _"They found you wandering by
   the fence again, dear."_
@@ -266,10 +268,86 @@ Each refusal (they ask again) pushes it a stage further:
   - **The Visitor:** a tall figure that only moves while you aren't looking at it (like the basement
     statue in `/game`). Touching it is being caught.
   - **The Wanderers:** shapes of former residents walking slow loops between the trees. Harmless
-    unless they see you in the dark, and then they follow. (In the story bible they're the people
+    unless they see you in the dark, and then they follow. (In the story bible, STORY.md, they're the people
     who went with the wrong face.)
 - Being caught by one of these is the same as being caught by an impostor (fade to black, a line
   of text, the infirmary).
+
+## How the forest looks
+
+Redrawn after play-testing ("the forest itself just isn't very scary"): it was the property's
+storybook forest made darker (symmetrical Christmas-tree pines, round puffy trees, pebbles,
+ferns, an even brown floor, warm colours). Now:
+
+- **Trees:** grown from limbs that wander, taper and split, ending in twigs that hook down like
+  fingers. Gnarled trees: a thick, twisted, leaning trunk, bare clawing limbs, a few dark tatters of
+  leaves. Pines: ragged and almost black, lopsided tiers with gaps where branches died, dead grey
+  limbs low down. Dead trees: grey, leaning, the top snapped off. All with roots clawing over the
+  ground. The treeline round the grounds and the outskirts' dead trees use them too.
+- **The floor:** cold, drained grey-brown, with big soft near-black patches, dark rotting leaves,
+  sickly grey-green moss, and the odd pale scrap (a twig, a bit of bone).
+- **Undergrowth:** tangles of dark thorny brambles instead of ferns; jagged, broken dark stones
+  instead of round pebbles.
+- **Mist** lying low in wide, flat banks, more of it.
+- **Colour:** a colder, more drained grade (saturation 0.42 to 0.26) and a cold blue-black dark.
+  Not pitch black: you can just make out the shapes beyond your light (`DARK_NEAR` 0.72).
+
+## Recorded sounds in the forest
+
+Added with the recordings in retirement/sounds (CLAUDE.md "Music and sound" has the cuts). On top of
+the synthesized wind, heartbeat and drone:
+
+- **Drone beds:** a dark drone rises under the wind from about 15% deep and is full by 65%; once
+  you're lost a heavier one takes over. Both duck to half as an encounter's dread builds.
+- **The transformation:** flesh shifting as its colour drains (stage 2), and at the last stage the
+  flesh again and then bones cracking as it stretches; a rise as it stands still, peaking just as
+  it comes for you; a moan fading into the trees when you lose it.
+- **Caught:** a heavy hit and bones cracking at the grab (with the swell, the racing heart, the
+  light collapsing).
+- **Footsteps behind you:** once the arm reaches in, you hear it breathing, close behind you, until
+  you turn or it has you.
+- **Not used yet:** the murmured prayer, kept for the chapel (stage 5).
+
+## Threats between encounters
+
+Added after play-testing stage 3: with nothing able to hurt you between encounters, you could
+stand in the forest and feel nothing, and ambience alone didn't help ("if nothing ever harms or
+blocks you then there's nothing to be scared about"). So the forest's cues are sometimes real
+threats, and sometimes nothing (`FALSE_ALARM`, 35%), so you can never safely ignore one. Each has a
+rule you can learn; get it right and nothing happens, get it a little wrong and it costs you
+(some light, your breath), get it badly wrong and you're caught (the same grab, the infirmary, a
+carried photo lost; no face, just the line).
+
+- **Footsteps behind you.** Rule: turn round. Steps on the leaves behind you, a beat after yours,
+  stopping a beat after you stop. Keep going without facing them and they close in (about 9 s);
+  from a little before halfway an arm creeps into your light from behind (slowly at first, easing in;
+  hidden by the dark until it reaches your light, with only the faintest trace of it out in the dark): dark, wet flesh, too long and crooked
+  where it shouldn't bend, streaked and dripping with blood, with long jointed, clawed fingers
+  that twitch as it reaches (redrawn after play-testing: the first, pale skeletal arm felt corny).
+  Turn to face them in time and it's gone; turn once the arm is in sight and it snatches your breath
+  as it goes (stamina emptied); never turn and it has you: "It was right behind you."
+- **The face in the dark.** Rule: never walk towards it. (It started as a pair of eyes, which didn't
+  read as eyes, then a full face, which was too much of a face; redrawn after play-testing to
+  follow the reference: no head at all.) Out of the dark just beyond your light: two small pale
+  eyes, set wide and not quite level, and under them a jagged grin of uneven teeth hanging in the
+  black, lit on one side and shaded on the other, upper teeth pointing down, lower ones up,
+  interlocking. Round them, a tall, thin, dark shape you can only just make out (a head the face sits in, sloping
+  shoulders, arms hanging too low, a body that thins away into the dark; added after play-testing,
+  since the face alone looked disembodied). The eyes and teeth are muted greys drawn faintly (`FACE_ALPHA`),
+  so it only just stands out from the dark (toned down after play-testing: bright white looked
+  goofy). Our own design. Back away and it fades; leave it and it
+  goes after 12 s. Walk towards it and it takes some of your light (18% for the rest of the trip,
+  never below 45%) and its jaw drops, the teeth parting; keep coming and it has you: "You should
+  never have gone closer."
+- **Caught by a threat:** the same jumpscare as being caught by an impostor.
+- **When:** the first 25–50 s into a trip, then every 30–70 s, up to twice as often deep in or once
+  you're lost; never the same kind twice running; never during an encounter (and encounters wait
+  for them); the collapse waits too.
+- **Still planned for stage 6:** the Visitor and the Wanderers. More ideas for later stages: sounds
+  that are only sounds, things from home in the forest, your name called from far off.
+
+Numbers: `THREAT_*`, `FALSE_ALARM`, `STALK_*`, `ARM_FROM`, `EYES_*`, `LIGHT_TAKEN`, `LIGHT_LEAST` in
+src/forest/tuning.ts; the code is src/forest/threats.ts.
 
 ## Notes and the memory wall
 
@@ -347,99 +425,11 @@ Rules: meals never make you faster than an impostor for good; effects wear off; 
 a few _(tune)_; clarity stays a subtle nudge, never a label; forest-only ingredients make the best
 meals, so the forest and the garden feed each other.
 
-## Story (draft, to be revised as we go)
+## Story
 
-**Working title: _Hollow Pines._** A random forest with a fixed story: the fragments are written,
-the places they turn up are random. Each fragment stands on its own and can be found in any order;
-the deeper and rarer locations hold the later revelations.
-
-How the story works:
-
-- **We know the full truth; the player only gets part of it.** The truth is written down below in
-  the story bible so every fragment stays consistent. Fragments give players enough to form a
-  satisfying theory, and the final step is never stated outright.
-- **The rules are consistent; the origin stays out of reach.** Players can learn exactly how the
-  forest behaves. Why it does is left to conflicting, unreliable sources.
-
-### What players can learn
-
-**The premise.** Long before Sunset Acres, there was another care home deeper in the woods:
-**Hollow Pines Home**. It closed in 1979 after residents kept wandering off and never coming back.
-The bus route to it was cancelled; the building was left to rot.
-
-**The guide.** Three years ago a Sunset Acres resident, **Margaret "Maggie" Hale**, a retired
-schoolteacher, wandered into the forest and was never found. She left **warnings in red paint and
-notes signed "M."** across the forest. Her trail is the spine of the story: you're following
-someone who got lost before you.
-
-**Why some people are real.** Nurse Ada and families from Sunset Acres really do search the woods
-for residents who wander off. The forest has learned to look like them, too.
-
-The story unfolds in four layers, roughly by depth:
-
-1. **The rules** (near the edge): Maggie's warnings. How to survive, never why.
-   - _"They never blink."_ / _"Count the shadows."_ / _"If they call you something your family
-     never called you, run."_ / _"DON'T GET ON THE BUS ALONE."_ / _"Look at the photo, not the
-     face."_
-2. **The history** (bus stop, warehouse): Hollow Pines, the disappearances, residents nobody
-   visited.
-   - Bus stop: a timetable for **Route 9 to Hollow Pines**, last service 1979; a newspaper
-     clipping, _"Third resident missing from Hollow Pines Home."_
-   - Warehouse (Hollow Pines' supply depot): crates of old name tags; a staff memo, _"Do not let
-     residents leave with unregistered visitors"_; a visitors' log with **most pages empty for
-     months at a time**; and, on the last page, **your family's names**, in handwriting that isn't
-     theirs.
-3. **The pattern** (chapel): the Wanderers were people, and the faces are made of forgotten
-   things.
-   - Memorial plaques for the lost residents, with **Maggie's name freshly scratched** at the end.
-   - A Hollow Pines nurse's letter: _"Today I saw myself walk out of the trees and lead Mr. Abbott
-     away. She had my face, but not my scar. I don't think it knew about the scar."_
-   - A resident's diary: _"My daughter came today. Her eyes were the wrong colour. I couldn't
-     remember the right one, so I went with her anyway."_
-4. **The edge of the truth** (the ruins of Hollow Pines): conflicting explanations and Maggie's
-   last note.
-   - Three sources that disagree, each unreliable: **a doctor's memo** blaming an experimental
-     memory treatment; **the groundskeeper's journal**, saying the land was always like this;
-     **the chaplain's letter**, calling it a kind of grace, _"a place where nothing forgotten is
-     ever lost."_
-   - Maggie's last note: _"If you're reading this, you came back for me. Don't. Go home with the
-     one who knows your real name."_
-
-**Ending (draft):** with every fragment on your wall, a final event appears: you find Maggie, or
-something that looks like her, sitting on the old ward's bed. She asks you to leave her and go
-home. Whether it's her is never confirmed. Your last note: _"Maggie wanted to be remembered, not
-found."_
-
-### Story bible (SPOILERS, for writers only; never stated outright in the game)
-
-- **What the forest is:** where forgotten things go. Names, faces, voices, the details of people
-  you love that slip away.
-- **What the impostors are:** made from what you've forgotten. A fake son is assembled from the
-  parts of him you can't quite remember anymore. This is why the mechanics work the way they do:
-  - **The tells are the gaps in your memory.** The wrong hair colour, the nickname nobody used,
-    the missing shadow are the pieces you've lost, filled in wrongly.
-  - **The family photo is the answer key** because it's a memory aid: it's literally what helps
-    you remember what's real.
-  - **Clarity** (herbal tea) helps because it helps you remember.
-- **What they want: to be remembered.** They aren't evil. They're lonely. A forgotten thing wants
-  someone to recognize it, to be somebody's person again. When you go with one, it leads you
-  deeper to keep you, so it's never forgotten again. Refusing one is its own small tragedy: being
-  forgotten twice. This keeps the horror sad and empathetic rather than monstrous, and it never
-  treats people with dementia as monsters.
-- **Where they come from: Hollow Pines.** Many of its residents were rarely visited (the empty
-  visitors' log). Their longing for faces nobody brought gave the forest its first shapes. That's
-  why fake nurses wear Hollow Pines badges: those were the faces residents saw most, so the forest
-  learned "nurse" there.
-- **What happens to people who are taken:** they become **Wanderers**, the slow shapes walking
-  loops between the trees: residents who went with the wrong face, now forgotten themselves.
-- **What stays a mystery, even to us:** _why_ the forest does this. The doctor, the groundskeeper
-  and the chaplain each believe something different, and none of them is confirmed. Writers should
-  keep their accounts contradictory.
-- **Maggie** at the end could be the real Maggie, a Wanderer, or the forest's version of her built
-  from everything Sunset Acres remembers about her. Her request to be left and for you to go home
-  is true in all three cases. Never resolve it.
-- **Hint that you've been here before:** the note in your own handwriting you don't remember
-  writing. Never confirm it.
+The story (Hollow Pines, Maggie, what players can learn, and the spoiler story bible) is in
+[STORY.md](STORY.md), so it can be edited on its own. Everything in the forest that carries story
+(fragments, events, what people say, the voice in your head) has to stay consistent with it.
 
 ## Build stages
 
@@ -493,7 +483,7 @@ Each stage is playable before the next:
 - Real/fake ratio, speeds, stamina, light radius, the point-of-no-return distance, encounter
   cadence and collapse time.
 - Whether light can be bought on the property or only found.
-- The full story text: the story above is a first version that will be revised as we go; more
+- The full story text: the story in STORY.md is a first version that will be revised as we go; more
   fragments and events still need writing, consistent with the story bible.
 - Pocket size: 3 slots for now (only the photo exists yet); revisit when light and meals arrive.
 - Whether the camera or lighting changes too near the treeline (e.g. a slight vignette). (The
@@ -683,32 +673,68 @@ Judgement calls (change freely):
   highest, husbands lowest). As a fake changes, its voice drops (to 45% of the pitch), the wave
   roughens (triangle, square, sawtooth), the letters type slower (24 → 90 ms each), and the text
   shakes, with neighbouring letters swapping more at each stage.
+  Voices in the forest are 2.2 times louder than at home (they were barely audible over the wind and
+  drone), and low ones louder still, up to about 4.8 times as a fake's voice drops; no voice goes
+  below 90 Hz (small speakers barely play lower), and each blip lasts a little longer as the typing
+  slows.
 - **The transformation** (three refusals, then it comes for you): stage 1 drains the colour from
   its face and sprite; stage 2 drains it almost to grey and blacks out the eyes, and it stops
   blinking; stage 3 tilts the head and stretches the face until it runs out of the frame, and the
   sprite stands 40% too tall. Your light shrinks to 85%, 70% and 55%. After the last line it
   stands still for a second, then comes.
-- **The chase:** it moves at 4.1 tiles/s (your walk is 3.3, your hurry 5.2) and goes round trees.
-  You lose it by staying 11+ tiles away for 2 seconds, or if it hasn't caught you in 30 seconds;
-  walking back out (before you're lost) also works. A lost chaser comes back later in the trip 35%
-  of the time (60–150 s later), already changed, chasing. No lit clearings yet (they come with the
-  buildings and light in stages 5 and 6).
-- **Stamina** (forest only, an upright gauge in the hotbar beside your pocket): hurrying uses a full bar in about 6.5 s;
+- **The chase** (made easier and more intense after play-testing: it felt like just running, and
+  too hard to escape): it stands still for 1 s after its last line, then moves at 3.8 tiles/s
+  (your walk is 3.3, your hurry 5.2) and goes round trees. You lose it by staying 10+ tiles away
+  for 2 seconds, or if it hasn't caught you in 20 seconds; walking back out (before you're lost)
+  also works. In tests, a runner that steers round trees gets away 39 times in 40, one that runs
+  blindly into them about 1 in 4; a typical escape takes about 5 s. A lost chaser comes back later
+  in the trip 35% of the time (60–150 s later), already changed, chasing. No lit clearings yet
+  (they come with the buildings and light in stages 5 and 6).
+- **Dread builds before the chase** (added after play-testing: the sound used to kick in only when
+  the chase started). From the first refusal, the chase's sound and the red edge creep in a stage
+  at a time: a faint drone at stage 1, your heartbeat from stage 2, louder at stage 3, while the
+  forest's wind drops away (it holds its breath). Each refusal brings a slow rising swell (breathy
+  noise sweeping up, a low note sliding up under it) as the face changes. While it stands still
+  before the chase there's little but your heartbeat; then the chase. Nothing sudden: it all builds
+  and fades. The levels are `STAGE_DREAD`, `PAUSE_DREAD`, `CHASE_DREAD`, `DREAD_HUSH` and `SWELL`.
+- **How the chase feels:** your light flares back up to 85% so you can see where you're running,
+  but gutters and shakes as it closes in; the chaser is drawn faintly even out in the dark (a pale,
+  too-tall shape, clearer the closer it gets); the edge of the screen goes dark red as it closes in,
+  pulsing with your heartbeat. You hear your heartbeat (from about 70 to 150 beats a minute as it
+  closes), a dissonant drone (two notes beating against each other, a fifth and a tritone) that
+  throbs faster, rises and brightens, a thin high shimmer when it's near, and its heavy footfalls,
+  with ragged breath when it's close (even a fake whose tell was silent steps: once it's chasing,
+  the pretending is over). All of it is pitched where laptop and phone speakers can play it: the
+  first version's heartbeat and drone were at 40–70 Hz and couldn't be heard on them. It all swells
+  and fades: no sudden noises. The numbers are `CHASE_LIGHT`, `CHASE_FLICKER`, `CHASE_SEEN`,
+  `CHASE_VIGNETTE` and `CHASE_SOUND`.
+- **Stamina** (forest only, an upright gauge in the hotbar beside your pocket): hurrying uses a full bar in about 9 s;
   walking refills it in about 12 s, standing in 7. Run it right out and you can't hurry again until
   it's back to a quarter.
 - **Look at the photo** (relatives only, once per encounter, only if the photo is in your pocket):
-  the photo and their face side by side. Your light shrinks to 60% and flickers while you look. A
-  real one waits; **a fake loses patience after 7 seconds** and asks again a stage further gone.
-  (So looking is a test, but a risky one.) The nurse isn't in the photo: you have to remember
-  Ada.
+  the photo and their face side by side. Your light shrinks to 60% and flickers while you look.
+  Real or fake, they wait as long as you like, and ask again in the same words when you put it
+  away. (At first a fake lost patience after 7 seconds and jumped a stage, but in play that read as
+  the game skipping the conversation, and it gave fakes away; removed.) The nurse isn't in the
+  photo: you have to remember Ada.
 - **Go with a real one:** a black screen ("Rachel walks you home." / "Nurse Ada walks you home, one
   step at a time.") and you're at the front of the home: "You're home." (Notes are kept from stage
   4.)
 - **Refuse a real one:** they're hurt ("...Alright, Gran. Alright." / "I'll come back for you. I
-  promise I'll come back.") and walk off into the dark. Nothing bad happens except that.
+  promise I'll come back.") and walk off into the dark. Nothing bad happens except that. Their portrait shows they're
+  hurt: brows drawn up, mouth turned down, wet eyes and a tear (added after play-testing).
 - **Go with a fake:** you can't stop yourself following it for 5.5 s, along its own path, away from
   where you came in; then the black screen: "That was not your granddaughter." / "That was not a
   nurse."
+- **Being caught: the grab, then a jumpscare** (decided after play-testing: first it just faded to
+  black, then the grab with the creature's face drifting in, which felt corny). When something
+  catches you (a chaser, a fake leading you off, the footsteps behind you, the face in the dark):
+  the grab first (1 s, `CAUGHT_GRAB_MS`: a heavy hit and bones cracking, your light collapsing to
+  nothing while the screen shakes, an impostor drawn in front of you, your heart racing); then,
+  right after it, the screen goes black with a random image filling it and a random scream, for
+  3 s (`SCARE_MS`), just as /game does. The images and sounds are copies of jumpscare/media and jumpscare/sounds, in
+  retirement/scares. Each trip picks one of each and loads them as it starts, so the scare is
+  instant. Then the black screen with its line, and the infirmary.
 - **Caught** (led deeper or reached in the chase): that line, then the infirmary, Nurse Ada ("There
   you are, dear. They found you wandering by the fence again."), and if you had the photo with you,
   it's gone: "Your pocket is empty. The photo is gone." (The frame on your wall stays empty until

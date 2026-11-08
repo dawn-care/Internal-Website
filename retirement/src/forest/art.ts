@@ -39,13 +39,16 @@ const rgb = (hex: string) => {
 
 /** Ground colours: [base, dark, light] per ground type, as rgb. */
 const GROUND: Record<number, number[][]> = {
-  [FG.LITTER]: ['#5c4a37', '#4a3b2c', '#6e5840'].map(rgb),
-  [FG.MOSS]: ['#4a5a38', '#3c4a2e', '#5a6c42'].map(rgb),
-  [FG.PATH]: ['#6e5c47', '#5c4c3b', '#806b53'].map(rgb),
+  // Cold, dark and drained: grey-brown earth, sickly grey-green moss, a worn grey track.
+  [FG.LITTER]: ['#4a453e', '#3a3631', '#56504a'].map(rgb),
+  [FG.MOSS]: ['#3f4a3c', '#323b30', '#4b5747'].map(rgb),
+  [FG.PATH]: ['#5a544b', '#4a453d', '#665f55'].map(rgb),
   [FG.EDGE]: ['#525c36', '#444d2d', '#626e40'].map(rgb),
 }
-/** Fallen leaves scattered on the litter: dull browns, rusts and the odd yellow. */
-const LEAF_COLORS = ['#7a4a2a', '#8c5a2e', '#6e3f24', '#9a7a3a', '#5e3a22'].map(rgb)
+/** Dead leaves scattered on the litter: dull, dark browns, rotting. */
+const LEAF_COLORS = ['#4a3526', '#3d2c20', '#55402c', '#2e241c', '#47392b'].map(rgb)
+/** The odd pale twig or scrap of bone in the litter. */
+const PALE = rgb('#8a8678')
 
 /**
  * A chunk's ground, drawn pixel by pixel straight into image data (much quicker than thousands of
@@ -72,6 +75,11 @@ export function chunkGround(ch: Chunk): HTMLCanvasElement {
         const leaf = hash(gx >> 1, gy >> 1, 1202)
         if (leaf < 0.09) col = LEAF_COLORS[Math.floor(leaf * 55) % LEAF_COLORS.length]
       }
+      // Big soft patches of near-black, so the floor isn't one even colour.
+      if (hash(gx >> 4, gy >> 4, 1203) < 0.3 && hash(gx >> 1, gy >> 1, 1204) < 0.55)
+        col = [col[0] * 0.7, col[1] * 0.7, col[2] * 0.72]
+      // Now and then a pale scrap (a twig, a bit of bone) in the litter.
+      if (hash(gx >> 1, gy >> 1, 1205) > 0.9985) col = PALE
       const o = (py * size + px) * 4
       d[o] = col[0]
       d[o + 1] = col[1]
@@ -98,17 +106,6 @@ function sprite(key: string, w: number, h: number, draw: (f: Pen, c: Ctx) => voi
   return cv
 }
 
-function disc(f: Pen, cx: number, cy: number, rx: number, ry: number, color: string) {
-  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
-    const dy = (y + 0.5 - cy) / ry
-    if (Math.abs(dy) > 1) continue
-    const half = rx * Math.sqrt(1 - dy * dy)
-    const x0 = Math.round(cx - half)
-    const x1 = Math.round(cx + half)
-    if (x1 > x0) f(color, x0, y, x1 - x0, 1)
-  }
-}
-
 function shadow(c: Ctx, x: number, y: number, w: number) {
   c.globalCompositeOperation = 'destination-over'
   c.fillStyle = 'rgba(0,0,0,0.3)'
@@ -129,36 +126,52 @@ function log() {
   })
 }
 
+/** A jagged, dark stone, broken off at an angle, moss in its cracks. */
 function rock(v: number) {
-  return sprite(`rock${v}`, 16, 12, (f) => {
-    disc(f, 8, 7, 6 - (v % 2), 4, '#4a4c50')
-    disc(f, 7, 6, 4 - (v % 2), 2.6, '#62656a')
-    f('#7a7d82', 5, 4, 2, 1)
-    if (v > 1) f('#3c4a2e', 9, 3, 3, 1)
+  return sprite(`rock${v}`, 16, 13, (f) => {
+    // Rows from the top: [x0, x1) for each, a sharp, broken outline.
+    const rows = [
+      [7, 9],
+      [6, 10],
+      [5, 12],
+      [4, 12],
+      [3, 13],
+      [2, 14],
+      [2, 14],
+      [3, 13],
+    ].slice(v % 2)
+    rows.forEach(([a, b], i) => {
+      f('#2c2a29', a, 3 + i, b - a, 1)
+      f('#46423f', a, 3 + i, Math.max(1, Math.round((b - a) * 0.35)), 1)
+    })
+    f('#1a1918', 8 + (v % 3), 5, 1, 4)
+    if (v > 1) f('#2f3a2e', 9, 8, 3, 1)
   })
 }
 
+/** A tangle of brambles: dark, thorny canes arching every which way. */
 function fern(v: number) {
   return sprite(
     `fern${v}`,
-    18,
-    14,
+    20,
+    16,
     (f) => {
-      const fronds = [
-        [-1, -1],
-        [1, -1],
-        [-1, -0.3],
-        [1, -0.3],
-        [0, -1.2],
-      ]
-      fronds.forEach(([dx, dy], i) => {
-        for (let k = 0; k < 6; k++) {
-          const x = Math.round(9 + dx * k * 1.3)
-          const y = Math.round(12 + dy * k * 1.4)
-          f(k % 2 ? '#2e5234' : '#2f4f31', x, y, 2, 1)
-          if (k > 1 && (k + i + v) % 2 === 0) f('#22432d', x + (dx > 0 ? 1 : -1), y + 1, 1, 1)
+      for (let k = 0; k < 6; k++) {
+        // Each cane arcs up out of the ground and over, thorns along it.
+        const dir = hash(k, v, 1401) < 0.5 ? -1 : 1
+        let x = 10 + (hash(k, v, 1402) - 0.5) * 8
+        let y = 15
+        let up = 1.2 + hash(k, v, 1403) * 0.8
+        for (let i = 0; i < 11; i++) {
+          x += dir * 0.9
+          y -= up
+          up -= 0.22
+          const px = Math.round(x)
+          const py = Math.round(y)
+          f(i % 3 === 0 ? '#2a2420' : '#1d1917', px, py, 1, 1)
+          if (i % 3 === 1) f('#3a302a', px + (up > 0 ? -dir : dir), py - 1, 1, 1)
         }
-      })
+      }
     },
     false,
   )

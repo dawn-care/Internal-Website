@@ -27,6 +27,8 @@ export interface PortraitOptions {
   badge?: 'sunset' | 'hollow'
   /** A different eye colour (a fake's tell). */
   eye?: string
+  /** Hurt: brows drawn up in the middle, the mouth turned down, eyes wet. */
+  mood?: 'hurt'
 }
 
 /** Everything a portrait is drawn from. The forest can tamper with these. */
@@ -40,6 +42,7 @@ export interface Face {
   talk: boolean
   blink: boolean
   badge?: 'sunset' | 'hollow'
+  mood?: 'hurt'
 }
 
 export const EYE_COLORS = ['#5b3a22', '#3d6fb0', '#4b7d41', '#6e5434', '#46607a']
@@ -74,6 +77,7 @@ export function faceFor(look: Look, opts: PortraitOptions = {}): Face {
     talk: opts.talk ?? false,
     blink: opts.blink ?? false,
     badge: opts.badge,
+    mood: opts.mood,
   }
 }
 
@@ -81,7 +85,7 @@ const cache = new Map<string, HTMLCanvasElement>()
 
 export function portrait(look: Look, opts: PortraitOptions = {}): HTMLCanvasElement {
   const face = faceFor(look, opts)
-  const key = `${lookKey(look)}|${look.name}|${face.old}|${face.talk}|${face.blink}|${face.badge ?? ''}|${face.eye}`
+  const key = `${lookKey(look)}|${look.name}|${face.old}|${face.talk}|${face.blink}|${face.badge ?? ''}|${face.eye}|${face.mood ?? ''}`
   let cv = cache.get(key)
   if (cv) return cv
   cv = drawFace(face)
@@ -377,6 +381,14 @@ function drawBrows(f: Pen, face: Face) {
   const n = parseInt(face.hair.slice(1), 16)
   const light = ((n >> 16) & 255) + ((n >> 8) & 255) + (n & 255) > 560
   const brow = light ? '#9b938a' : shade(face.hair, -0.25)
+  if (face.mood === 'hurt') {
+    // Drawn up towards the middle: worried, wounded.
+    f(brow, 16, 18, 3, 1)
+    f(brow, 19, 17, 3, 1)
+    f(brow, 26, 17, 3, 1)
+    f(brow, 29, 18, 3, 1)
+    return
+  }
   f(brow, 16, 18, 6, 1)
   f(brow, 17, 17, 4, 1)
   f(brow, 26, 18, 6, 1)
@@ -393,6 +405,19 @@ function drawNose(f: Pen, face: Face) {
 
 function drawMouth(f: Pen, face: Face) {
   const lip = face.look.body === 'female' ? '#c0565a' : shade(face.skin, -0.25)
+  if (face.mood === 'hurt') {
+    // Turned down at the corners, the lip pressed tight (a little open when they speak).
+    if (face.talk) f('#5a2228', 22, 29, 4, 1)
+    f(lip, 21, 28, 6, 1)
+    f(lip, 20, 29, 1, 1)
+    f(lip, 27, 29, 1, 1)
+    f(shade(face.skin, -0.12), 22, 30, 4, 1)
+    // Wet eyes: a bright line along the lower lids, and a tear on one cheek.
+    f('#d8eef8', 18, 24, 3, 1)
+    f('#d8eef8', 28, 24, 3, 1)
+    f('#bfe2f4', 30, 25, 1, 2)
+    return
+  }
   if (face.talk) {
     f('#5a2228', 21, 28, 6, 3)
     f('#fff8ef', 22, 28, 4, 1)

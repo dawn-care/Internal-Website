@@ -76,8 +76,8 @@ export const SEE_THROUGH_H = 5.6
 // --- darkness and light -----------------------------------------------------------------------
 
 /** How dark it is outside your circle of light (0–1): at the entry, deep in, and extra at night. */
-export const DARK_NEAR = 0.8
-export const DARK_DEEP = 0.94
+export const DARK_NEAR = 0.72
+export const DARK_DEEP = 0.9
 export const DARK_NIGHT = 0.05
 /** Depth (tiles) at which it's as dark as it gets. */
 export const DARK_FULL_AT = 70
@@ -85,8 +85,8 @@ export const DARK_FULL_AT = 70
 export const LIGHT_NEAR = 6
 export const LIGHT_DEEP = 3.6
 /** Fog: how many drifting banks, and how thick at most. */
-export const FOG_BANKS = 5
-export const FOG_ALPHA = 0.13
+export const FOG_BANKS = 9
+export const FOG_ALPHA = 0.16
 
 // --- sound ------------------------------------------------------------------------------------
 
@@ -96,6 +96,14 @@ export const FOREST_AMBIENCE = 0.5
 export const CROSS_FADE_MS = 2500
 /** The low synthesized rumble layered under the pet's growl or hiss (of the clip's volume). */
 export const PET_RUMBLE = 0.8
+/**
+ * The drone beds (recordings, see CLAUDE.md): `amb-forest-deep` comes in from DEEP_BED_FROM deep
+ * (0–1) and is full half the way on, at DEEP_BED; once you're lost `amb-forest-lost` takes over at
+ * LOST_BED. Both duck to half as an encounter's dread builds.
+ */
+export const DEEP_BED_FROM = 0.15
+export const DEEP_BED = 0.7
+export const LOST_BED = 0.9
 /** A twig snaps underfoot about this often (per step). */
 export const TWIG_CHANCE = 0.06
 
@@ -159,27 +167,64 @@ export const STAGE_LIGHT = [1, 0.85, 0.7, 0.55]
 /** Its dialogue types this much slower per stage, with a lower, rougher voice. */
 export const STAGE_TYPE_MS = [24, 40, 62, 90]
 export const STAGE_PITCH = [1, 0.8, 0.62, 0.45]
+/**
+ * Voices in the forest are louder than at home (over the wind and the drone), and low ones louder
+ * still (small speakers barely play low notes): up to VOICE_LOW_BOOST times as loud by the time a
+ * voice is down at VOICE_FLOOR Hz, which is as low as one goes.
+ */
+export const FOREST_VOICE = 2.2
+export const VOICE_LOW_BOOST = 2.2
+export const VOICE_FLOOR = 90
+/** Each blip lasts a little longer as a fake's typing slows (s, per stage). */
+export const STAGE_VOICE_S = [0.045, 0.055, 0.07, 0.09]
 /** It stands still this long (ms) before it comes for you. Slow dread, no jumpscare. */
 export const CHASE_PAUSE_MS = 1000
 /** Faster than your walk (3.3), slower than your hurry (5.2), and it never tires. */
-export const CHASE_SPEED = 4.1
+export const CHASE_SPEED = 3.8
 /** It loses you once you've stayed this far away in the dark for CHASE_LOSE_MS... */
-export const CHASE_LOSE = 11
+export const CHASE_LOSE = 10
 export const CHASE_LOSE_MS = 2000
 /** ...or once it has chased you this long without catching you (it loses heart, ms). */
-export const CHASE_GIVE_UP_MS = 30_000
+export const CHASE_GIVE_UP_MS = 20_000
 /** ...and catches you this close. */
 export const CHASE_CATCH = 0.7
 /** Once you've lost it, the chance it comes back later in the same trip, and when. */
 export const RETURN_CHANCE = 0.35
 export const RETURN_AFTER: [number, number] = FAST ? [8_000, 12_000] : [60_000, 150_000]
+/**
+ * During the chase your light flares back up to this much (stage 3 shrinks it to 0.55), so you can
+ * see where you're running.
+ */
+export const CHASE_LIGHT = 0.85
+/** It's drawn faintly even out in the dark beyond your light, this visible far off and close. */
+export const CHASE_SEEN = [0.3, 0.75]
+/**
+ * Dread builds before the chase, not only during it: the chase's sound and the red edge come in
+ * at this level at each stage of the transformation (0 before any refusal), stand at PAUSE_DREAD
+ * while it stands still, and start the chase at CHASE_DREAD (rising to 1 as it closes in).
+ */
+export const STAGE_DREAD = [0, 0.15, 0.28, 0.42]
+export const PAUSE_DREAD = 0.5
+export const CHASE_DREAD = 0.55
+/** The forest's wind drops away as dread builds (to this much at most): it holds its breath. */
+export const DREAD_HUSH = 0.75
+/** A slow rising swell of sound as each refusal changes it (volume). */
+export const SWELL = 0.6
+
+/** Your light gutters while it chases you: shrinking by up to this much, unevenly, as it closes. */
+export const CHASE_FLICKER = 0.12
+/** The edge of the screen darkens to red as it closes in, at most this much. */
+export const CHASE_VIGNETTE = 0.6
+/** How loud the chase's heartbeat and drone get at their closest (of full). */
+export const CHASE_SOUND = 1
+
 /** Following a fake: how long it leads you deeper (ms) before it's too late. */
 export const LED_MS = 5_500
 
 // --- stamina ----------------------------------------------------------------------------------
 
 /** Hurrying (Shift) drains it, walking or standing refills it (per second, of a full bar). */
-export const STAMINA_DRAIN = 0.15
+export const STAMINA_DRAIN = 0.11
 export const STAMINA_WALK = 0.08
 export const STAMINA_REST = 0.14
 /** Below this you're too tired to hurry until it's refilled a little. */
@@ -188,10 +233,77 @@ export const STAMINA_AGAIN = 0.25
 
 // --- looking at the photo ---------------------------------------------------------------------
 
-/** Holding the photo up to your light: it shrinks to this much while you look... */
+/**
+ * Holding the photo up to your light: it shrinks to this much (and flickers) while you look. They
+ * wait, real or fake, for as long as you like.
+ */
 export const LOOK_LIGHT = 0.6
-/** ...and a fake runs out of patience after this long (ms): it asks again, a stage further. */
-export const LOOK_PATIENCE_MS = 7_000
+
+// --- threats: things that can catch you between encounters ------------------------------------
+//
+// Each has a cue you can learn, and some cues are false alarms, so none can be ignored. Get it
+// right and nothing happens; get it a bit wrong and it costs you (light, stamina); get it badly
+// wrong and you're caught.
+
+/** The first threat comes this long into a trip (ms), then the next this long after the last. */
+export const THREAT_FIRST: [number, number] = FAST ? [5_000, 8_000] : [25_000, 50_000]
+export const THREAT_EVERY: [number, number] = FAST ? [10_000, 16_000] : [30_000, 70_000]
+/** Deeper and lost, they come more often: the gap shrinks to this much at most. */
+export const THREAT_DEEP_FASTER = 0.5
+/** The chance a cue is only a cue (nothing is there). */
+export const FALSE_ALARM = 0.35
+
+/** Footsteps behind you: rule, turn round. They're this far behind (tiles), closing as it nears. */
+export const STALK_FAR = 6
+export const STALK_NEAR = 1.2
+/** Not facing it, it takes this long (s) to reach you; the arm comes into your light from... */
+export const STALK_S = 9
+/** ...this far along (0–1). Turning round once the arm is in sight costs you your breath. */
+export const ARM_FROM = 0.42
+/** Out in the dark beyond your light, only this faint a trace of the arm shows (it's in full once in
+ * your light). */
+export const ARM_SEEN_IN_DARK = 0.18
+/** Turning to face it counts if you face within this of its way (cosine: 0.5 is ±60°). */
+export const FACE_DOT = 0.5
+/** Its steps fall this long (s) after yours, and it takes this many more after you stop. */
+export const STALK_LAG = 0.22
+export const STALK_EXTRA_STEPS = 1
+/** A false alarm's footsteps just stop after this long (s). */
+export const STALK_FALSE_S = 6
+
+/** The eyes: rule, never walk towards them. They open this far beyond the edge of your light... */
+export const EYES_BEYOND = 3
+/** ...stay open this long (ms) if left alone, then close. */
+export const EYES_MS = 12_000
+/** Walk this much closer and it takes some of your light; come within this many tiles and it has you. */
+export const EYES_APPROACH = 1.5
+export const EYES_CATCH = 2.2
+/** Back away this far and they close. */
+export const EYES_RETREAT = 2
+
+/** How strongly the face shows in the dark (it's dim greys, drawn at this much on top). */
+export const FACE_ALPHA = 0.5
+/** The tall dark shape it belongs to, drawn this faintly round the face (only just lighter than the
+ * night). */
+export const FIGURE_ALPHA = 0.75
+/** The smaller harms: your light shrinks by this much for the rest of the trip (each time)... */
+export const LIGHT_TAKEN = 0.18
+/** ...but never below this much of what it was. */
+export const LIGHT_LEAST = 0.45
+
+// --- being caught ------------------------------------------------------------------------------
+
+/**
+ * When something catches you: the grab, then a jumpscare (a random image filling the screen and a
+ * random scream, from retirement/scares, as in /game) for this long (ms), then the black screen and
+ * its line.
+ */
+export const SCARE_MS = 3000
+/** Before it, the grab (ms): your light collapses to nothing while the screen shakes, with a heavy
+ * hit and the crack of bones. Then the jumpscare. */
+export const CAUGHT_GRAB_MS = 1000
+/** How far the screen shakes at the start of the grab (px, fading to nothing). */
+export const CAUGHT_SHAKE = 3
 
 // --- the collapse -----------------------------------------------------------------------------
 

@@ -22,6 +22,10 @@ import {
   CHASE_CATCH,
   CHASE_LOSE,
   CHASE_GIVE_UP_MS,
+  CHASE_DREAD,
+  CHASE_LIGHT,
+  PAUSE_DREAD,
+  STAGE_DREAD,
   CHASE_LOSE_MS,
   CHASE_PAUSE_MS,
   CHASE_SPEED,
@@ -30,11 +34,14 @@ import {
   ENCOUNTER_SPAWN,
   ENCOUNTER_TALK,
   FAKE_ASKS,
+  FOREST_VOICE,
+  VOICE_FLOOR,
+  VOICE_LOW_BOOST,
+  STAGE_VOICE_S,
   FAKE_PER_MINUTE,
   FAKE_PER_TILE,
   LED_MS,
   LOOK_LIGHT,
-  LOOK_PATIENCE_MS,
   NURSE_CHANCE,
   PERSON_SPEED,
   REAL_CHANCE,
@@ -105,16 +112,21 @@ export interface Host {
   /** The photo next to the person in front of you; `onClose` when you put it away. */
   compare(person: Person, onClose: () => void): void
   closePanel(): void
-  /** A step on the leaves, from (x, y). */
-  step(x: number, y: number): void
+  /** A step on the leaves, from (x, y); `heavy` while it runs at you. */
+  step(x: number, y: number, heavy?: boolean): void
   /** The trip ends on a black screen with a line: home (notes kept) or caught (the infirmary). */
-  end(kind: 'home' | 'caught', line: string): void
+  end(kind: 'home' | 'caught', line: string, who?: Person): void
   /** Straight-line distance from where you came in (deeper means more fakes). */
   depth(): number
   /** Whether people may turn up now (not mid-collapse, not leaving). */
   quiet(): boolean
   /** Whether a dialogue or panel is open (someone is talking to you). */
   talking(): boolean
+  /** A slow rising swell of sound as it changes (stage 1–3). */
+  swell(stage: number): void
+  /** A recorded sound from (x, y): flesh as it changes, bones as it stretches, the rise as it
+   * comes for you, a moan as it loses you. */
+  play(name: 'flesh' | 'bones' | 'rise' | 'moan', x: number, y: number, volume?: number): void
 }
 
 const between = ([a, b]: [number, number]) => a + Math.random() * (b - a)
@@ -135,9 +147,25 @@ export class Encounters {
   lightScale(time: number): number {
     const p = this.person
     if (!p) return 1
+    // Running for your life, the light flares back up so you can see where you're going.
+    if (p.phase === 'chase') return CHASE_LIGHT
     let k = STAGE_LIGHT[Math.min(3, p.stage)] ?? 1
     if (p.phase === 'compare') k *= LOOK_LIGHT + Math.sin(time / 60) * 0.04
     return k
+  }
+
+  /**
+   * How close the chase is, for its sound and the red at the edge of the screen: 0 (no chase),
+   * about half while it stands still, rising to 1 as it closes in.
+   */
+  chaseLevel(): number {
+    const p = this.person
+    if (!p) return 0
+    if (p.phase === 'pause') return PAUSE_DREAD
+    if (p.phase === 'lead') return 0
+    if (p.phase !== 'chase') return STAGE_DREAD[Math.min(3, p.stage)] ?? 0
+    const d = Math.hypot(p.x - this.host.me.x, p.y - this.host.me.y)
+    return Math.max(CHASE_DREAD, Math.min(1, 1 - (d - 1) / (CHASE_LOSE + 2)))
   }
 
   /**
@@ -211,10 +239,9 @@ export class Encounters {
         }
         break
       case 'compare':
-        if (p.t > LOOK_PATIENCE_MS) {
-          this.host.closePanel()
-          this.afterLooking(p, true)
-        }
+        // Real or fake, they wait while you look (the cost is your light). If the photo was put
+        // away without "Put it away" (Escape), the conversation carries on.
+        if (!this.host.talking()) this.afterLooking(p)
         break
       case 'leave': {
         // Walking away into the dark, the way they came.
@@ -238,7 +265,7 @@ export class Encounters {
         }
         if (p.t > LED_MS) {
           this.person = null
-          this.host.end('caught', caughtLine(p.rel))
+          this.host.end('caught', caughtLine(p.rel), p)
         }
         break
       }
@@ -253,9 +280,10 @@ export class Encounters {
         p.far = dist > CHASE_LOSE ? p.far + ms : 0
         if (dist < CHASE_CATCH) {
           this.person = null
-          this.host.end('caught', caughtLine(p.rel))
+          this.host.end('caught', caughtLine(p.rel), p)
         } else if (p.far > CHASE_LOSE_MS || p.t > CHASE_GIVE_UP_MS) {
-          // Lost in the dark. It may come back.
+          // Lost in the dark: it moans away into the trees. It may come back.
+          this.host.play('moan', p.x, p.y, 0.8)
           if (Math.random() < RETURN_CHANCE) {
             this.comeBack = between(RETURN_AFTER)
             this.comeBackAs = p
@@ -342,9 +370,12 @@ export class Encounters {
     return p.nurse ? NURSE_SCRIPT : FAMILY_SCRIPT
   }
 
-  private say(p: Person, lines: string[], choices: boolean, onDone?: () => void) {
+  private say(p: Person, lines: string[], choices: boolean, onDone?: () => void, mood?: 'hurt') {
     const v = { calls: p.calls, name: p.name, you: this.host.save.look.name, rel: String(p.rel) }
     const stage = p.stage
+    const voicePitch = Math.max(VOICE_FLOOR, p.pitch * STAGE_PITCH[stage])
+    // 0 for a voice at 300 Hz or higher, 1 down at the floor.
+    const lowness = Math.max(0, Math.min(1, (300 - voicePitch) / (300 - VOICE_FLOOR)))
     const opts: DialogueOptions = {
       look: p.look,
       old:
@@ -356,11 +387,14 @@ export class Encounters {
           p.rel === 'brother'),
       badge: p.badge,
       eye: p.eye,
-      pitch: p.pitch * STAGE_PITCH[stage],
+      pitch: voicePitch,
+      voiceVolume: FOREST_VOICE * (1 + (VOICE_LOW_BOOST - 1) * lowness),
+      voiceMs: STAGE_VOICE_S[stage],
       typeMs: STAGE_TYPE_MS[stage],
       wave: stage >= 2 ? 'sawtooth' : stage === 1 ? 'square' : 'triangle',
       garble: stage / 3,
       fake: !p.real ? { stage, noBlink: p.tells.has('blink') } : undefined,
+      mood,
       onDone,
     }
     if (choices) {
@@ -410,10 +444,16 @@ export class Encounters {
   private refuse(p: Person) {
     if (p.real) {
       // Sad, but safe: they're hurt and leave, and that's one way home gone.
-      return this.say(p, this.script(p).hurt, false, () => {
-        p.phase = 'leave'
-        p.t = 0
-      })
+      return this.say(
+        p,
+        this.script(p).hurt,
+        false,
+        () => {
+          p.phase = 'leave'
+          p.t = 0
+        },
+        'hurt',
+      )
     }
     this.pushFurther(p)
   }
@@ -422,12 +462,18 @@ export class Encounters {
   private pushFurther(p: Person) {
     p.asks++
     p.stage = Math.min(3, p.stage + 1)
+    this.host.swell(p.stage)
+    // Its flesh shifts as the colour drains (stage 2); at 3 it stretches, and you hear the bones.
+    if (p.stage >= 2) this.host.play('flesh', p.x, p.y, p.stage === 2 ? 0.7 : 1)
+    if (p.stage >= 3) window.setTimeout(() => this.host.play('bones', p.x, p.y), 700)
     const again = this.script(p).again
     const line = again[Math.min(again.length - 1, p.asks - 1)]
     if (p.asks >= FAKE_ASKS) {
       this.say(p, [line], false, () => {
         p.phase = 'pause'
         p.t = 0
+        // A rise that peaks just as it starts towards you.
+        this.host.play('rise', p.x, p.y)
       })
     } else this.say(p, [line], true)
   }
@@ -437,15 +483,14 @@ export class Encounters {
     p.phase = 'compare'
     p.t = 0
     this.host.compare(p, () => {
-      if (this.person === p && p.phase === 'compare') this.afterLooking(p, false)
+      if (this.person === p && p.phase === 'compare') this.afterLooking(p)
     })
   }
 
-  /** Back from the photo: a real one waits; a fake that waited too long is a stage further. */
-  private afterLooking(p: Person, tooLong: boolean) {
+  /** Back from the photo: they ask again, the same whether they're real or not. */
+  private afterLooking(p: Person) {
     p.phase = 'talk'
     p.t = 0
-    if (tooLong && !p.real) return this.pushFurther(p)
     this.say(p, ["What is it, {calls}? It's getting dark. Come on."], true)
   }
 
@@ -479,7 +524,9 @@ export class Encounters {
       const was = Math.floor(p.anim) % 4
       p.anim += dt * (chase ? 9 : 7)
       const now = Math.floor(p.anim) % 4
-      if (now !== was && (now === 1 || now === 3) && !p.tells.has('steps')) this.host.step(p.x, p.y)
+      // Once it's chasing you the pretending is over: you hear it coming, whatever it was hiding.
+      if (now !== was && (now === 1 || now === 3) && (chase || !p.tells.has('steps')))
+        this.host.step(p.x, p.y, chase)
       return true
     }
     p.anim = 0

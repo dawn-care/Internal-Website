@@ -117,12 +117,17 @@ export interface DialogueOptions {
   badge?: 'sunset' | 'hollow'
   /** A different eye colour (a fake's tell). */
   eye?: string
+  /** A facial expression for the portrait (a real relative you've turned away is hurt). */
+  mood?: 'hurt'
   /** A fake from the forest: its transformation stage, and whether it never blinks. */
   fake?: FakeFace
   /** Letters type out this slowly (ms each); the forest's fakes slow down as they change. */
   typeMs?: number
   /** The voice blip's waveform (rougher for the fakes). */
   wave?: OscillatorType
+  /** How loud the voice blip is (1 is the usual), and how long each one lasts (s). */
+  voiceVolume?: number
+  voiceMs?: number
   /** 0–1: letters shake and swap places as they type (the fakes, as they give up pretending). */
   garble?: number
 }
@@ -706,7 +711,7 @@ export class UI {
       c.clearRect(0, 0, PORTRAIT, PORTRAIT)
       // Nurse Ada always wears her Sunset Acres badge, so you know it when you see the other one.
       const badge = t.opts.badge ?? (t.who === 'Nurse Ada' ? 'sunset' : undefined)
-      const o = { old: t.opts.old, talk, blink, badge, eye: t.opts.eye }
+      const o = { old: t.opts.old, talk, blink, badge, eye: t.opts.eye, mood: t.opts.mood }
       c.drawImage(t.opts.fake ? fakePortrait(look, o, t.opts.fake) : portrait(look, o), 0, 0)
       tick++
     }
@@ -733,7 +738,8 @@ export class UI {
       if (!this.talk || this.talk !== t) return
       t.shown++
       const ch = line[t.shown - 1]
-      if (ch && /[a-z0-9]/i.test(ch) && t.shown % 2 === 1) voice(t.opts.pitch ?? 440, t.opts.wave)
+      if (ch && /[a-z0-9]/i.test(ch) && t.shown % 2 === 1)
+        voice(t.opts.pitch ?? 440, t.opts.wave, t.opts.voiceVolume, t.opts.voiceMs)
       this.paintLine()
       if (t.shown >= line.length) window.clearInterval(t.timer)
     }, t.opts.typeMs ?? TYPE_MS)

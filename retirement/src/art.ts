@@ -1226,55 +1226,171 @@ function groundShadow(c: Ctx, x: number, y: number, w: number) {
   c.globalCompositeOperation = 'source-over'
 }
 
-/** The forest's own trees (src/forest), also used for the treeline round the grounds. */
+/*
+ * The forest's own trees (src/forest), also used for the treeline round the grounds. Nothing
+ * like the property's: crooked, leaning, asymmetric, bare branches reaching like fingers, ragged
+ * near-black pines with gaps and broken limbs. Built by growing limbs that wander as they go,
+ * taper, split, and end in twigs that hook down.
+ */
 
-/** A tall dark pine: tiers of near-black needles, a thin trunk. 48 × 96, trunk on the bottom tile. */
+/** Steady random numbers for the forest's art (the same tree every time). */
+const frand = (a: number, b: number) => hash(a, b, 2207)
+
+/**
+ * Grows a limb from (x, y) at angle `ang` (radians, up is -π/2): it wanders a little as it goes,
+ * tapers from `th` px, and splits `depth` more times into smaller limbs. Twig ends hook downwards.
+ * Draws the near side lit (`lit`) and the rest in `bark`.
+ */
+function limb(
+  f: Pen,
+  x: number,
+  y: number,
+  ang: number,
+  len: number,
+  th: number,
+  depth: number,
+  seed: number,
+  bark: string,
+  lit: string,
+  tips?: (x: number, y: number) => void,
+) {
+  let a = ang
+  for (let i = 0; i < len; i++) {
+    const t = i / len
+    // Thick limbs wander a little, twigs a lot.
+    a += (frand(seed, i) - 0.5) * (depth >= 2 ? 0.12 : 0.35)
+    // The thinnest twigs droop at the end, like fingers curling.
+    if (depth === 0 && t > 0.55) a += 0.08
+    x += Math.cos(a)
+    y += Math.sin(a)
+    const w = Math.max(1, Math.round(th * (1 - t * 0.55)))
+    f(bark, Math.round(x - w / 2), Math.round(y), w, 1)
+    if (w > 1) f(lit, Math.round(x - w / 2), Math.round(y), 1, 1)
+  }
+  if (depth <= 0) {
+    tips?.(x, y)
+    return
+  }
+  const n = 2 + (frand(seed, 99) < 0.4 ? 1 : 0)
+  for (let k = 0; k < n; k++) {
+    const spread = (k - (n - 1) / 2) * (0.55 + frand(seed, k + 7) * 0.4)
+    limb(
+      f,
+      x,
+      y,
+      a + spread,
+      len * (0.55 + frand(seed, k + 11) * 0.25),
+      th * 0.62,
+      depth - 1,
+      seed * 7 + k + 1,
+      bark,
+      lit,
+      tips,
+    )
+  }
+}
+
+/** Roots clawing out over the ground from the foot of a trunk at (x, y). */
+function roots(f: Pen, x: number, y: number, seed: number, bark: string) {
+  for (let k = 0; k < 4; k++) {
+    let rx = x + (k - 1.5) * 2
+    let ry = y
+    const dir = k < 2 ? -1 : 1
+    const len = 5 + Math.floor(frand(seed, k + 30) * 6)
+    for (let i = 0; i < len; i++) {
+      rx += dir * (0.8 + frand(seed, k * 13 + i) * 0.5)
+      ry += frand(seed, k * 17 + i) < 0.35 ? 1 : 0
+      f(bark, Math.round(rx), Math.round(ry), 1, 1)
+    }
+  }
+}
+
+/**
+ * A ragged pine, too tall and almost black: a thin trunk, tiers of needles of uneven width with
+ * gaps where branches have died, a few dead grey limbs low down, the top bent or snapped.
+ * 48 × 96, trunk on the bottom tile.
+ */
 export function darkPineSprite(v: number): HTMLCanvasElement {
   return cachedCtx(`fpine${v}`, 48, 96, (c) => {
     const f = pen(c)
-    f('#2e2118', 21, 78, 6, 15)
-    f('#3d2c20', 22, 78, 2, 15)
-    const tiers = 6
-    for (let i = 0; i < tiers; i++) {
-      const top = 1 + i * 13
-      for (let r = 0; r < 18; r++) {
-        const half = Math.min(22, Math.floor(2 + (r + i * 2.6) * 0.8))
-        const y = top + r
-        f('#16301f', 24 - half, y, half * 2, 1)
-        f('#1f3d27', 24 - half, y, Math.floor(half * 1.2), 1)
-        if (r % 3 === 1)
-          for (let x = 24 - half + 2; x < 24 + half - 2; x += 4)
-            f(x < 24 ? '#2e5234' : '#12261a', x + ((r + v) % 2), y, 2, 1)
-      }
-      const half = Math.min(22, Math.floor(2 + (17 + i * 2.6) * 0.8))
-      for (let x = 24 - half; x < 24 + half; x += 3)
-        f('#16301f', x, top + 18, 2, 1 + Math.floor(hash(x, i, 1301 + v) * 2))
+    const lean = v % 2 ? 1 : -1
+    const trunkX = (y: number) => 23 + Math.round(lean * ((96 - y) / 96) * 3)
+    for (let y = 6; y < 94; y++) {
+      f('#151110', trunkX(y), y, 3, 1)
+      f('#2a221e', trunkX(y), y, 1, 1)
     }
-    outlineCanvas(c, 48, 96, [0x10, 0x14, 0x12])
+    roots(f, 24, 93, 400 + v, '#151110')
+    // Tiers of needles: ragged, lopsided, some missing altogether.
+    for (let i = 0; i < 7; i++) {
+      if (frand(i, v + 3) < 0.18 && i > 1 && i < 6) continue
+      const top = 4 + i * 11
+      const rows = 12
+      for (let r = 0; r < rows; r++) {
+        const y = top + r
+        const base = Math.min(20, 2 + (r + i * 2.2) * 0.85)
+        const left = Math.round(base * (0.7 + frand(i * 31 + r, v) * 0.5))
+        const right = Math.round(base * (0.7 + frand(i * 37 + r, v + 1) * 0.5))
+        const cx = trunkX(y) + 1
+        f('#121a15', cx - left, y, left + right, 1)
+        if (r % 3 === 1)
+          for (let x = cx - left + 1; x < cx + right - 1; x += 3)
+            f(x < cx ? '#24342a' : '#0a100c', x, y, 1, 1)
+      }
+      // Ragged hem: needles hanging down in uneven tufts.
+      const hem = Math.min(20, 2 + (rows - 1 + i * 2.2) * 0.85)
+      for (let x = -hem; x < hem; x += 2)
+        if (frand(x + 50, i + v) < 0.7)
+          f('#121a15', trunkX(top + rows) + 1 + x, top + rows, 1, 1 + Math.floor(frand(x, i) * 3))
+    }
+    // Dead grey limbs low down, bare and broken.
+    for (let k = 0; k < 3; k++) {
+      const y = 70 + k * 6
+      const side = k % 2 ? 1 : -1
+      limb(
+        f,
+        trunkX(y) + 1,
+        y,
+        -Math.PI / 2 + side * 1.25,
+        8 + k * 2,
+        1,
+        1,
+        900 + v * 5 + k,
+        '#2c2724',
+        '#3f3833',
+      )
+    }
+    outlineCanvas(c, 48, 96, [0x05, 0x06, 0x06])
     groundShadow(c, 12, 91, 24)
   })
 }
 
-/** A dark broad-leaved tree: heavy clumps of murky green. 64 × 84. */
+/**
+ * A gnarled tree: a thick, twisted, leaning trunk splitting into bare limbs that reach and claw,
+ * with only a few dark tatters of leaves left. 64 × 84, trunk on the bottom tile.
+ */
 export function darkTreeSprite(v: number): HTMLCanvasElement {
   return cachedCtx(`ftree${v}`, 64, 84, (c) => {
     const f = pen(c)
-    f('#2e2118', 28, 50, 8, 31)
-    f('#3d2c20', 29, 50, 3, 31)
-    f('#2e2118', 23, 78, 18, 3)
-    disc(f, 32, 32, 28, 26, '#14281c')
-    for (let i = 0; i < 16; i++) {
-      const a = hash(i, v, 1311) * Math.PI * 2
-      const dd = Math.sqrt(hash(v, i, 1312)) * 20
-      const x = 32 + Math.cos(a) * dd
-      const y = 30 + Math.sin(a) * dd * 0.85
-      const r = 6 + hash(i, i, 1313 + v) * 3
-      disc(f, x + 0.6, y + 1, r, r * 0.85, '#193524')
-      disc(f, x, y, r * 0.85, r * 0.7, '#22432d')
-      disc(f, x - r * 0.3, y - r * 0.35, r * 0.4, r * 0.3, '#305636')
-    }
-    outlineCanvas(c, 64, 84, [0x10, 0x14, 0x12])
-    groundShadow(c, 14, 79, 36)
+    const bark = '#1c1715'
+    const lit = '#3a312c'
+    const lean = [-0.25, 0.18, 0.32][v % 3]
+    // Leaves: a few dark, ragged tatters clinging to the ends.
+    const tatters: [number, number][] = []
+    limb(f, 32, 82, -Math.PI / 2 + lean, 26 + v * 3, 10, 3, 77 + v * 13, bark, lit, (x, y) => {
+      if (frand(Math.round(x), Math.round(y)) < 0.45) tatters.push([x, y])
+    })
+    for (const [x, y] of tatters)
+      for (let k = 0; k < 5; k++)
+        f(
+          k % 2 ? '#141c15' : '#1d2a1e',
+          Math.round(x + (frand(x, k) - 0.5) * 6),
+          Math.round(y + (frand(y, k) - 0.5) * 4),
+          2,
+          1,
+        )
+    roots(f, 32, 82, 300 + v, bark)
+    outlineCanvas(c, 64, 84, [0x05, 0x05, 0x06])
+    groundShadow(c, 18, 80, 28)
   })
 }
 
@@ -1297,37 +1413,21 @@ export function undergrowthSprite(v: number): HTMLCanvasElement {
 }
 
 /**
- * A dead tree: a grey trunk with bare, crooked branches. 48 × 88. In the forest and out in the
- * far outskirts of the grounds.
+ * A dead tree: a grey, twisted trunk, leaning, its top snapped off, bare branches reaching and
+ * hooking like fingers. 48 × 88, in the forest and out in the far outskirts of the grounds.
  */
 export function deadTreeSprite(v: number): HTMLCanvasElement {
   return cachedCtx(`dead${v}`, 48, 88, (c) => {
     const f = pen(c)
-    const bark = '#4a4440'
-    const lit = '#6a625a'
-    f(bark, 21, 30, 6, 55)
-    f(lit, 22, 30, 2, 55)
-    f(bark, 17, 82, 14, 3)
-    // Branches: crooked lines going up and out, each with a twig or two.
-    const branch = (x: number, y: number, dx: number, len: number) => {
-      let bx = x
-      let by = y
-      for (let i = 0; i < len; i++) {
-        bx += dx
-        by -= i % 2 === 0 ? 1 : hash(i, v, 1321) < 0.5 ? 1 : 0
-        f(bark, Math.round(bx), by, 2, 2)
-        if (i === Math.floor(len / 2)) f(bark, Math.round(bx), by - 3, 1, 3)
-      }
-      f(lit, Math.round(bx), by, 1, 1)
-    }
-    branch(24, 44, -1, 12 + v)
-    branch(24, 38, 1, 13 - v)
-    branch(23, 30, -0.6, 10)
-    branch(24, 28, 0.7, 11)
-    f(bark, 23, 8, 2, 22)
-    branch(24, 18, -0.8, 7)
-    branch(24, 14, 0.9, 6)
-    outlineCanvas(c, 48, 88, [0x10, 0x14, 0x12])
+    const bark = '#3a3532'
+    const lit = '#5c5550'
+    const lean = [-0.18, 0.12, 0.26][v % 3]
+    // The trunk itself: thick, splitting low into two or three limbs that split again.
+    limb(f, 24, 86, -Math.PI / 2 + lean, 30 + v * 4, 7, 3, 500 + v * 17, bark, lit)
+    // A snapped stub where the top broke off.
+    f(bark, 23 + Math.round(lean * 30), 50 - v * 4, 3, 2)
+    roots(f, 24, 86, 600 + v, bark)
+    outlineCanvas(c, 48, 88, [0x10, 0x10, 0x12])
     groundShadow(c, 12, 84, 24)
   })
 }

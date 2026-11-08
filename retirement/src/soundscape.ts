@@ -133,6 +133,13 @@ const CLIPS = {
   // Your pet at the treeline (FOREST.md "Your pet").
   growl: { files: ['pet-growl'], gain: 0.4 },
   hiss: { files: ['pet-hiss'], gain: 0.36 },
+  // The forest's moments (cut from the recordings in sounds/, see CLAUDE.md).
+  bones: { files: ['forest-bones'], gain: 0.5 },
+  flesh: { files: ['forest-flesh'], gain: 0.5 },
+  rise: { files: ['forest-rise'], gain: 0.42 },
+  impact: { files: ['forest-impact'], gain: 0.4 },
+  moan: { files: ['forest-moan'], gain: 0.4 },
+  breath: { files: ['forest-breath'], gain: 0.55 },
 }
 export type Clip = keyof typeof CLIPS
 export type PetSound = 'bark' | 'whine' | 'pant' | 'meow' | 'purr'
@@ -345,4 +352,36 @@ export function initSoundscape() {
     applied = ''
     apply(800)
   })
+}
+
+// --- the forest's drone beds -------------------------------------------------------------------
+
+/**
+ * Two drone beds under the forest's (synthesized) wind: `amb-forest-deep` rising as you go deeper,
+ * and `amb-forest-lost` taking over once you're past the point of no return. Each is a loop like
+ * the birdsong (2s fades baked in). Call every frame with the levels (0–1); cheap: it acts on
+ * changes, and goes quiet while muted or hidden.
+ */
+const forestBeds = new Map<string, Loop>()
+let forestApplied = ''
+export function setForestBeds(deep: number, lost: number) {
+  const off = isMuted() || document.hidden || !unlocked
+  const q = (v: number) => (off ? 0 : Math.round(Math.max(0, Math.min(1, v)) * 20) / 20)
+  const want: [string, number][] = [
+    ['amb-forest-deep', q(deep)],
+    ['amb-forest-lost', q(lost)],
+  ]
+  const key = want.map(([, v]) => v).join('|')
+  if (key === forestApplied) return
+  forestApplied = key
+  for (const [name, level] of want) {
+    let loop = forestBeds.get(name)
+    if (!loop && level > 0) {
+      const src = url(name)
+      if (!src) continue
+      loop = new Loop(src)
+      forestBeds.set(name, loop)
+    }
+    if (loop && (level > 0 || loop.audible)) loop.fade(level, 3000)
+  }
 }

@@ -131,8 +131,8 @@ export function sfx(kind: Sfx) {
  * pitch; a little random wobble keeps it from sounding mechanical. (The forest's distorted voices
  * can build on this with a lower pitch and a rougher wave.)
  */
-export function voice(pitch: number, wave: OscillatorType = 'triangle') {
+export function voice(pitch: number, wave: OscillatorType = 'triangle', volume = 1, dur = 0.045) {
   if (muted) return
   if (!audioContext()) return
-  tone(pitch * (0.94 + Math.random() * 0.12), 0.045, wave, 0.035)
+  tone(pitch * (0.94 + Math.random() * 0.12), dur, wave, Math.min(0.2, 0.035 * volume))
 }

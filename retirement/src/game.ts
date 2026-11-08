@@ -68,7 +68,15 @@ import {
   renderGround,
 } from './art'
 import { sfx } from './audio'
-import { footstep, hasClip, petSound, playClip, setAmbience, type Surface } from './soundscape'
+import {
+  footstep,
+  hasClip,
+  petSound,
+  playClip,
+  setAmbience,
+  setForestBeds,
+  type Surface,
+} from './soundscape'
 import { setMusicLevel } from './music'
 import { TREELINE } from '../shared/grounds'
 import { Forest } from './forest/gen'
@@ -82,11 +90,36 @@ import {
   lightRadius,
   outskirtsGrade,
 } from './forest/light'
-import { hushWarnings, setForestAmbience, synthWarning, twigSnap } from './forest/sound'
+import {
+  hushWarnings,
+  setChase,
+  setForestAmbience,
+  swell,
+  threatSound,
+  stomp,
+  synthWarning,
+  twigSnap,
+} from './forest/sound'
 import { Encounters, type Host, type Person } from './forest/encounter'
+import { prepareScare, showScare, type Scare } from './forest/scare'
+import { Threats, drawArm, drawFace, type ThreatHost } from './forest/threats'
 import {
   BIRDS_AT_TREELINE,
   CHUNK,
+  ARM_FROM,
+  ARM_SEEN_IN_DARK,
+  CAUGHT_GRAB_MS,
+  CAUGHT_SHAKE,
+  CHASE_FLICKER,
+  SCARE_MS,
+  LIGHT_LEAST,
+  LIGHT_TAKEN,
+  DEEP_BED,
+  DEEP_BED_FROM,
+  DREAD_HUSH,
+  LOST_BED,
+  CHASE_SEEN,
+  CHASE_VIGNETTE,
   COLLAPSE_FADE_MS,
   COLLAPSE_HOLD_MS,
   COLLAPSE_MS,
@@ -223,9 +256,24 @@ export class Game {
     lostFor: number
     deep: number
     /** The trip is ending on a black screen with a line (ms since it began), then where to. */
-    end: { kind: 'collapse' | 'caught' | 'home'; t: number; line: string } | null
+    end: {
+      kind: 'collapse' | 'caught' | 'home'
+      t: number
+      line: string
+      /** An impostor that caught you (its face is shown), or a threat (the face in the dark). */
+      who?: Person
+      face?: boolean
+      /** The jumpscare has been shown (after the grab). */
+      scared?: boolean
+    } | null
     /** People who find you (FOREST.md "Encounters"). */
     enc: Encounters
+    /** Things that can catch you between encounters (footsteps behind you, the eyes). */
+    threats: Threats
+    /** How much of your light is left after things have taken some (1 is all of it). */
+    lightLeft: number
+    /** The jumpscare this trip will use if something catches you (loaded up front). */
+    scare: Scare
     /** 0–1: hurrying drains it, walking refills it. */
     stamina: number
     /** Ran out: no hurrying until it's refilled a little. */
@@ -3133,6 +3181,9 @@ export class Game {
       deep: 0,
       end: null,
       enc: new Encounters(this.encounterHost()),
+      threats: new Threats(this.threatHost()),
+      lightLeft: 1,
+      scare: prepareScare(),
       stamina: 1,
       tired: false,
     }
@@ -3153,10 +3204,16 @@ export class Game {
     const t = this.trip!
     if (t.end) {
       t.end.t += dt * 1000
-      if (t.end.t > COLLAPSE_FADE_MS + COLLAPSE_HOLD_MS) this.finishTrip(t.end.kind)
+      if (t.end.kind === 'caught' && !t.end.scared && t.end.t >= CAUGHT_GRAB_MS) {
+        t.end.scared = true
+        showScare(t.scare, SCARE_MS)
+      }
+      if (t.end.t > endLineAt(t.end.kind) + COLLAPSE_HOLD_MS) this.finishTrip(t.end.kind)
       return
     }
     t.enc.update(dt)
+    if (t.end) return
+    t.threats.update(dt)
     if (t.end) return
     const depth = f.depth(this.me.x, this.me.y)
     t.deep = deepness(depth)
@@ -3168,7 +3225,8 @@ export class Game {
     } else {
       t.lostFor += dt * 1000
       // The safety net: lost long enough, you sit down among the roots and wake up at home.
-      if (t.lostFor > COLLAPSE_MS && !t.enc.busy()) this.endTrip('collapse', COLLAPSE_LINE)
+      if (t.lostFor > COLLAPSE_MS && !t.enc.busy() && !t.threats.busy())
+        this.endTrip('collapse', COLLAPSE_LINE)
     }
     f.prune(this.me.x, this.me.y)
     const vx = this.vw / TS / 2 + 4
@@ -3189,11 +3247,29 @@ export class Game {
   }
   private warmTick = 0
 
+  /** The stalker's breath, playing while its arm reaches in. */
+  private stalkerBreath: GainNode | undefined
+  private hushBreath() {
+    const g = this.stalkerBreath
+    if (g) g.gain.setTargetAtTime(0, g.context.currentTime, 0.25)
+    this.stalkerBreath = undefined
+  }
+
   /** The trip ends: the screen goes black with a line, then home or the infirmary. */
-  private endTrip(kind: 'collapse' | 'caught' | 'home', line: string) {
+  private endTrip(kind: 'collapse' | 'caught' | 'home', line: string, who?: Person, face = false) {
     const t = this.trip
     if (!t || t.end) return
-    t.end = { kind, t: 1, line }
+    t.end = { kind, t: 1, line, who, face }
+    this.hushBreath()
+    // Caught: a jumpscare, as in /game (an image filling the screen, a scream), then the black
+    // screen and its line.
+    // Caught: first the grab (a heavy hit and the crack of bones as your light collapses), then,
+    // right after it, the jumpscare (see updateForest).
+    if (kind === 'caught') {
+      swell(3)
+      playClip('impact', 1)
+      window.setTimeout(() => playClip('bones', 0.9), 250)
+    }
     this.keys.clear()
     this.ui.closeDialogue()
     if (this.ui.panelOpen()) this.ui.closePanel()
@@ -3235,11 +3311,26 @@ export class Game {
   private updateSound(hour: number) {
     let music: number
     const f = this.forest
+    // Caught: your heart races through the grab, then stops.
+    const end = this.trip?.end
+    const grabbing = end?.kind === 'caught' && end.t < CAUGHT_GRAB_MS
+    setChase(!this.trip ? 0 : end ? (grabbing ? 1 : 0) : this.trip.enc.chaseLevel())
     if (f) {
       setAmbience(hour, 'none')
-      setForestAmbience(this.trip?.end ? 0 : 1)
+      // The wind drops away as dread builds: the forest holds its breath.
+      const dread = this.trip && !this.trip.end ? this.trip.enc.chaseLevel() : 0
+      const hush = 1 - DREAD_HUSH * Math.min(1, dread * 1.6)
+      setForestAmbience(this.trip?.end ? 0 : hush)
+      // Drone beds under it: one rising as you go deeper, a heavier one once you're lost.
+      const deep = this.trip?.deep ?? 0
+      const under = this.trip?.end ? 0 : 0.5 + 0.5 * hush
+      setForestBeds(
+        f.lost ? 0 : Math.max(0, Math.min(1, (deep - DEEP_BED_FROM) / 0.5)) * DEEP_BED * under,
+        f.lost ? LOST_BED * under : 0,
+      )
       music = 0
     } else {
+      setForestBeds(0, 0)
       const w = this.mapId === 'grounds' ? outskirts(this.me.x, this.me.y) : 0
       // Out past WIND_FROM the forest's wind starts to reach you, over the silence.
       setForestAmbience(Math.max(0, (w - WIND_FROM) / (1 - WIND_FROM)) * WIND_AT_TREELINE)
@@ -3293,11 +3384,11 @@ export class Game {
   }
 
   /** Someone who found you: their sprite (a fake's changing), with no shadow if that's a tell. */
-  private drawForestPerson(p: Person, ox: number, oy: number) {
+  private drawForestPerson(p: Person, ox: number, oy: number, shadow = true) {
     const c = this.ctx
     const px = Math.round(p.x * TS + ox)
     const py = Math.round(p.y * TS + oy)
-    if (!p.tells.has('shadow')) {
+    if (shadow && !p.tells.has('shadow')) {
       c.fillStyle = 'rgba(0,0,0,0.2)'
       c.fillRect(px - 5, py - 1, 10, 2)
       c.fillRect(px - 4, py - 2, 8, 4)
@@ -3325,6 +3416,83 @@ export class Game {
     this.ui.setStamina(t.stamina, t.tired)
   }
 
+  /** Your light's radius now, in tiles (depth, a fake changing, the photo held up, what's been taken). */
+  private lightTiles(): number {
+    const t = this.trip!
+    return lightRadius(t.deep) * t.enc.lightScale(this.time) * t.lightLeft
+  }
+
+  /** The threats' cues, drawn over the darkness so you see them out in the dark. */
+  /**
+   * The threats' cues. Drawn twice: `under` the darkness (the arm, as solid as you are, so it's only
+   * really seen once it creeps into your light) and `over` it (the face and its shape, and a faint
+   * trace of the arm out in the dark, so you can only just make it out).
+   */
+  private drawThreats(th: Threats, ox: number, oy: number, layer: 'under' | 'over') {
+    const c = this.ctx
+    const now = th.now
+    if (!now) return
+    const mx = this.me.x * TS + ox
+    const my = (this.me.y - 0.6) * TS + oy
+    if (now.kind === 'eyes') {
+      if (layer === 'under') return
+      const open = now.closing ? Math.max(0, 1 - now.closing / 900) : Math.min(1, now.t / 1600)
+      drawFace(c, now.x * TS + ox, (now.y - 1) * TS + oy, open, now.took, this.time)
+      return
+    }
+    // The arm: creeping into your light from behind once it's close, out of the dark. It starts
+    // slow and speeds up (eased), and fades in over its first stretch rather than appearing.
+    if (!now.real || now.near < ARM_FROM) return
+    const k = (now.near - ARM_FROM) / (1 - ARM_FROM)
+    const reach = k * k * (3 - 2 * k)
+    const from = this.lightTiles() * TS + 34
+    const fx = mx + now.v.x * from
+    const fy = my + now.v.y * from
+    c.globalAlpha = Math.min(1, k / 0.35) * (layer === 'under' ? 1 : ARM_SEEN_IN_DARK)
+    drawArm(c, fx, fy, mx, my, (from - 6) * reach, this.time)
+    c.globalAlpha = 1
+  }
+
+  /** What the threats need from the game (src/forest/threats.ts). */
+  private threatHost(): ThreatHost {
+    return {
+      me: this.me,
+      lightTiles: () => this.lightTiles(),
+      view: () => ({ w: this.vw / TS / 2, h: this.vh / TS / 2 }),
+      blocked: (x, y) => this.blocked(x, y),
+      step: (x, y, volume) => {
+        const d = Math.hypot(x - this.me.x, y - this.me.y)
+        footstep('leaves', volume * Math.max(0.2, 1 - d / 12), (x - this.me.x) / 5)
+      },
+      sound: (kind, x) => threatSound(kind, 1, (x - this.me.x) / 6),
+      breath: (on, x) => {
+        if (on) this.stalkerBreath = playClip('breath', 1, (x - this.me.x) / 4)
+        else this.hushBreath()
+      },
+      quiet: () =>
+        !!this.trip &&
+        !this.trip.end &&
+        !this.trip.enc.busy() &&
+        !this.ui.dialogueOpen() &&
+        !this.ui.panelOpen(),
+      deepness: () => this.trip?.deep ?? 0,
+      lost: () => !!this.forest?.lost,
+      caught: (line) => this.endTrip('caught', line, undefined, true),
+      takeLight: () => {
+        const t = this.trip
+        if (!t) return
+        t.lightLeft = Math.max(LIGHT_LEAST, t.lightLeft - LIGHT_TAKEN)
+        swell(1)
+      },
+      takeBreath: () => {
+        const t = this.trip
+        if (!t) return
+        t.stamina = 0
+        t.tired = true
+      },
+    }
+  }
+
   /** What the forest's people need from the game (src/forest/encounter.ts). */
   private encounterHost(): Host {
     return {
@@ -3335,14 +3503,26 @@ export class Game {
       closeDialogue: () => this.ui.closeDialogue(),
       compare: (p, onClose) => this.ui.openCompare(p, onClose),
       closePanel: () => this.ui.closePanel(),
-      step: (x, y) => {
+      step: (x, y, heavy) => {
         const d = Math.hypot(x - this.me.x, y - this.me.y)
-        if (d < 10) footstep('leaves', 0.7 * (1 - d / 10), (x - this.me.x) / 6)
+        const pan = (x - this.me.x) / 6
+        if (heavy) {
+          // Its running footfalls carry further, and thud.
+          const v = Math.max(0, 1 - d / 16)
+          footstep('leaves', 1.2 * v, pan)
+          stomp(v, pan, this.trip?.enc.chaseLevel() ?? 0)
+        } else if (d < 10) footstep('leaves', 0.7 * (1 - d / 10), pan)
       },
-      end: (kind, line) => this.endTrip(kind, line),
+      end: (kind, line, who) => this.endTrip(kind, line, who),
       depth: () => this.forest?.depth(this.me.x, this.me.y) ?? 0,
-      quiet: () => !!this.trip && !this.trip.end && !this.ui.panelOpen(),
+      quiet: () =>
+        !!this.trip && !this.trip.end && !this.ui.panelOpen() && !this.trip.threats.busy(),
       talking: () => this.ui.dialogueOpen() || this.ui.panelOpen(),
+      swell: (stage) => swell(stage),
+      play: (name, x, y, volume = 1) => {
+        const d = Math.hypot(x - this.me.x, y - this.me.y)
+        playClip(name, volume * Math.max(0.35, 1 - d / 20), (x - this.me.x) / 6)
+      },
     }
   }
 
@@ -3351,6 +3531,13 @@ export class Game {
     const t = this.trip!
     this.cam.x = Math.round(this.me.x * TS - this.vw / 2)
     this.cam.y = Math.round((this.me.y - 0.5) * TS - this.vh / 2)
+    // Caught: the screen shakes as it grabs you, settling as the light goes (not with reduced motion).
+    const grab = t.end?.kind === 'caught' ? Math.min(1, t.end.t / CAUGHT_GRAB_MS) : 0
+    if (grab > 0 && grab < 1 && !REDUCED_MOTION) {
+      const k = CAUGHT_SHAKE * (1 - grab)
+      this.cam.x += Math.round((Math.random() * 2 - 1) * k)
+      this.cam.y += Math.round((Math.random() * 2 - 1) * k)
+    }
     const ox = -this.cam.x
     const oy = -this.cam.y
     perf?.mark('ground')
@@ -3413,18 +3600,50 @@ export class Game {
         a: 0.6 * (1 - depth / HOME_GLOW_UNTIL),
       })
     }
-    const flicker = 1 + Math.sin(this.time / 310) * 0.02 + Math.sin(this.time / 83) * 0.01
+    // Your light wavers; with something coming for you it shakes and gutters, more as it closes in.
+    const fear = t.end ? 0 : t.enc.chaseLevel()
+    const flicker =
+      1 +
+      Math.sin(this.time / 310) * 0.02 +
+      Math.sin(this.time / 83) * 0.01 -
+      fear * CHASE_FLICKER * (0.5 + 0.5 * Math.sin(this.time / 47) * Math.sin(this.time / 113))
+    this.drawThreats(t.threats, ox, oy, 'under')
     this.darkness.draw(
       c,
       this.vw,
       this.vh,
       this.me.x * TS + ox,
       (this.me.y - 0.6) * TS + oy,
-      lightRadius(t.deep) * TS * flicker * t.enc.lightScale(this.time),
+      // (Caught: your light collapses to nothing over the grab.)
+      this.lightTiles() * TS * flicker * (1 - grab),
       darknessAt(t.deep, night),
       glowsAt,
     )
-    const black = t.end ? Math.min(1, t.end.t / COLLAPSE_FADE_MS) : 0
+    // The chase: you can make it out even in the dark, a pale shape coming, and the edge of the
+    // world goes red as it closes in, pulsing with your heartbeat.
+    // (Caught: the red stays at full through the grab.)
+    const level = t.end ? (t.end.kind === 'caught' && grab < 1 ? 1 : 0) : t.enc.chaseLevel()
+    if (level > 0 && who) {
+      c.globalAlpha = CHASE_SEEN[0] + (CHASE_SEEN[1] - CHASE_SEEN[0]) * level
+      this.drawForestPerson(who, ox, oy, false)
+      c.globalAlpha = 1
+    }
+    this.drawThreats(t.threats, ox, oy, 'over')
+    // Caught by someone: it stays there in front of you as the light goes, drawn over the dark.
+    if (t.end?.kind === 'caught' && t.end.who && grab < 1) {
+      c.globalAlpha = 1 - grab * grab
+      this.drawForestPerson(t.end.who, ox, oy, false)
+      c.globalAlpha = 1
+    }
+    // Caught: straight to black (the jumpscare is over it); otherwise a slow fade.
+    // Caught: black once the grab is over (the jumpscare is on top); otherwise a slow fade.
+    const black = !t.end
+      ? 0
+      : t.end.kind === 'caught'
+        ? grab >= 1
+          ? 1
+          : 0
+        : Math.min(1, t.end.t / COLLAPSE_FADE_MS)
     const fade = Math.max(this.fade, black)
     if (fade > 0) {
       c.fillStyle = `rgba(8,8,12,${fade})`
@@ -3435,6 +3654,13 @@ export class Game {
     if (this.canvasFilter) v.filter = forestGrade(t.deep)
     v.drawImage(this.scene, 0, 0)
     if (this.canvasFilter) v.filter = 'none'
+    // After the grade (which would drain it to grey): the red at the edge, pulsing with your heart.
+    if (level > 0) {
+      const beat = 0.8 + 0.2 * Math.sin((this.time / (860 - 460 * level)) * Math.PI * 2)
+      v.globalAlpha = CHASE_VIGNETTE * level * beat
+      v.drawImage(vignette(this.vw, this.vh), 0, 0)
+      v.globalAlpha = 1
+    }
     perf?.mark('overlay')
     this.renderOverlay()
   }
@@ -3518,8 +3744,9 @@ export class Game {
     }
     // The end of a trip: on the black screen, one line, fading in.
     const end = this.trip?.end
-    if (end && end.t > COLLAPSE_FADE_MS * 0.8) {
-      c.globalAlpha = Math.min(1, (end.t - COLLAPSE_FADE_MS * 0.8) / 1200)
+    const lineAt = end ? endLineAt(end.kind) - COLLAPSE_FADE_MS * 0.2 : 0
+    if (end && end.t > lineAt) {
+      c.globalAlpha = Math.min(1, (end.t - lineAt) / 1200)
       c.fillStyle = '#d8d2c8'
       c.font = `italic ${Math.max(16, s * 5)}px ${FONT}`
       c.fillText(end.line, innerWidth / 2, innerHeight / 2)
@@ -3536,6 +3763,35 @@ const MAX_OBJ_H = 8
 
 /** What you see on the black screen when you collapse in the forest. */
 const COLLAPSE_LINE = 'You sit down among the roots, just for a moment…'
+
+const vignettes = new Map<string, HTMLCanvasElement>()
+/** A dark red edge round the screen, clear in the middle (cached per screen size). */
+function vignette(w: number, h: number): HTMLCanvasElement {
+  const key = `${w}x${h}`
+  let cv = vignettes.get(key)
+  if (!cv) {
+    cv = document.createElement('canvas')
+    cv.width = w
+    cv.height = h
+    const c = cv.getContext('2d')!
+    const r = Math.hypot(w, h) / 2
+    const g = c.createRadialGradient(w / 2, h / 2, r * 0.45, w / 2, h / 2, r)
+    g.addColorStop(0, 'rgba(130,8,18,0)')
+    g.addColorStop(0.55, 'rgba(130,8,18,0.5)')
+    g.addColorStop(1, 'rgba(110,4,14,1)')
+    c.fillStyle = g
+    c.fillRect(0, 0, w, h)
+    vignettes.set(key, cv)
+  }
+  return cv
+}
+
+const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/** When the line appears on the black screen at the end of a trip (ms in). */
+function endLineAt(kind: 'collapse' | 'caught' | 'home'): number {
+  return kind === 'caught' ? CAUGHT_GRAB_MS + SCARE_MS + COLLAPSE_FADE_MS * 0.2 : COLLAPSE_FADE_MS
+}
 
 /** Which way faces the nearest edge of the grounds (for a pet staring at the treeline). */
 function facingEdge(x: number, y: number): Dir {

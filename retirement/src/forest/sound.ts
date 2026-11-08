@@ -1,5 +1,5 @@
 import { audioContext, isMuted, onMuteChange } from '../audio'
-import { FOREST_AMBIENCE } from './tuning'
+import { CHASE_SOUND, FOREST_AMBIENCE, SWELL } from './tuning'
 
 /*
  * The forest's sound, synthesized with Web Audio like the game's other synth sounds (there's no
@@ -256,5 +256,281 @@ export function synthWarning(kind: 'growl' | 'hiss', volume = 1, seconds = 1.4) 
     src.connect(hp).connect(g)
     src.start(t)
     src.stop(t + 1)
+  }
+}
+
+// --- the chase (FOREST.md "The chase") --------------------------------------------------------
+//
+// While something is coming for you: your heartbeat, quickening as it closes in; a dissonant drone
+// that throbs faster, rises and brightens; a thin high shimmer of tension; and its heavy
+// footfalls and ragged breath when it's close. Nothing sudden: it all swells and fades.
+//
+// Everything has its body above about 100 Hz and its character in the few hundred Hz above that:
+// laptop and phone speakers barely play anything lower (the first version's heartbeat and drone
+// were down at 40–70 Hz and simply couldn't be heard on them).
+
+const DRONE = [98, 103.5, 146.8, 207.7] // two notes beating against each other, a fifth, a tritone
+
+let chase: {
+  out: GainNode
+  filter: BiquadFilterNode
+  oscs: OscillatorNode[]
+  trem: OscillatorNode
+  tremDepth: GainNode
+  shimmer: GainNode
+} | null = null
+let chaseLevel = 0
+let beatTimer = 0
+
+function buildChase(ctx: AudioContext) {
+  if (chase) return chase
+  const out = ctx.createGain()
+  out.gain.value = 0
+  // A throb: the drone's level wobbles, faster as it closes in.
+  const throb = ctx.createGain()
+  throb.gain.value = 0.7
+  const trem = ctx.createOscillator()
+  trem.frequency.value = 3
+  const tremDepth = ctx.createGain()
+  tremDepth.gain.value = 0.25
+  trem.connect(tremDepth).connect(throb.gain)
+  trem.start()
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 500
+  filter.Q.value = 5
+  filter.connect(throb).connect(out).connect(ctx.destination)
+  const oscs = DRONE.map((f, i) => {
+    const o = ctx.createOscillator()
+    o.type = 'sawtooth'
+    o.frequency.value = f
+    const g = ctx.createGain()
+    g.gain.value = [0.5, 0.45, 0.3, 0.22][i]
+    o.connect(g).connect(filter)
+    o.start()
+    return o
+  })
+  // A thin, high shimmer: two notes a few Hz apart, beating. Tension you feel more than hear.
+  const shimmer = ctx.createGain()
+  shimmer.gain.value = 0
+  shimmer.connect(ctx.destination)
+  for (const f of [1174, 1181]) {
+    const o = ctx.createOscillator()
+    o.type = 'sine'
+    o.frequency.value = f
+    o.connect(shimmer)
+    o.start()
+  }
+  chase = { out, filter, oscs, trem, tremDepth, shimmer }
+  return chase
+}
+
+/** A short burst of noise through a filter: the body of a thud, a breath, a click. */
+function noiseHit(
+  ctx: AudioContext,
+  dest: AudioNode,
+  t: number,
+  dur: number,
+  vol: number,
+  type: BiquadFilterType,
+  freq: number,
+  q = 1,
+) {
+  build(ctx)
+  const src = ctx.createBufferSource()
+  src.buffer = white
+  const f = ctx.createBiquadFilter()
+  f.type = type
+  f.frequency.value = freq
+  f.Q.value = q
+  const g = ctx.createGain()
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.02, dur / 4))
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+  src.connect(f).connect(g).connect(dest)
+  src.start(t, Math.random())
+  src.stop(t + dur + 0.02)
+}
+
+/** A falling sine thump. */
+function thump(
+  ctx: AudioContext,
+  dest: AudioNode,
+  t: number,
+  from: number,
+  to: number,
+  vol: number,
+) {
+  const o = ctx.createOscillator()
+  o.type = 'sine'
+  o.frequency.setValueAtTime(from, t)
+  o.frequency.exponentialRampToValueAtTime(to, t + 0.12)
+  const g = ctx.createGain()
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.012)
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2)
+  o.connect(g).connect(dest)
+  o.start(t)
+  o.stop(t + 0.22)
+}
+
+/** One heartbeat, lub-dub: a thump with an overtone and a soft muffled knock on top of each. */
+export function heartbeat(
+  ctx: BaseAudioContext,
+  volume: number,
+  dest: AudioNode = ctx.destination,
+) {
+  const c = ctx as AudioContext
+  for (const [delay, v] of [
+    [0, 1],
+    [0.17, 0.65],
+  ]) {
+    const t = ctx.currentTime + delay
+    const k = 0.55 * volume * v
+    thump(c, dest, t, 120, 70, k)
+    thump(c, dest, t, 240, 140, k * 0.5)
+    noiseHit(c, dest, t, 0.06, k * 0.6, 'lowpass', 700)
+  }
+}
+
+function beat() {
+  const ctx = audioContext()
+  if (!ctx || chaseLevel <= 0) return
+  // Your heartbeat comes in from the second stage of the transformation (dread 0.25 and up).
+  if (!isMuted() && !document.hidden && chaseLevel >= 0.25)
+    heartbeat(ctx, (0.45 + 0.55 * chaseLevel) * CHASE_SOUND)
+  // From about 70 beats a minute far off to about 150 when it's on you.
+  beatTimer = window.setTimeout(beat, 860 - 460 * chaseLevel)
+}
+
+/**
+ * How close the chase is, 0 (none) to 1 (it's on you); call every frame (cheap: it only
+ * retunes). The drone and heartbeat swell in with it and fade out when it's over.
+ */
+export function setChase(level: number) {
+  const v = Math.round(Math.max(0, Math.min(1, level)) * 20) / 20
+  if (v === chaseLevel) return
+  const ctx = audioContext()
+  if (!ctx) return
+  const was = chaseLevel
+  chaseLevel = v
+  const c = buildChase(ctx)
+  const t = ctx.currentTime
+  const off = isMuted() || document.hidden
+  c.out.gain.cancelScheduledValues(t)
+  c.out.gain.setTargetAtTime(
+    off ? 0 : (0.05 + 0.13 * v) * (v > 0 ? 1 : 0) * CHASE_SOUND,
+    t,
+    v > was ? 0.2 : 0.6,
+  )
+  c.filter.frequency.setTargetAtTime(500 + 1800 * v, t, 0.3)
+  c.trem.frequency.setTargetAtTime(3 + 6 * v, t, 0.4)
+  c.tremDepth.gain.setTargetAtTime(0.15 + 0.3 * v, t, 0.4)
+  c.shimmer.gain.setTargetAtTime(off ? 0 : Math.max(0, v - 0.4) * 0.03 * CHASE_SOUND, t, 0.4)
+  // The drone creeps up in pitch as it closes (a semitone at most).
+  for (const [i, o] of c.oscs.entries())
+    o.frequency.setTargetAtTime(DRONE[i] * (1 + 0.06 * v), t, 0.5)
+  if (was <= 0 && v > 0) {
+    clearTimeout(beatTimer)
+    beat()
+  }
+  if (v <= 0) clearTimeout(beatTimer)
+}
+
+/**
+ * Its footfall while it runs at you: a heavy thud panned to where it is, and when it's close
+ * (`close` 0–1), its ragged breath.
+ */
+export function stomp(volume: number, pan: number, close = 0) {
+  if (isMuted() || volume <= 0.02) return
+  const ctx = audioContext()
+  if (!ctx) return
+  build(ctx)
+  const p = ctx.createStereoPanner()
+  p.pan.value = Math.max(-1, Math.min(1, pan))
+  p.connect(ctx.destination)
+  const t = ctx.currentTime
+  const v = volume * CHASE_SOUND
+  thump(ctx, p, t, 150, 80, 0.4 * v)
+  noiseHit(ctx, p, t, 0.09, 0.35 * v, 'lowpass', 800)
+  if (close > 0.4)
+    noiseHit(ctx, p, t + 0.05, 0.3, 0.12 * close * v, 'bandpass', 650 + Math.random() * 300, 2)
+}
+
+/**
+ * A slow rising swell as a fake changes in front of you (stage 1–3, each one bigger): breathy
+ * noise sweeping up through a narrow band over about two seconds, with a low note sliding up under
+ * it, then fading. No sting, no sudden noise.
+ */
+export function swell(stage: number) {
+  if (isMuted()) return
+  const ctx = audioContext()
+  if (!ctx) return
+  build(ctx)
+  const t = ctx.currentTime
+  const len = 1.6 + stage * 0.4
+  const peak = SWELL * (0.35 + 0.22 * stage) * CHASE_SOUND
+  const src = ctx.createBufferSource()
+  src.buffer = white
+  src.loop = true
+  const bp = ctx.createBiquadFilter()
+  bp.type = 'bandpass'
+  bp.Q.value = 6
+  bp.frequency.setValueAtTime(220, t)
+  bp.frequency.exponentialRampToValueAtTime(900 + 300 * stage, t + len)
+  const g = ctx.createGain()
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.exponentialRampToValueAtTime(peak * 0.5, t + len * 0.85)
+  g.gain.exponentialRampToValueAtTime(0.0001, t + len + 0.6)
+  src.connect(bp).connect(g).connect(ctx.destination)
+  src.start(t, Math.random())
+  src.stop(t + len + 0.7)
+  // A low note sliding up a fourth underneath, in the range small speakers play.
+  const o = ctx.createOscillator()
+  o.type = 'sawtooth'
+  o.frequency.setValueAtTime(110, t)
+  o.frequency.exponentialRampToValueAtTime(147, t + len)
+  const lp = ctx.createBiquadFilter()
+  lp.type = 'lowpass'
+  lp.frequency.value = 700
+  const og = ctx.createGain()
+  og.gain.setValueAtTime(0.0001, t)
+  og.gain.exponentialRampToValueAtTime(peak * 0.12, t + len * 0.85)
+  og.gain.exponentialRampToValueAtTime(0.0001, t + len + 0.6)
+  o.connect(lp).connect(og).connect(ctx.destination)
+  o.start(t)
+  o.stop(t + len + 0.7)
+}
+
+/** Something giving itself away in the dark: a slow breath as eyes open, or a whoosh as it draws back. */
+export function threatSound(kind: 'eyes' | 'snatch', volume: number, pan: number) {
+  if (isMuted() || volume <= 0.02) return
+  const ctx = audioContext()
+  if (!ctx) return
+  build(ctx)
+  const p = ctx.createStereoPanner()
+  p.pan.value = Math.max(-1, Math.min(1, pan))
+  p.connect(ctx.destination)
+  const t = ctx.currentTime
+  if (kind === 'eyes') {
+    // A long, low breath in, then out.
+    noiseHit(ctx, p, t, 0.9, 0.09 * volume, 'bandpass', 380, 3)
+    noiseHit(ctx, p, t + 1.0, 1.1, 0.07 * volume, 'bandpass', 300, 3)
+  } else {
+    // A quick rush of air, falling, as it pulls back into the dark.
+    const src = ctx.createBufferSource()
+    src.buffer = white
+    const f = ctx.createBiquadFilter()
+    f.type = 'bandpass'
+    f.Q.value = 2
+    f.frequency.setValueAtTime(1800, t)
+    f.frequency.exponentialRampToValueAtTime(300, t + 0.35)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.35 * volume, t + 0.04)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4)
+    src.connect(f).connect(g).connect(p)
+    src.start(t, Math.random())
+    src.stop(t + 0.45)
   }
 }

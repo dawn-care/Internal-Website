@@ -24,8 +24,8 @@ type Ctx = CanvasRenderingContext2D
 const PROPERTY = { sat: 1.18, con: 1.06, bri: 1 }
 const TREELINE = { sat: 0.7, con: 1.08, bri: 0.94 }
 /** In the forest: at the entry, and deep in (a touch brighter than MOODS.forest in src/game.ts, which the darkness layer makes up for). */
-const FOREST_NEAR = { sat: 0.55, con: 1.1, bri: 0.9 }
-const FOREST_DEEP = { sat: 0.35, con: 1.14, bri: 0.78 }
+const FOREST_NEAR = { sat: 0.42, con: 1.15, bri: 0.95 }
+const FOREST_DEEP = { sat: 0.26, con: 1.2, bri: 0.85 }
 
 const grades = new Map<string, string>()
 function grade(a: typeof PROPERTY, b: typeof PROPERTY, t: number): string {
@@ -114,7 +114,7 @@ export class Darkness {
     const c = this.c
     c.globalCompositeOperation = 'source-over'
     c.clearRect(0, 0, w, h)
-    c.fillStyle = `rgba(6,7,12,${dark})`
+    c.fillStyle = `rgba(3,6,11,${dark})`
     c.fillRect(0, 0, w, h)
     c.globalCompositeOperation = 'destination-out'
     // Quantized, so a handful of sprite sizes covers every depth.
@@ -165,7 +165,14 @@ export function drawFog(
     const x = ((((wx - camX * 0.9) % span) + span) % span) - 120
     const y = ((((wy - camY * 0.9) % span) + span) % span) - 120
     c.globalAlpha = FOG_ALPHA * thick * (0.6 + 0.4 * Math.sin(t / 5000 + i * 2))
-    c.drawImage(glow(r, '170,176,186'), Math.round(x - r), Math.round(y - r))
+    // Mist lying low: each bank wide and flat, cold grey.
+    c.drawImage(
+      glow(r, '150,160,172'),
+      Math.round(x - r * 1.8),
+      Math.round(y - r * 0.4),
+      Math.round(r * 3.6),
+      Math.round(r * 0.8),
+    )
   }
   c.globalAlpha = 1
 }
