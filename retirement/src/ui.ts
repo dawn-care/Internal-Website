@@ -43,6 +43,7 @@ import {
   type Relative,
 } from '../shared/schema'
 import { REL, looksOld, randomFamily, randomRelative } from './family'
+import type { Person } from './forest/encounter'
 import {
   C4_COLS,
   C4_ROWS,
@@ -65,7 +66,7 @@ import { INTRO_TASKS, isActive as introActive } from './intro'
 import { eggIcon } from './animals'
 import { petSprite, treatIcon } from './pets'
 import { personSprite } from './people'
-import { PORTRAIT, portrait } from './portraits'
+import { PORTRAIT, fakePortrait, portrait, type FakeFace } from './portraits'
 
 /* The DOM side of the game: HUD, hotbar, chat, toasts and the modal panels. */
 
@@ -112,6 +113,18 @@ export interface DialogueOptions {
   look?: Look
   /** Residents have smile lines; staff don't (see portraits.ts). */
   old?: boolean
+  /** A badge on their chest (Nurse Ada always wears her Sunset Acres one). */
+  badge?: 'sunset' | 'hollow'
+  /** A different eye colour (a fake's tell). */
+  eye?: string
+  /** A fake from the forest: its transformation stage, and whether it never blinks. */
+  fake?: FakeFace
+  /** Letters type out this slowly (ms each); the forest's fakes slow down as they change. */
+  typeMs?: number
+  /** The voice blip's waveform (rougher for the fakes). */
+  wave?: OscillatorType
+  /** 0–1: letters shake and swap places as they type (the fakes, as they give up pretending). */
+  garble?: number
 }
 
 const TYPE_MS = 24
@@ -215,6 +228,94 @@ export class UI {
       this.dialogueBox,
       this.backdrop,
     )
+  }
+
+  /** The stamina bar (in the forest only; null hides it). */
+  private stamina = (() => {
+    const bar = el('div', { class: 'stamina', title: 'Stamina: hurrying (Shift) uses it up' })
+    bar.append(el('div'))
+    bar.hidden = true
+    bar.setAttribute('role', 'meter')
+    bar.setAttribute('aria-label', 'Stamina')
+    return bar
+  })()
+  private lastStamina = ''
+
+  /** The stamina gauge's place in the hotbar, beside your pocket. */
+  private staminaBox = el(
+    'div',
+    { class: 'stamina-box' },
+    el('span', { class: 'label', text: 'Stamina' }),
+    this.stamina,
+  )
+
+  setStamina(v: number | null, tired: boolean) {
+    const key = v === null ? 'off' : `${Math.round(v * 50)}|${tired}`
+    if (key === this.lastStamina) return
+    this.lastStamina = key
+    const show = v !== null
+    if (show === this.stamina.hidden) {
+      // Shown in the forest only: the hotbar makes room for it (or closes up again).
+      this.stamina.hidden = !show
+      this.renderHotbar()
+    }
+    if (v === null) return
+    ;(this.stamina.firstElementChild as HTMLElement).style.height = `${Math.round(v * 100)}%`
+    this.stamina.classList.toggle('tired', tired)
+    this.stamina.setAttribute('aria-valuenow', String(Math.round(v * 100)))
+  }
+
+  /**
+   * Holding the photo up to the person in front of you (FOREST.md "Carrying the family photo"):
+   * the photo on one side, their face (as it is now, tells and all) on the other.
+   */
+  openCompare(p: Person, onClose: () => void) {
+    const g = this.game
+    const fam = g.save.family
+    if (!fam) return onClose()
+    const face = el('canvas', { class: 'family-face' })
+    face.width = PORTRAIT
+    face.height = PORTRAIT
+    face.setAttribute('aria-hidden', 'true')
+    const opts = { old: false, badge: p.badge, eye: p.eye }
+    face
+      .getContext('2d')!
+      .drawImage(
+        p.real
+          ? portrait(p.look, opts)
+          : fakePortrait(p.look, opts, { stage: p.stage, noBlink: p.tells.has('blink') }),
+        0,
+        0,
+      )
+    const done = button(
+      'Put it away',
+      () => {
+        this.closePanel()
+        onClose()
+      },
+      'btn primary',
+    )
+    const card = familyCard(fam.members, '', [done])
+    card.querySelector('h2')!.textContent = 'You hold the photo up to your light'
+    card.insertBefore(
+      el(
+        'div',
+        { class: 'compare' },
+        el(
+          'div',
+          { class: 'who-now' },
+          face,
+          el('strong', { text: p.nurse ? `Nurse ${p.name}` : p.name }),
+          el('span', { text: `calls you "${p.calls}"` }),
+          el('span', {
+            class: 'muted',
+            text: 'They keep talking while you look. Your light flickers.',
+          }),
+        ),
+      ),
+      card.querySelector('.family-faces'),
+    )
+    this.showPanel(card, false)
   }
 
   attach(game: Game) {
@@ -603,7 +704,10 @@ export class UI {
       const blink = !reduce && tick >= blinkAt && tick < blinkAt + 2
       if (tick >= blinkAt + 2) blinkAt = tick + 25 + Math.floor(Math.random() * 35)
       c.clearRect(0, 0, PORTRAIT, PORTRAIT)
-      c.drawImage(portrait(look, { old: t.opts.old, talk, blink }), 0, 0)
+      // Nurse Ada always wears her Sunset Acres badge, so you know it when you see the other one.
+      const badge = t.opts.badge ?? (t.who === 'Nurse Ada' ? 'sunset' : undefined)
+      const o = { old: t.opts.old, talk, blink, badge, eye: t.opts.eye }
+      c.drawImage(t.opts.fake ? fakePortrait(look, o, t.opts.fake) : portrait(look, o), 0, 0)
       tick++
     }
     draw()
@@ -629,10 +733,10 @@ export class UI {
       if (!this.talk || this.talk !== t) return
       t.shown++
       const ch = line[t.shown - 1]
-      if (ch && /[a-z0-9]/i.test(ch) && t.shown % 2 === 1) voice(t.opts.pitch ?? 440)
+      if (ch && /[a-z0-9]/i.test(ch) && t.shown % 2 === 1) voice(t.opts.pitch ?? 440, t.opts.wave)
       this.paintLine()
       if (t.shown >= line.length) window.clearInterval(t.timer)
-    }, TYPE_MS)
+    }, t.opts.typeMs ?? TYPE_MS)
     this.paintLine()
   }
 
@@ -642,7 +746,11 @@ export class UI {
     const line = t.lines[t.i]
     const done = t.shown >= line.length
     const { text, more } = t
-    text.textContent = line.slice(0, t.shown)
+    const shown = line.slice(0, t.shown)
+    const garble = t.opts.garble ?? 0
+    text.textContent = garble > 0 ? scramble(shown, garble) : shown
+    text.classList.toggle('shake', garble > 0)
+    text.style.setProperty('--shake', `${Math.round(garble * 3)}px`)
     const last = t.i === t.lines.length - 1
     if (!done) {
       more.replaceChildren()
@@ -744,7 +852,7 @@ export class UI {
     this.paintLine()
   }
 
-  private closeDialogue() {
+  closeDialogue() {
     if (this.talk) {
       window.clearInterval(this.talk.timer)
       window.clearInterval(this.talk.faceTimer)
@@ -911,6 +1019,7 @@ export class UI {
             ),
           ]
         : []),
+      ...(this.stamina.hidden ? [] : [this.staminaBox]),
       el(
         'div',
         { class: 'bag' },
@@ -2202,6 +2311,17 @@ export function familyCard(members: Relative[], note: string, actions: HTMLEleme
     note ? el('p', { class: 'muted', text: note }) : null,
     el('div', { class: 'row-buttons' }, ...actions),
   )
+}
+
+/** Swaps a few neighbouring letters, more with `amount` (0–1), for a fake's failing voice. */
+function scramble(text: string, amount: number): string {
+  const ch = text.split('')
+  for (let i = 0; i < ch.length - 1; i++)
+    if (/[a-z]/i.test(ch[i]) && /[a-z]/i.test(ch[i + 1]) && Math.random() < amount * 0.12) {
+      ;[ch[i], ch[i + 1]] = [ch[i + 1], ch[i]]
+      i++
+    }
+  return ch.join('')
 }
 
 /** "in a few minutes" / "tomorrow" for a reprint that's ready at `at` (24 real minutes a day). */

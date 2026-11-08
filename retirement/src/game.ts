@@ -72,7 +72,7 @@ import { footstep, hasClip, petSound, playClip, setAmbience, type Surface } from
 import { setMusicLevel } from './music'
 import { TREELINE } from '../shared/grounds'
 import { Forest } from './forest/gen'
-import { TALL, chunkGround, drawForestObj, flatKind, warmForest } from './forest/art'
+import { TALL, chunkGround, drawForestObj, fakeSprite, flatKind, warmForest } from './forest/art'
 import {
   Darkness,
   darknessAt,
@@ -83,6 +83,7 @@ import {
   outskirtsGrade,
 } from './forest/light'
 import { hushWarnings, setForestAmbience, synthWarning, twigSnap } from './forest/sound'
+import { Encounters, type Host, type Person } from './forest/encounter'
 import {
   BIRDS_AT_TREELINE,
   CHUNK,
@@ -105,6 +106,11 @@ import {
   PET_RUMBLE,
   REPRINT_COST,
   REPRINT_WAIT_MS,
+  STAMINA_AGAIN,
+  STAMINA_DRAIN,
+  STAMINA_REST,
+  STAMINA_SPENT,
+  STAMINA_WALK,
   TWIG_CHANCE,
   WIND_AT_TREELINE,
   WIND_FROM,
@@ -112,6 +118,7 @@ import {
 import * as garden from './garden'
 import {
   HOME_DOOR,
+  FRONT_STEP,
   INFIRMARY_WAKE,
   buildRoom,
   forestStub,
@@ -154,7 +161,7 @@ import {
   pickGift,
   type PetPose,
 } from './pets'
-import { SPR_H, SPR_W, personSprite, seatedSprite } from './people'
+import { SPR_H, SPR_W, lookKey, personSprite, seatedSprite } from './people'
 import { perf } from './perf'
 import type { UI } from './ui'
 
@@ -211,7 +218,19 @@ export class Game {
    * This trip into the forest: the gap you came in by, how long you've been lost, and the collapse
    * (ms since it began, 0 if not). Never saved: reload and you're back on the grounds.
    */
-  trip: { gap: Gap; lostFor: number; collapse: number; deep: number } | null = null
+  trip: {
+    gap: Gap
+    lostFor: number
+    deep: number
+    /** The trip is ending on a black screen with a line (ms since it began), then where to. */
+    end: { kind: 'collapse' | 'caught' | 'home'; t: number; line: string } | null
+    /** People who find you (FOREST.md "Encounters"). */
+    enc: Encounters
+    /** 0–1: hurrying drains it, walking refills it. */
+    stamina: number
+    /** Ran out: no hurrying until it's refilled a little. */
+    tired: boolean
+  } | null = null
   private darkness = new Darkness()
   private musicLevel = -1
   private groundCache = new Map<string, HTMLCanvasElement>()
@@ -567,8 +586,13 @@ export class Game {
   private update(dt: number) {
     let dx = 0
     let dy = 0
-    const collapsing = !!this.trip?.collapse
-    if (!this.typing() && !this.ui.panelOpen() && !this.ui.dialogueOpen() && !collapsing) {
+    const collapsing = !!this.trip?.end
+    const led = this.trip?.enc.leading() ?? null
+    if (led) {
+      // Following a fake: you can't stop yourself.
+      dx = led.x
+      dy = led.y
+    } else if (!this.typing() && !this.ui.panelOpen() && !this.ui.dialogueOpen() && !collapsing) {
       if (this.keys.has('arrowleft') || this.keys.has('a')) dx -= 1
       if (this.keys.has('arrowright') || this.keys.has('d')) dx += 1
       if (this.keys.has('arrowup') || this.keys.has('w')) dy -= 1
@@ -586,7 +610,8 @@ export class Game {
       if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) this.me.dir = dx < 0 ? 1 : 2
       if (dy !== 0 && (Math.abs(dy) > Math.abs(dx) || dx === 0)) this.me.dir = dy < 0 ? 3 : 0
       const len = Math.hypot(dx, dy)
-      const sp = (this.keys.has('shift') ? FAST : SPEED) * dt
+      const hurry = this.hurrying()
+      const sp = (led ? SPEED * 0.8 : hurry ? FAST : SPEED) * dt
       const nx = this.me.x + (dx / len) * sp
       const ny = this.me.y + (dy / len) * sp
       let bumped = false
@@ -596,7 +621,7 @@ export class Game {
       if (!this.blocked(this.me.x, ny)) this.me.y = ny
       else bumped = true
       // Hurrying shuffles the feet faster (and so steps come quicker).
-      this.me.anim += dt * (this.keys.has('shift') ? 10 : 7)
+      this.me.anim += dt * (hurry ? 10 : 7)
       const walked = Math.hypot(this.me.x - before.x, this.me.y - before.y) > 0.001
       if (walked && landed(this.myFrame, this.me.anim)) {
         footstep(this.surfaceAt(this.me.x, this.me.y))
@@ -612,6 +637,7 @@ export class Game {
       this.me.moving = moving
       if (!moving) this.scheduleSync(80)
     }
+    this.updateStamina(dt, moving)
 
     for (const r of this.others.values()) {
       const d = Math.hypot(r.p.x - r.rx, r.p.y - r.ry)
@@ -1515,7 +1541,11 @@ export class Game {
     if (!out && this.petOut) this.scheduleSync(50)
     this.petOut = out
     if (out && !this.forest) {
-      if (this.seat) {
+      const alarm = this.petAlarm.get(this.login)
+      if (alarm && alarm.until > this.time)
+        // Warning at the treeline: it stops dead where it is, facing the trees, until it's done.
+        this.myPet.hold(dt, alarm.dir)
+      else if (this.seat) {
         const spot = this.feetSpot(this.seat.x, this.seat.y)
         this.myPet.settle(dt, spot.x, spot.y)
       } else if (
@@ -1546,7 +1576,9 @@ export class Game {
         fl.reset(r.rx, r.ry)
         this.remotePets.set(login, fl)
       }
-      if (r.p.sit) {
+      const alarm = this.petAlarm.get(login)
+      if (alarm && alarm.until > this.time) fl.hold(dt, alarm.dir)
+      else if (r.p.sit) {
         const spot = this.feetSpot(r.p.x, r.p.y)
         fl.settle(dt, spot.x, spot.y)
       } else fl.update(dt, r.rx, r.ry)
@@ -1573,12 +1605,9 @@ export class Game {
     const wag = Math.floor(this.time / 260) % 2
     const follower = (look: PetLook, owner: string, f: Follower, mine: boolean) => {
       // Growling or hissing at the treeline: standing, stiff, facing the trees.
-      // Once it has stopped to face the trees, the warning ends the moment it moves off again,
-      // so it never slides along frozen in its warning pose.
+      // Warning at the treeline: it's held still (updatePets), standing stiff and facing the trees.
       const alarm = this.petAlarm.get(owner)
-      if (alarm && !f.moving) alarm.settled = true
-      if (alarm && f.moving && alarm.settled) this.petAlarm.delete(owner)
-      if (alarm && alarm.settled && !f.moving && alarm.until > this.time) {
+      if (alarm && alarm.until > this.time && !f.moving) {
         out.push({ look, mine, owner, x: f.x, y: f.y, pose: 'walk', dir: alarm.dir, frame: 0 })
         return
       }
@@ -1825,7 +1854,7 @@ export class Game {
   private drawPet(p: ReturnType<Game['visiblePets']>[number], ox: number, oy: number) {
     const c = this.ctx
     const alarm = this.petAlarm.get(p.owner)
-    const tense = !!alarm?.settled && alarm.until > this.time && p.pose === 'walk' && p.frame === 0
+    const tense = !!alarm && alarm.until > this.time && p.pose === 'walk' && p.frame === 0
     // A tense little tremble while it growls.
     const shake = tense ? (Math.floor(this.time / 70) % 2 ? 1 : 0) : 0
     const px = Math.round(p.x * TS + ox) + shake
@@ -2767,9 +2796,13 @@ export class Game {
 
     for (const n of this.npcs()) list.push({ y: n.y * TS, draw: () => this.drawNpc(n, ox, oy) })
     for (const p of this.visiblePets())
-      // A sleeping pet is drawn after (on top of) its bed.
+      // A pet asleep in its bed is drawn after (on top of) the bed. Everyone else, Mittens napping
+      // out on the grounds included, sorts by where their feet are, so you can stand in front.
       list.push({
-        y: p.pose === 'sleep' ? (Math.floor(p.y) + 1) * TS + 1 : p.y * TS - 0.5,
+        y:
+          p.pose === 'sleep' && p.owner !== 'house'
+            ? (Math.floor(p.y) + 1) * TS + 1
+            : p.y * TS - 0.5,
         draw: () => this.drawPet(p, ox, oy),
       })
     for (const r of this.others.values()) {
@@ -3094,7 +3127,15 @@ export class Game {
     for (const ch of f.chunksIn(s.x - 24, s.y - 16, s.x + 24, s.y + 16)) chunkGround(ch)
     this.warp('forest', s.x, s.y, s.dir, true, false)
     this.forest = f
-    this.trip = { gap, lostFor: 0, collapse: 0, deep: 0 }
+    this.trip = {
+      gap,
+      lostFor: 0,
+      deep: 0,
+      end: null,
+      enc: new Encounters(this.encounterHost()),
+      stamina: 1,
+      tired: false,
+    }
     this.ui.refresh()
     this.ui.renderChat()
     this.scheduleSync(30)
@@ -3110,11 +3151,13 @@ export class Game {
   private updateForest(dt: number) {
     const f = this.forest!
     const t = this.trip!
-    if (t.collapse) {
-      t.collapse += dt * 1000
-      if (t.collapse > COLLAPSE_FADE_MS + COLLAPSE_HOLD_MS) this.wakeInInfirmary()
+    if (t.end) {
+      t.end.t += dt * 1000
+      if (t.end.t > COLLAPSE_FADE_MS + COLLAPSE_HOLD_MS) this.finishTrip(t.end.kind)
       return
     }
+    t.enc.update(dt)
+    if (t.end) return
     const depth = f.depth(this.me.x, this.me.y)
     t.deep = deepness(depth)
     if (!f.lost) {
@@ -3125,10 +3168,7 @@ export class Game {
     } else {
       t.lostFor += dt * 1000
       // The safety net: lost long enough, you sit down among the roots and wake up at home.
-      if (t.lostFor > COLLAPSE_MS) {
-        t.collapse = 1
-        this.keys.clear()
-      }
+      if (t.lostFor > COLLAPSE_MS && !t.enc.busy()) this.endTrip('collapse', COLLAPSE_LINE)
     }
     f.prune(this.me.x, this.me.y)
     const vx = this.vw / TS / 2 + 4
@@ -3149,10 +3189,36 @@ export class Game {
   }
   private warmTick = 0
 
-  private wakeInInfirmary() {
+  /** The trip ends: the screen goes black with a line, then home or the infirmary. */
+  private endTrip(kind: 'collapse' | 'caught' | 'home', line: string) {
+    const t = this.trip
+    if (!t || t.end) return
+    t.end = { kind, t: 1, line }
+    this.keys.clear()
+    this.ui.closeDialogue()
+    if (this.ui.panelOpen()) this.ui.closePanel()
+  }
+
+  private finishTrip(kind: 'collapse' | 'caught' | 'home') {
+    if (kind === 'home') {
+      // Walked home by someone real: out at the front of the home, safe (notes are kept).
+      this.warp('grounds', FRONT_STEP.x, FRONT_STEP.y, 0, true, false)
+      this.fade = 1
+      this.say("You're home.")
+      return
+    }
+    // Caught: if you had the photo with you, it's left out there (FOREST.md "Caught").
+    const lostPhoto = kind === 'caught' && photoWhere(this.save) === 'pocket'
+    if (lostPhoto) this.losePhoto()
+    this.wakeInInfirmary(lostPhoto)
+  }
+
+  private wakeInInfirmary(lostPhoto = false) {
     const w = INFIRMARY_WAKE
     this.warp('infirmary', w.x, w.y, w.dir, true, false)
     this.fade = 1
+    if (lostPhoto)
+      window.setTimeout(() => this.say('Your pocket is empty. The photo is gone.'), 6000)
     window.setTimeout(() => {
       this.ui.dialogue(
         'Nurse Ada',
@@ -3171,7 +3237,7 @@ export class Game {
     const f = this.forest
     if (f) {
       setAmbience(hour, 'none')
-      setForestAmbience(this.trip?.collapse ? 0 : 1)
+      setForestAmbience(this.trip?.end ? 0 : 1)
       music = 0
     } else {
       const w = this.mapId === 'grounds' ? outskirts(this.me.x, this.me.y) : 0
@@ -3189,7 +3255,7 @@ export class Game {
 
   /** When each pet last warned at the treeline, and its current warning (until, facing). */
   private petWarned = new Map<string, number>()
-  private petAlarm = new Map<string, { until: number; dir: Dir; settled?: boolean }>()
+  private petAlarm = new Map<string, { until: number; dir: Dir }>()
 
   /**
    * A pet right by the treeline stops and growls (dog) or hisses (cat) at the trees: anywhere
@@ -3224,6 +3290,60 @@ export class Game {
       this.rowCache.set(m, rows)
     }
     return rows
+  }
+
+  /** Someone who found you: their sprite (a fake's changing), with no shadow if that's a tell. */
+  private drawForestPerson(p: Person, ox: number, oy: number) {
+    const c = this.ctx
+    const px = Math.round(p.x * TS + ox)
+    const py = Math.round(p.y * TS + oy)
+    if (!p.tells.has('shadow')) {
+      c.fillStyle = 'rgba(0,0,0,0.2)'
+      c.fillRect(px - 5, py - 1, 10, 2)
+      c.fillRect(px - 4, py - 2, 8, 4)
+    }
+    const frame = p.anim > 0 ? Math.floor(p.anim) % 4 : 0
+    const base = personSprite(p.look, p.dir, frame)
+    const spr = p.real ? base : fakeSprite(base, `${lookKey(p.look)}|${p.dir}|${frame}`, p.stage)
+    c.drawImage(spr, px - SPR_W / 2, py - spr.height + 1)
+  }
+
+  /** Whether you're hurrying: Shift held, and (in the forest) not out of breath. */
+  private hurrying(): boolean {
+    if (!this.keys.has('shift')) return false
+    return !this.trip || !this.trip.tired
+  }
+
+  /** Stamina, in the forest only: hurrying drains it, walking and standing refill it. */
+  private updateStamina(dt: number, moving: boolean) {
+    const t = this.trip
+    if (!t) return this.ui.setStamina(null, false)
+    if (moving && this.hurrying()) t.stamina = Math.max(0, t.stamina - STAMINA_DRAIN * dt)
+    else t.stamina = Math.min(1, t.stamina + (moving ? STAMINA_WALK : STAMINA_REST) * dt)
+    if (t.stamina <= STAMINA_SPENT) t.tired = true
+    else if (t.tired && t.stamina >= STAMINA_AGAIN) t.tired = false
+    this.ui.setStamina(t.stamina, t.tired)
+  }
+
+  /** What the forest's people need from the game (src/forest/encounter.ts). */
+  private encounterHost(): Host {
+    return {
+      me: this.me,
+      save: this.save,
+      blocked: (x, y) => this.blocked(x, y),
+      dialogue: (who, lines, opts) => this.ui.dialogue(who, lines, opts),
+      closeDialogue: () => this.ui.closeDialogue(),
+      compare: (p, onClose) => this.ui.openCompare(p, onClose),
+      closePanel: () => this.ui.closePanel(),
+      step: (x, y) => {
+        const d = Math.hypot(x - this.me.x, y - this.me.y)
+        if (d < 10) footstep('leaves', 0.7 * (1 - d / 10), (x - this.me.x) / 6)
+      },
+      end: (kind, line) => this.endTrip(kind, line),
+      depth: () => this.forest?.depth(this.me.x, this.me.y) ?? 0,
+      quiet: () => !!this.trip && !this.trip.end && !this.ui.panelOpen(),
+      talking: () => this.ui.dialogueOpen() || this.ui.panelOpen(),
+    }
   }
 
   private renderForest(f: Forest) {
@@ -3272,6 +3392,8 @@ export class Game {
       draw: () =>
         this.drawPerson(this.save.look, this.me.x, this.me.y, this.me.dir, this.me.anim, ox, oy),
     })
+    const who = t.enc.person
+    if (who) list.push({ y: who.y * TS, draw: () => this.drawForestPerson(who, ox, oy) })
     perf?.mark('draw')
     list.sort((a, b) => a.y - b.y)
     for (const d of list) d.draw()
@@ -3298,11 +3420,11 @@ export class Game {
       this.vh,
       this.me.x * TS + ox,
       (this.me.y - 0.6) * TS + oy,
-      lightRadius(t.deep) * TS * flicker,
+      lightRadius(t.deep) * TS * flicker * t.enc.lightScale(this.time),
       darknessAt(t.deep, night),
       glowsAt,
     )
-    const black = t.collapse ? Math.min(1, t.collapse / COLLAPSE_FADE_MS) : 0
+    const black = t.end ? Math.min(1, t.end.t / COLLAPSE_FADE_MS) : 0
     const fade = Math.max(this.fade, black)
     if (fade > 0) {
       c.fillStyle = `rgba(8,8,12,${fade})`
@@ -3394,13 +3516,13 @@ export class Game {
         tag(c, p.name, sp.x, sp.y - 2, fontPx * 0.9, '#fff8ef', 'rgba(30,33,64,0.7)')
       }
     }
-    // Collapsing: on the black screen, one line, fading in.
-    const col = this.trip?.collapse ?? 0
-    if (col > COLLAPSE_FADE_MS * 0.8) {
-      c.globalAlpha = Math.min(1, (col - COLLAPSE_FADE_MS * 0.8) / 1200)
+    // The end of a trip: on the black screen, one line, fading in.
+    const end = this.trip?.end
+    if (end && end.t > COLLAPSE_FADE_MS * 0.8) {
+      c.globalAlpha = Math.min(1, (end.t - COLLAPSE_FADE_MS * 0.8) / 1200)
       c.fillStyle = '#d8d2c8'
       c.font = `italic ${Math.max(16, s * 5)}px ${FONT}`
-      c.fillText(COLLAPSE_LINE, innerWidth / 2, innerHeight / 2)
+      c.fillText(end.line, innerWidth / 2, innerHeight / 2)
       c.globalAlpha = 1
     }
   }

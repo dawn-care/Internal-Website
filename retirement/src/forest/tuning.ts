@@ -120,6 +120,79 @@ export const PET_WARN_MS = 3800
 export const REPRINT_WAIT_MS = 24 * 60_000
 export const REPRINT_COST = 40
 
+// --- encounters: the nurse and the family (stage 3) ------------------------------------------
+
+/** The first person finds you this long after you come in (ms, random between the two)... */
+export const ENCOUNTER_FIRST: [number, number] = FAST ? [6_000, 10_000] : [45_000, 90_000]
+/** ...and the next ones this long after the last one ended (FOREST.md: every 1.5–4 minutes). */
+export const ENCOUNTER_EVERY: [number, number] = FAST ? [12_000, 20_000] : [90_000, 240_000]
+/** How likely someone is to be real at first, and the least likely it gets. (FOREST.md 60–65%) */
+export const REAL_CHANCE = 0.63
+export const REAL_CHANCE_MIN = 0.4
+/** Fakes get more common the deeper you are (per tile) and the longer you're out (per minute). */
+export const FAKE_PER_TILE = 0.0015
+export const FAKE_PER_MINUTE = 0.01
+/** How likely it is to be the nurse rather than one of your family. */
+export const NURSE_CHANCE = 0.35
+/**
+ * A fake's wrong hair, cardigan or eye colour is at least this different from the real one
+ * (a perceptual "redmean" distance, 0–765): any family, as long as it's obvious. Light against dark
+ * brown is about 83; the near misses this rules out are pale grey against the lavender and blue
+ * rinses (42–59) and the two brown eye colours (66). Eyes are only a few pixels, so they need more.
+ */
+export const TELL_COLOR_MIN = 80
+export const TELL_EYE_MIN = 90
+/** A fake shows this many tells (FOREST.md: one or two, never all). */
+export const TELLS: [number, number] = [1, 2]
+/** They appear this far from you (out in the dark) and walk up to this distance to talk. */
+export const ENCOUNTER_SPAWN = 8
+export const ENCOUNTER_TALK = 1.7
+/** How fast people walk up to you, and lead you away. */
+export const PERSON_SPEED = 2.2
+
+// --- refusing a fake: the transformation and the chase ----------------------------------------
+
+/** How many times you refuse before it comes for you (each one a stage further). */
+export const FAKE_ASKS = 3
+/** Your light shrinks to this much with each stage of the transformation (stage 0 is 1). */
+export const STAGE_LIGHT = [1, 0.85, 0.7, 0.55]
+/** Its dialogue types this much slower per stage, with a lower, rougher voice. */
+export const STAGE_TYPE_MS = [24, 40, 62, 90]
+export const STAGE_PITCH = [1, 0.8, 0.62, 0.45]
+/** It stands still this long (ms) before it comes for you. Slow dread, no jumpscare. */
+export const CHASE_PAUSE_MS = 1000
+/** Faster than your walk (3.3), slower than your hurry (5.2), and it never tires. */
+export const CHASE_SPEED = 4.1
+/** It loses you once you've stayed this far away in the dark for CHASE_LOSE_MS... */
+export const CHASE_LOSE = 11
+export const CHASE_LOSE_MS = 2000
+/** ...or once it has chased you this long without catching you (it loses heart, ms). */
+export const CHASE_GIVE_UP_MS = 30_000
+/** ...and catches you this close. */
+export const CHASE_CATCH = 0.7
+/** Once you've lost it, the chance it comes back later in the same trip, and when. */
+export const RETURN_CHANCE = 0.35
+export const RETURN_AFTER: [number, number] = FAST ? [8_000, 12_000] : [60_000, 150_000]
+/** Following a fake: how long it leads you deeper (ms) before it's too late. */
+export const LED_MS = 5_500
+
+// --- stamina ----------------------------------------------------------------------------------
+
+/** Hurrying (Shift) drains it, walking or standing refills it (per second, of a full bar). */
+export const STAMINA_DRAIN = 0.15
+export const STAMINA_WALK = 0.08
+export const STAMINA_REST = 0.14
+/** Below this you're too tired to hurry until it's refilled a little. */
+export const STAMINA_SPENT = 0.02
+export const STAMINA_AGAIN = 0.25
+
+// --- looking at the photo ---------------------------------------------------------------------
+
+/** Holding the photo up to your light: it shrinks to this much while you look... */
+export const LOOK_LIGHT = 0.6
+/** ...and a fake runs out of patience after this long (ms): it asks again, a stage further. */
+export const LOOK_PATIENCE_MS = 7_000
+
 // --- the collapse -----------------------------------------------------------------------------
 
 /** Fading to black, holding on the black screen with its line, then waking. */

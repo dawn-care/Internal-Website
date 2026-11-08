@@ -1369,3 +1369,75 @@ button.bc-sq {
 .pocket-slot canvas {
   image-rendering: pixelated;
 }
+
+/* --- the forest's fakes (FOREST.md "Refusing a fake") --------------------------------------- */
+
+.dialogue-text.shake {
+  animation: fake-shake 0.12s steps(2) infinite;
+}
+
+@keyframes fake-shake {
+  0% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(var(--shake, 1px), calc(var(--shake, 1px) * -0.5));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialogue-text.shake {
+    animation: none;
+  }
+}
+
+.hotbar .stamina-box {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* An upright gauge the height of a slot, draining from the top. */
+.stamina {
+  position: relative;
+  width: 16px;
+  height: 52px;
+  border: 2px solid var(--wood-dark);
+  border-radius: 6px;
+  background: #3a3027;
+  overflow: hidden;
+}
+
+.stamina > div {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #d9c58a;
+  transition: height 0.1s linear;
+}
+
+.stamina.tired > div {
+  background: #a5654a;
+}
+
+.compare {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.compare .who-now {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px;
+  background: #2a2630;
+  color: #e8e2d4;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 13px;
+}

@@ -1,6 +1,6 @@
 # The Forest: design decisions
 
-Status: **being built. Stages 1 (the forest itself) and 2 (family) are done**; see "Build status" at the end for
+Status: **being built. Stages 1 (the forest itself), 2 (family) and 3 (encounters) are done**; see "Build status" at the end for
 what's built and the judgement calls made along the way. This records what we've decided for the
 forest beyond the Sunset Acres grounds and why. Numbers marked _(tune)_ are starting points to adjust after
 play-testing. The story outline near the end is a **draft** for the team to react to.
@@ -584,8 +584,8 @@ Judgement calls (change freely):
 - **Your pet at the treeline** (the open question): it reacts **anywhere along the edge, and
   sooner and louder near a gap**. It warns when it's within 2.8 tiles of the treeline, or 4.5
   tiles if it's within 7 tiles of a gap; at most once every 20 s; neighbours' pets too (quieter
-  with distance). It stops 1.5 tiles short of the treeline, facing the trees, trembling, hackles
-  up, for 3.8 s (the growl's length). Under the recorded growl or hiss there's a low synthesized
+  with distance). The moment it growls or hisses it stops dead, facing the trees, trembling, hackles
+  up, for 3.8 s (the growl's length), then follows you again; it never goes within 1.5 tiles of the treeline. Under the recorded growl or hiss there's a low synthesized
   rumble (for cats too). Petting a pet that close to the treeline doesn't please it: _"Rex looks
   nervous... its ears are flat, and it won't take its eyes off the trees."_ (a cat: _"its tail is
   puffed up, and it keeps staring at the trees."_), with a whine from a dog; it still counts as the
@@ -639,3 +639,90 @@ Decisions (yours) and judgement calls (mine, change freely):
   is. The offline neighbours have families too.
 - **Pictures hung high:** facing the wall now reaches anything hung above you in that column
   (before, a picture in the top wall row couldn't be looked at). Decorating is unchanged.
+
+### Stage 3: encounters (built)
+
+Built: people finding you (Nurse Ada, or someone from your photo), real or fake with one or two
+tells; dialogue with a voice per speaker; "Look at the photo"; the four outcomes (walked home,
+hurt and leaving, led deeper, the transformation); stamina and the chase; being caught (and losing
+a carried photo). The code is src/forest/encounter.ts, the words and tells are data in
+src/forest/encounters.ts, and the numbers are in src/forest/tuning.ts. `?forestfast` makes people
+turn up after 6–10 seconds.
+
+Judgement calls (change freely):
+
+- **When people come.** The first after 45–90 s in the forest, then 1.5–4 minutes after the last
+  one ended, lost or not. Nobody comes during a collapse, and the collapse waits for an encounter
+  to finish.
+- **Real or fake:** 63% real at first, minus 0.15% per tile of depth and 1% per minute out, never
+  below 40%. 35% of the time it's the nurse (always, if you have no family).
+- **Tells** (one or two per fake): family can have the wrong hair colour, the wrong cardigan
+  colour, an extra (or missing) hat, glasses or scarf, the wrong eye colour (only visible in their
+  face), no blinking, no shadow, no footsteps, or the wrong name for you. The nurse can have the
+  wrong hair colour or eyes, no blinking, no shadow, no footsteps, the wrong name ("Nurse Ida",
+  "Edna", "Ava", "Ada-May", "Agnes") or the **Hollow Pines badge** (grey with a pine) instead of her
+  Sunset Acres one (cream with a sun). To make the badge learnable, **Nurse Ada now always wears
+  her Sunset Acres badge** in her portrait, at home too. Eye colour was added as a tell from the
+  resident's diary in the story ("Her eyes were the wrong colour").
+- **A wrong colour is always obvious** (decided): a fake's wrong hair, cardigan or eye colour can be
+  in the same family as the real one (light against dark brown, cornflower against navy) but never a
+  near miss: it's at least `TELL_COLOR_MIN` apart (80 on a perceptual scale; eyes, being a few pixels,
+  `TELL_EYE_MIN` 90). This rules out pale grey against the lavender and blue rinses, and the two brown
+  eye colours.
+- **Being caught never says what you missed** (decided). Only "That was not your son." Every tell must
+  instead be learnable in the world: stage 4/5's fragments need a clue for each one. Maggie's
+  warnings already cover blinking ("They never blink."), shadows ("Count the shadows."), the wrong
+  name for you ("If they call you something your family never called you, run.") and the face
+  ("Look at the photo, not the face."); the diary covers eye colour, and the Hollow Pines story
+  the badge. **Still to write: a clue for silent footsteps and for the nurse's wrong name.**
+- **Real and fake say exactly the same words** (until a fake starts to change). Only the tells give
+  them away, so it's never a guessing game about the script.
+- **What a fake calls you:** a near miss: "Mum" becomes "Mother", "Mummy" or "Ma"; "Gran" becomes
+  "Granny", "Nana" or "Grandma"; a name becomes "Sweetheart", "Darling", "Dearest" or "Old thing".
+- **Voices:** Ada's is the same pitch as at home; relatives by relationship (granddaughters
+  highest, husbands lowest). As a fake changes, its voice drops (to 45% of the pitch), the wave
+  roughens (triangle, square, sawtooth), the letters type slower (24 → 90 ms each), and the text
+  shakes, with neighbouring letters swapping more at each stage.
+- **The transformation** (three refusals, then it comes for you): stage 1 drains the colour from
+  its face and sprite; stage 2 drains it almost to grey and blacks out the eyes, and it stops
+  blinking; stage 3 tilts the head and stretches the face until it runs out of the frame, and the
+  sprite stands 40% too tall. Your light shrinks to 85%, 70% and 55%. After the last line it
+  stands still for a second, then comes.
+- **The chase:** it moves at 4.1 tiles/s (your walk is 3.3, your hurry 5.2) and goes round trees.
+  You lose it by staying 11+ tiles away for 2 seconds, or if it hasn't caught you in 30 seconds;
+  walking back out (before you're lost) also works. A lost chaser comes back later in the trip 35%
+  of the time (60–150 s later), already changed, chasing. No lit clearings yet (they come with the
+  buildings and light in stages 5 and 6).
+- **Stamina** (forest only, an upright gauge in the hotbar beside your pocket): hurrying uses a full bar in about 6.5 s;
+  walking refills it in about 12 s, standing in 7. Run it right out and you can't hurry again until
+  it's back to a quarter.
+- **Look at the photo** (relatives only, once per encounter, only if the photo is in your pocket):
+  the photo and their face side by side. Your light shrinks to 60% and flickers while you look. A
+  real one waits; **a fake loses patience after 7 seconds** and asks again a stage further gone.
+  (So looking is a test, but a risky one.) The nurse isn't in the photo: you have to remember
+  Ada.
+- **Go with a real one:** a black screen ("Rachel walks you home." / "Nurse Ada walks you home, one
+  step at a time.") and you're at the front of the home: "You're home." (Notes are kept from stage
+  4.)
+- **Refuse a real one:** they're hurt ("...Alright, Gran. Alright." / "I'll come back for you. I
+  promise I'll come back.") and walk off into the dark. Nothing bad happens except that.
+- **Go with a fake:** you can't stop yourself following it for 5.5 s, along its own path, away from
+  where you came in; then the black screen: "That was not your granddaughter." / "That was not a
+  nurse."
+- **Caught** (led deeper or reached in the chase): that line, then the infirmary, Nurse Ada ("There
+  you are, dear. They found you wandering by the fence again."), and if you had the photo with you,
+  it's gone: "Your pocket is empty. The photo is gone." (The frame on your wall stays empty until
+  a reprint or, from stage 5, finding it.)
+- **If the conversation is closed without an answer** (Escape), they ask again. Someone you keep
+  walking away from loses you after 25 seconds.
+
+**Lines I wrote** (all in src/forest/encounters.ts, none in the draft): the family's greeting ("{calls}!
+Oh, thank goodness. It's me, {name}. We've been looking everywhere for you." / "You're freezing.
+Come on, {calls}, let's get you home before it's properly dark."), "This way. Hold on to my arm,
+{calls}.", the hurt lines' second half ("I'll come back for you. I promise I'll come back."), the
+three stages of asking again ("{calls}, please. It's me. Come home with me." / "Why won't you look
+at me, {calls}? Don't you remember me?" / "Remember me. Please. Please remember me."), the nurse's
+versions of all of those (her last: "Don't forget me. Everyone forgets me. Don't you forget me."),
+"What is it, {calls}? It's getting dark. Come on." after you look at the photo, the walking-home
+lines, and "Your pocket is empty. The photo is gone." The asking-again lines follow the story
+bible: they want to be remembered.

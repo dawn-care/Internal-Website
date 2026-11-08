@@ -23,6 +23,10 @@ export interface PortraitOptions {
   talk?: boolean
   /** Eyes closed. */
   blink?: boolean
+  /** A name badge on the chest: Sunset Acres staff, or the old Hollow Pines one (FOREST.md). */
+  badge?: 'sunset' | 'hollow'
+  /** A different eye colour (a fake's tell). */
+  eye?: string
 }
 
 /** Everything a portrait is drawn from. The forest can tamper with these. */
@@ -35,9 +39,10 @@ export interface Face {
   old: boolean
   talk: boolean
   blink: boolean
+  badge?: 'sunset' | 'hollow'
 }
 
-const EYE_COLORS = ['#5b3a22', '#3d6fb0', '#4b7d41', '#6e5434', '#46607a']
+export const EYE_COLORS = ['#5b3a22', '#3d6fb0', '#4b7d41', '#6e5434', '#46607a']
 const OUTLINE = '#2b1d22'
 
 export function shade(hex: string, amt: number): string {
@@ -52,6 +57,11 @@ function strHash(s: string): number {
   return h >>> 0
 }
 
+/** Someone's eye colour (steady for a name: Look has no eye colour of its own). */
+export function eyeFor(look: Look): string {
+  return EYE_COLORS[strHash(look.name) % EYE_COLORS.length]
+}
+
 export function faceFor(look: Look, opts: PortraitOptions = {}): Face {
   return {
     look,
@@ -59,10 +69,11 @@ export function faceFor(look: Look, opts: PortraitOptions = {}): Face {
     hair: HAIR_COLORS[look.hairColor] ?? HAIR_COLORS[0],
     outfit: OUTFIT_COLORS[look.outfit] ?? OUTFIT_COLORS[0],
     // Look has no eye colour; pick a steady one from the name so a person always matches.
-    eye: EYE_COLORS[strHash(look.name) % EYE_COLORS.length],
+    eye: opts.eye ?? EYE_COLORS[strHash(look.name) % EYE_COLORS.length],
     old: opts.old ?? true,
     talk: opts.talk ?? false,
     blink: opts.blink ?? false,
+    badge: opts.badge,
   }
 }
 
@@ -70,7 +81,7 @@ const cache = new Map<string, HTMLCanvasElement>()
 
 export function portrait(look: Look, opts: PortraitOptions = {}): HTMLCanvasElement {
   const face = faceFor(look, opts)
-  const key = `${lookKey(look)}|${look.name}|${face.old}|${face.talk}|${face.blink}`
+  const key = `${lookKey(look)}|${look.name}|${face.old}|${face.talk}|${face.blink}|${face.badge ?? ''}|${face.eye}`
   let cv = cache.get(key)
   if (cv) return cv
   cv = drawFace(face)
@@ -109,6 +120,82 @@ export function drawFace(face: Face): HTMLCanvasElement {
   drawMouth(f, face)
   if (face.old) drawLines(f, face)
   drawAccessory(f, fill, face)
+  if (face.badge) drawBadge(f, face.badge)
+  return cv
+}
+
+/**
+ * A name badge pinned on the chest: Sunset Acres' is a little orange sun on cream; Hollow Pines'
+ * is a dark green pine on grey (FOREST.md: fake nurses wear the old Hollow Pines badge).
+ */
+function drawBadge(f: Pen, badge: 'sunset' | 'hollow') {
+  if (badge === 'sunset') {
+    f('#7a5233', 29, 41, 7, 5)
+    f('#fff3d6', 30, 42, 5, 3)
+    f('#e8873a', 31, 43, 3, 2)
+    f('#f2b84b', 32, 42, 1, 1)
+  } else {
+    f('#3a3a3a', 29, 41, 7, 5)
+    f('#b8bab4', 30, 42, 5, 3)
+    f('#2f4f37', 32, 42, 1, 1)
+    f('#2f4f37', 31, 43, 3, 1)
+    f('#2f4f37', 30, 44, 5, 1)
+  }
+}
+
+/** A fake's face as it gives up pretending, stage 0 (as it looked) to 3 (FOREST.md). */
+export interface FakeFace {
+  stage: number
+  /** It never blinks. */
+  noBlink?: boolean
+}
+
+const fakeCache = new Map<string, HTMLCanvasElement>()
+
+/**
+ * A portrait with the transformation applied over it, one stage at a time, by tampering with the
+ * drawn face rather than new art: 1 the colours drain, 2 the eyes go black (and it stops
+ * blinking), 3 the head tilts and the face stretches too tall.
+ */
+export function fakePortrait(look: Look, opts: PortraitOptions, fake: FakeFace): HTMLCanvasElement {
+  const stage = Math.max(0, Math.min(3, fake.stage))
+  const blink = !!opts.blink && !fake.noBlink && stage < 2
+  const key = `${lookKey(look)}|${look.name}|${opts.old}|${opts.talk}|${blink}|${opts.badge ?? ''}|${opts.eye ?? ''}|${stage}`
+  let cv = fakeCache.get(key)
+  if (cv) return cv
+  const base = drawFace(faceFor(look, { ...opts, blink }))
+  if (stage === 0) {
+    fakeCache.set(key, base)
+    return base
+  }
+  const c = base.getContext('2d')!
+  const img = c.getImageData(0, 0, PORTRAIT, PORTRAIT)
+  const d = img.data
+  const drain = stage === 1 ? 0.45 : 0.85
+  for (let i = 0; i < d.length; i += 4) {
+    const g = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11
+    // Drained and a little sickly: towards a cold grey-green.
+    d[i] = d[i] + (g * 0.92 - d[i]) * drain
+    d[i + 1] = d[i + 1] + (g * 1.0 - d[i + 1]) * drain
+    d[i + 2] = d[i + 2] + (g * 0.96 - d[i + 2]) * drain
+  }
+  c.putImageData(img, 0, 0)
+  if (stage >= 2) {
+    const f = pen(c)
+    for (const x of [17, 27]) f('#050406', x, 21, 5, 3)
+  }
+  if (stage >= 3) {
+    cv = document.createElement('canvas')
+    cv.width = PORTRAIT
+    cv.height = PORTRAIT
+    const t = cv.getContext('2d')!
+    t.imageSmoothingEnabled = false
+    t.translate(PORTRAIT / 2, PORTRAIT)
+    t.rotate(-0.2)
+    t.scale(0.92, 1.3)
+    t.drawImage(base, -PORTRAIT / 2, -PORTRAIT)
+  } else cv = base
+  fakeCache.set(key, cv)
   return cv
 }
 

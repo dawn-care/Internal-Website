@@ -227,3 +227,39 @@ export function warmForest() {
 export function flatKind(k: ForestObj['k']): boolean {
   return k === 'fern' || k === 'shroom' || k === 'rock'
 }
+
+// --- the fakes (FOREST.md "Refusing a fake") -------------------------------------------------
+
+const fakeSprites = new Map<string, HTMLCanvasElement>()
+
+/**
+ * A person's walking sprite as a fake gives up pretending: from stage 1 the colours drain out,
+ * at 3 it stands too tall and thin. Cached per sprite and stage (`key` names the source sprite).
+ * The canvas is taller than a person's (it's drawn with its feet on the same spot).
+ */
+export function fakeSprite(src: HTMLCanvasElement, key: string, stage: number): HTMLCanvasElement {
+  if (stage <= 0) return src
+  const k = `${key}|${stage}`
+  let cv = fakeSprites.get(k)
+  if (cv) return cv
+  const stretch = stage >= 3 ? 1.4 : 1
+  cv = document.createElement('canvas')
+  cv.width = src.width
+  cv.height = Math.ceil(src.height * stretch)
+  const c = cv.getContext('2d')!
+  c.imageSmoothingEnabled = false
+  c.drawImage(src, 0, 0, src.width, src.height, 0, 0, src.width, cv.height)
+  const img = c.getImageData(0, 0, cv.width, cv.height)
+  const d = img.data
+  const drain = stage === 1 ? 0.45 : 0.85
+  for (let i = 0; i < d.length; i += 4) {
+    if (!d[i + 3]) continue
+    const g = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11
+    d[i] += (g * 0.92 - d[i]) * drain
+    d[i + 1] += (g - d[i + 1]) * drain
+    d[i + 2] += (g * 0.96 - d[i + 2]) * drain
+  }
+  c.putImageData(img, 0, 0)
+  fakeSprites.set(k, cv)
+  return cv
+}

@@ -38,7 +38,10 @@ marks which are built.
 - src/forest/: the forest (FOREST.md), generated only in your browser. tuning.ts (every number),
   gen.ts (chunks from the visit's seed, the way home, the point of no return), art.ts (its ground
   and sprites), light.ts (darkness, your light, fog, the colour grades), sound.ts (its synthesized
-  ambience, twig snaps, stand-in growl/hiss). Game holds `forest` and `trip` while you're in it.
+  ambience, twig snaps, stand-in growl/hiss), encounter.ts (people who find you: real or fake,
+  dialogue, the transformation, being led, the chase) and encounters.ts (their words, tells and
+  voices, as data). Game holds `forest` and `trip` (with the encounters and stamina) while you're
+  in it.
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an
   auto outline), src/game.ts (loop, movement, interaction, decorating, sync, rendering),
   src/ui.ts (HUD, hotbar, chat, Kitchen / Catalog / Wardrobe / Help panels),
