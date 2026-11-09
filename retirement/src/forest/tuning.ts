@@ -9,7 +9,10 @@
  * for testing.
  */
 
-const FAST = import.meta.env.DEV && new URLSearchParams(location.search).has('forestfast')
+const FAST =
+  import.meta.env.DEV &&
+  typeof location !== 'undefined' &&
+  new URLSearchParams(location.search).has('forestfast')
 
 // --- the outskirts (on the grounds) -----------------------------------------------------------
 
@@ -51,6 +54,12 @@ export const EXIT_BACK = 2.4
 export const OFF_PATH_WARN = FAST ? 3 : 6
 export const OFF_PATH_LOST = FAST ? 6 : 13
 /**
+ * You're only lost once the path is out of sight (the lost distance grows to half the screen's
+ * diagonal), but never further than this (tiles), however big the window: the camp's fences run far
+ * enough out that going round them always gets you lost first (layout.test.ts checks this).
+ */
+export const OFF_PATH_LOST_MAX = 24
+/**
  * Lost, walking back towards where the path was (this fraction of your steps heading that way, for
  * this long, ms): a thought ("That tree wasn't there before."), at most this often (ms).
  */
@@ -89,8 +98,8 @@ export const TREE_DENSITY_PER_TILE = 0.0004
 export const TREE_DENSITY_MAX = 0.12
 /** On the map (story/map.ts): trees per tile just off a path, and how much denser per tile further
  * off (up to TREE_DENSITY_MAX). Kept lighter than the lost forest, so the paths read. */
-export const MAP_TREES_NEAR = 0.03
-export const MAP_TREES_PER_TILE = 0.012
+export const MAP_TREES_NEAR = 0.045
+export const MAP_TREES_PER_TILE = 0.015
 /** Clearings: where the soft noise is above this, trees thin right out. */
 export const CLEARING_ABOVE = 0.7
 /** Winding open paths: where a second noise is within this of its middle. */
@@ -110,9 +119,21 @@ export const SEE_THROUGH_H = 5.6
 export const DARK_NEAR = 0.58
 export const DARK_DEEP = 0.82
 export const DARK_NIGHT = 0.12
-/** On the map, it never gets darker than this far along (0–1) from DARK_NEAR to DARK_DEEP, so the
- * places can be seen; once you're lost it goes the rest of the way. */
-export const MAP_DEEP_MAX = 0.3
+/**
+ * On the map, how far along (0–1) from DARK_NEAR to DARK_DEEP it is, by how far in you are
+ * (straight-line tiles from the gap): light at the trailhead, closing in past the fork (about 26
+ * tiles in), the bus stop and the cabin, properly dark by the camp (about 125) and darkest on the
+ * deep road beyond. Your light shrinks with it, the colour drains and the drone comes up.
+ * (Play-testing: a flat 0.3 everywhere on the map made the forest feel tame.) Lost, it's at least
+ * LOST_DEEP.
+ */
+export const MAP_DARK: [number, number][] = [
+  [0, 0],
+  [26, 0.2],
+  [60, 0.4],
+  [125, 0.6],
+  [170, 0.8],
+]
 /** Lost, it's at least this far along (0–1) towards full dark... */
 export const LOST_DEEP = 0.75
 /** ...and the dark closes in over about this long (s): your light shrinks slowly, not at once. */
@@ -124,7 +145,7 @@ export const LIGHT_NEAR = 6.5
 export const LIGHT_DEEP = 4.4
 /** How much of the dark is lifted off the road and paths beyond your light (0–1), so you can see
  * where they go. */
-export const PATH_GLOW = 0.4
+export const PATH_GLOW = 0.2
 /** Fog: how many drifting banks, and how thick at most. */
 export const FOG_BANKS = 9
 export const FOG_ALPHA = 0.16
@@ -441,16 +462,42 @@ export const SHELTER_DIST = 26
 export const SHELTER_MARK_EVERY = 4
 
 /**
- * The bus (story/bus.ts): once you've been lost this long (ms), a copy of the bus stop is put out
- * this far off (tiles); come within BUS_NEAR tiles and the bus comes, waits BUS_WAIT_MS with its
- * doors open, then goes. Ride it alone and you're put out BUS_RIDE tiles further on, your light
- * cut by BUS_LIGHT (never below LIGHT_LEAST), out of breath, with one more real danger and a
- * threat within BUS_THREAT_MS.
+ * The Route 9 bus (story/bus.ts, PUZZLES.md P04). The forest still runs it on the old crew
+ * timetable: at BUS_CREW_HOURS (on the shared game clock: a game hour is a real minute) a full bus
+ * pulls in at the stop if you're within BUS_HEAR tiles, setting off BUS_CREW_LEAD_MS ahead so it
+ * stops on the hour. Off the timetable, an empty one comes once you've been within BUS_NEAR tiles
+ * of the stop for BUS_EMPTY_AFTER ms, never with a crew run less than BUS_EMPTY_QUIET_MS away and
+ * never within BUS_EMPTY_GAP_MS of the last bus. Either waits BUS_WAIT_MS with its doors open.
+ */
+export const BUS_CREW_HOURS = [6, 14, 22] as const
+export const BUS_HEAR = 26
+export const BUS_NEAR = 9
+export const BUS_CREW_LEAD_MS = 6_000
+export const BUS_EMPTY_AFTER = FAST ? 4_000 : 20_000
+export const BUS_EMPTY_QUIET_MS = 60_000
+export const BUS_EMPTY_GAP_MS = 45_000
+export const BUS_WAIT_MS = 25_000
+/**
+ * Lost: the copy of the bus stop is put out BUS_DIST tiles off to your side once you've been lost
+ * BUS_AFTER ms, but only when the next crew run is BUS_COPY_SOON ms away (soon enough to wait for
+ * it before you'd collapse), so a safe ride is always possible from it.
  */
 export const BUS_AFTER = FAST ? 8_000 : 60_000
 export const BUS_DIST = 24
-export const BUS_NEAR = 9
-export const BUS_WAIT_MS = 25_000
-export const BUS_RIDE = 60
-export const BUS_LIGHT = 0.25
-export const BUS_THREAT_MS = 6_000
+export const BUS_COPY_SOON: [number, number] = [70_000, 170_000]
+/**
+ * The ride (story/ride.ts). A crew bus drives RIDE_CREW_MS and lets you off at the camp gate. The
+ * empty one drives RIDE_EMPTY_MS, faster and faster, brakes for RIDE_BRAKE_MS and lets you off
+ * BUS_DROP tiles from where you got on, lost: deep in, where the dark closes in to BUS_DEEP (and
+ * stays, until someone finds you), with one more real danger this trip.
+ */
+export const RIDE_CREW_MS = 9_000
+export const RIDE_EMPTY_MS = 10_000
+export const RIDE_BRAKE_MS = 1_600
+export const BUS_DROP = 70
+export const BUS_DEEP = 0.92
+/**
+ * Deep in, after the empty bus: the colour drains almost to nothing (forestGrade's deepest), both
+ * drones play at once, and the wind drops to this much of itself: the forest is holding its breath.
+ */
+export const BUS_DEEP_WIND = 0.3

@@ -7,13 +7,13 @@ jumpscare/media, with jumpscare/sounds as scare-1..7.mp3; src/forest/scare.ts). 
 serves it alone at localhost:5173/retirement/ in offline mode (localStorage save, two fake
 neighbours who wander and chat, see src/net.ts LocalNet).
 
-The forest beyond the grounds is being built in stages (FOREST.md "Build stages"; stages 1–3 are
-done). FOREST.md records every decision (alone in the forest, no combat, real vs fake nurses and
-family, run-only chases, story notes kept only on a safe return) and, under "Build status", every
-judgement call made while building it. Read it before working on the forest and keep it current.
-STORY.md holds the forest's story (Hollow Pines, Maggie, what players can learn, the spoiler story
-bible), kept separate so it can be edited on its own; anything in the forest that carries story
-must stay consistent with it.
+The forest beyond the grounds is being built in milestones. IMPLEMENTATION.md is the index: read
+it first, then STORY.md (what happened: Evie, Nora, the chronology, clue ids, cutscenes), MAP.md
+(where: the fixed map's locations, roads, fences and gates), PUZZLES.md (how: puzzles P01–P09,
+scripted encounters, the item and evidence lifecycle) and FOREST.md (design, and under "Build
+status" what the code does now plus every judgement call made while building it; stages 1–3 are
+built, stage 4 is in progress). Resolve conflicts the way IMPLEMENTATION.md says. Keep FOREST.md's
+Build status current, and never describe planned work as built.
 COMMUNITY.md lists the agreed cozy additions (intro, pets, animals, benches, board games,
 plot upgrades, cooking, Chef Rosa's orders, reasons to come home to your room, collectibles) and
 marks which are built.
@@ -45,19 +45,30 @@ marks which are built.
   dialogue, the transformation, being led, the chase) and encounters.ts (their words, tells and
   voices, as data), threats.ts (footsteps behind you with the reaching arm, and the face in the dark: cues that are
   sometimes real), scare.ts (the jumpscare when you're caught).
-  src/forest/story/: the story, as data plus the little that runs it (STORY.md; FOREST.md "Act I"):
-  map.ts (the fixed Hollow Pines map: road, paths, creek, landmarks with their props and the spots
-  you examine, some holding clues), layout.ts (the map tile by tile: ground, solid, clear of
-  trees, distance from the paths), clues.ts (each clue's paper, thoughts and gates), finds.ts
+  src/forest/story/: the story, as data plus the little that runs it (STORY.md; FOREST.md "Stage 4"):
+  map.ts (the fixed Hollow Pines map, MAP.md: roads, paths, creek, the camp's fences and gates,
+  landmarks with their props and the spots you examine, some holding clues), layout.ts (the map
+  tile by tile: ground, solid, clear of trees, distance from the paths measured round fences;
+  layout.test.ts walks it), clues.ts (each clue's paper, thoughts and gates), finds.ts
   (small things scattered each trip; KEEPSAKES you can take home, which become framed `keep_<id>`
   furniture), voice.ts (the inner voice by moment), events.ts
   (uncanny moments), plan.ts (this trip: notepad, landmarks reached, where the finds lie),
-  director.ts (when the voice speaks and the uncanny moments happen), art.ts (their sprites).
+  director.ts (when the voice speaks and the uncanny moments happen), bus.ts (the Route 9 bus on
+  its crew timetable, at the real stop and at the copy that turns up when you're lost), ride.ts
+  (riding it, from inside: the crew run to the camp gate, or the empty bus), art.ts (their sprites).
   gen.ts draws the map until you're lost (off the paths), then the random forest. Clue ids and the board's
   limits are in shared/story.ts; the board is `save.board` (validated in shared/schema.ts).
   Game holds `forest` and `trip` (with the encounters, stamina, the story plan, the notepad and
   the danger left) while you're in it. Every room has a locked closet (`CLOSET`, a map object,
-  not furniture) and, once you've brought a clue home, a corkboard (furniture, price 0).
+  not furniture), a key hook beside it (`KEY_HOOK`) and, once you've brought a clue home, a
+  corkboard (furniture, price 0). Story progress (keys on the hook, puzzles, events, cutscenes,
+  places reached, leads) is `save.story` (shared/story.ts StoryProgress, validated in
+  shared/schema.ts); keys you carry are in `save.pocket`. story/items.ts names the keys,
+  story/sitemap.ts draws the rough site map.
+  Buildings' insides are walled rooms in the same forest map (story/map.ts INTERIORS, entered
+  through DOORS); puzzle documents (codes and names, not story clues) are story/docs.ts; the
+  combination locks (P02, P05) are story/map.ts COMBOS; an opened gate, locker or shutter is
+  `Forest.open` (only a fence-like prop becomes walkable).
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an
   auto outline), src/game.ts (loop, movement, interaction, decorating, sync, rendering),
   src/ui.ts (HUD, hotbar, chat, Kitchen / Catalog / Wardrobe / Help panels),

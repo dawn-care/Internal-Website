@@ -96,7 +96,7 @@ export const FINDS: Find[] = [
     id: 'teacup',
     keep: true,
     prompt: 'Look at the teacup',
-    look: 'A china teacup on a flat stone, half full. It’s still warm.',
+    look: 'A china teacup on a flat stone, full of rainwater and pine needles.',
     depth: [12, 90],
     weight: 1,
   },
@@ -146,7 +146,7 @@ export const FIND_BY_ID = new Map(FINDS.map((f) => [f.id, f]))
 export const KEEPSAKES: Record<string, { name: string; took: string }> = {
   nametag: { name: 'Hollow Pines name tag', took: 'You put the name tag in your pocket.' },
   glasses: { name: 'Reading glasses', took: 'You fold the glasses carefully and keep them.' },
-  teacup: { name: 'China teacup', took: 'You tip out the tea and take the cup.' },
+  teacup: { name: 'China teacup', took: 'You tip out the rainwater and take the cup.' },
   ticket: { name: 'Route 9 ticket', took: 'You tuck the ticket into your notepad.' },
   mitten: { name: 'A child’s red mitten', took: 'You take the mitten. It’s still warm inside.' },
 }

@@ -1,3 +1,5 @@
+import { ITEM_IDS } from './story.js'
+
 /*
  * Game data shared by the browser game and the /api/retirement function (which uses it to
  * validate saves). Pure data: no DOM, no Node APIs.
@@ -41,6 +43,11 @@ export const ROOM_DOOR_X = 7
  * tiles tall. It's part of the room, not furniture: nothing can hang over it.
  */
 export const CLOSET = { x: 12, y: 1, h: 2 } as const
+/**
+ * The key hook beside it (PUZZLES.md: keys you bring home are kept in your room until you take them
+ * again): one tile of the back wall's lower row. Part of the room too: nothing hangs over it.
+ */
+export const KEY_HOOK = { x: 11, y: 2 } as const
 
 export interface CropDef {
   id: string
@@ -534,7 +541,7 @@ export type Relation = (typeof RELATIONS)[number]
 export const FAMILY_MIN = 2
 export const FAMILY_MAX = 3
 
-/** Your pocket: a few small things you carry (the family photo, later light and meals). */
+/** Your pocket: a few small things you carry (the family photo, the forest's keys; later light and meals). */
 export const POCKET_SLOTS = 3
-export const POCKET_ITEMS = ['photo'] as const
+export const POCKET_ITEMS = ['photo', ...ITEM_IDS] as const
 export type PocketItem = (typeof POCKET_ITEMS)[number]

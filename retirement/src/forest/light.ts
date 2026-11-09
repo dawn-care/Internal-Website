@@ -1,6 +1,7 @@
 import {
   DARK_DEEP,
   DARK_FULL_AT,
+  MAP_DARK,
   DARK_NEAR,
   DARK_NIGHT,
   FOG_ALPHA,
@@ -26,6 +27,8 @@ const TREELINE = { sat: 0.7, con: 1.08, bri: 0.94 }
 /** In the forest: at the entry, and deep in (a touch brighter than MOODS.forest in src/game.ts, which the darkness layer makes up for). */
 const FOREST_NEAR = { sat: 0.42, con: 1.15, bri: 0.95 }
 const FOREST_DEEP = { sat: 0.26, con: 1.2, bri: 0.85 }
+/** Deepest of all: where the empty bus lets you off. Almost no colour left, and darker. */
+const FOREST_DEEPEST = { sat: 0.1, con: 1.3, bri: 0.72 }
 
 const grades = new Map<string, string>()
 function grade(a: typeof PROPERTY, b: typeof PROPERTY, t: number): string {
@@ -46,9 +49,27 @@ export function outskirtsGrade(wild: number): string {
   return grade(PROPERTY, TREELINE, wild)
 }
 
-/** The grade in the forest, `deep` (0 at the entry, 1 as dark as it gets) in. */
-export function forestGrade(deep: number): string {
+/**
+ * The grade in the forest, `deep` (0 at the entry, 1 as dark as it gets) in; `deepest` (0–1) goes
+ * on past that, to where the empty bus lets you off.
+ */
+export function forestGrade(deep: number, deepest = 0): string {
+  if (deepest > 0) return grade(FOREST_DEEP, FOREST_DEEPEST, deepest)
   return grade(FOREST_NEAR, FOREST_DEEP, deep)
+}
+
+/** How dark it is on the map (0–1), from your distance to the entry (MAP_DARK). */
+export function mapDeepness(depth: number): number {
+  const pts = MAP_DARK
+  if (depth <= pts[0][0]) return pts[0][1]
+  for (let i = 1; i < pts.length; i++) {
+    const [d1, v1] = pts[i]
+    if (depth <= d1) {
+      const [d0, v0] = pts[i - 1]
+      return v0 + ((v1 - v0) * (depth - d0)) / (d1 - d0)
+    }
+  }
+  return pts[pts.length - 1][1]
 }
 
 /** How deep in you are, 0–1, from your distance to the entry. */

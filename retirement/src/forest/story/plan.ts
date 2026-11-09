@@ -1,5 +1,5 @@
 import type { Dir } from '../../../shared/schema'
-import type { ClueId } from '../../../shared/story'
+import type { ClueId, ItemId, LeadId, PuzzleId } from '../../../shared/story'
 import type { Forest, Stamp } from '../gen'
 import { FINDS_PER_TRIP, PRINTS, SHELTER_MARK_EVERY } from '../tuning'
 import { CLUES } from './clues'
@@ -29,8 +29,20 @@ export class StoryPlan {
   looked = new Set<string>()
   /** Keepsakes you've picked up this trip (unbanked, like the notepad). */
   kept = new Set<string>()
-  /** Landmarks you've reached this trip. */
-  private reached = new Set<string>()
+  /**
+   * Keys you've picked up this trip: in your pocket, but only yours once you're home safe (caught,
+   * they're back where you found them).
+   */
+  carried = new Set<ItemId>()
+  /** Locks you've found this trip and can't open yet (PUZZLES.md: unresolved leads). */
+  leads = new Set<LeadId>()
+  /**
+   * Puzzles solved this trip (a door unlocked, the gate opened): open for the rest of it, and kept
+   * if you get home safe (PUZZLES.md: committed on a safe return).
+   */
+  opened = new Set<PuzzleId>()
+  /** Landmarks you've reached this trip (MAP.md site ids, for the rough site map). */
+  readonly reached = new Set<string>()
 
   constructor(
     private forest: Forest,
@@ -122,6 +134,16 @@ export class StoryPlan {
   }
 
   /** Where clues are waiting to be found (for their faint glint). */
+  /**
+   * The clue waiting at a spot this trip: its own, or once that's taken (or on your board), the
+   * second one in the same place (`also`). Null when there's nothing left to find there.
+   */
+  clueAt(s: Spot): ClueId | null {
+    for (const id of [s.clue, s.also])
+      if (id && this.canFind(id) && !this.found.has(id) && !this.banked.has(id)) return id
+    return null
+  }
+
   *clueSpots(): Generator<{ x: number; y: number }> {
     if (
       this.shelter &&
@@ -130,15 +152,7 @@ export class StoryPlan {
       !this.banked.has('lost_journal')
     )
       yield { x: Math.floor(this.shelter.x), y: Math.floor(this.shelter.y) + 1 }
-    for (const s of layout().clueSpots)
-      if (
-        this.forest.isMap(s.x, s.y) &&
-        s.clue &&
-        this.canFind(s.clue) &&
-        !this.found.has(s.clue) &&
-        !this.banked.has(s.clue)
-      )
-        yield s
+    for (const s of layout().clueSpots) if (this.forest.isMap(s.x, s.y) && this.clueAt(s)) yield s
   }
 
   /** Whether a clue can be had on this trip (it's written, and its gates are met). */

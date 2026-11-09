@@ -1,5 +1,6 @@
 import {
   CLOSET,
+  KEY_HOOK,
   FURNITURE,
   MAX_SLOTS,
   PLOT_MAX,
@@ -73,6 +74,8 @@ export type ObjKind =
   | 'infirmaryDoor'
   /** The locked closet door in every room (STORY.md "Act I"). */
   | 'closet'
+  /** The key hook beside it: `n` keys hanging on it (only drawn in your own room). */
+  | 'keyhook'
 
 export interface Obj {
   k: ObjKind
@@ -91,6 +94,7 @@ export type Interact =
   | { kind: 'nurse'; x: number; y: number }
   | { kind: 'sign'; x: number; y: number; text: string }
   | { kind: 'closet'; x: number; y: number }
+  | { kind: 'keyhook'; x: number; y: number }
   | { kind: 'nest'; x: number; y: number }
   | { kind: 'noticeboard'; x: number; y: number }
 
@@ -944,6 +948,8 @@ export function buildRoom(login: string, room: Pick<Room, 'items'>): GameMap {
   // The closet: an ordinary door, always locked. Faced from the floor in front of it.
   m.objects.push({ k: 'closet', x: CLOSET.x, y: CLOSET.y })
   m.interacts.push({ kind: 'closet', x: CLOSET.x, y: CLOSET.y + CLOSET.h - 1 })
+  m.objects.push({ k: 'keyhook', x: KEY_HOOK.x, y: KEY_HOOK.y, n: 0 })
+  m.interacts.push({ kind: 'keyhook', x: KEY_HOOK.x, y: KEY_HOOK.y })
   for (const it of room.items) {
     const def = FURNITURE[it.k]
     if (!def || it.x < 0 || def.wall || def.flat) continue

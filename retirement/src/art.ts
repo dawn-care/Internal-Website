@@ -1930,6 +1930,22 @@ export function drawObject(
     case 'screen':
       c.drawImage(screenSprite(), px, py - 14)
       break
+    case 'keyhook': {
+      // A little wooden board with three brass hooks, and whatever keys hang on them: brass, on a
+      // paper tag.
+      f('#5b4030', px + 2, py + 3, 12, 5)
+      f('#7a5a3c', px + 2, py + 3, 12, 1)
+      for (const hx of [4, 7, 10]) f('#c8a040', px + hx, py + 7, 1, 2)
+      for (let i = 0; i < Math.min(3, o.n ?? 0); i++) {
+        const kx = px + 4 + i * 3
+        f('#d0a838', kx - 1, py + 9, 3, 3)
+        f('#2a211b', kx, py + 10, 1, 1)
+        f('#d0a838', kx, py + 12, 1, 4)
+        f('#d0a838', kx + 1, py + 14, 1, 1)
+        f('#e8e0c8', kx + 1, py + 10, 2, 3)
+      }
+      break
+    }
     case 'closet':
       // A plain painted closet door, a little narrower than the room's real door, with a keyhole.
       f('#5b4030', px + 2, py + 2, 12, 30)

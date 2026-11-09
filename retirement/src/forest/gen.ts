@@ -1,6 +1,6 @@
 import type { Dir } from '../../shared/schema'
 import { hash, type Edge } from '../maps'
-import { layout } from './story/layout'
+import { layout, PROP_SIZE } from './story/layout'
 import { HOLLOW_SEED, type MapGround } from './story/map'
 import {
   BACK_STRIP,
@@ -83,6 +83,9 @@ export const FG = {
   STONE: 8,
   WILD: 9,
   YARD: 10,
+  // A building's inside walls, and the nothing round them.
+  WALL: 11,
+  VOID: 12,
 } as const
 
 /** The map's grounds as the forest's ground codes. */
@@ -94,6 +97,8 @@ const MAP_GROUND: Record<MapGround, number> = {
   stone: FG.STONE,
   wild: FG.WILD,
   yard: FG.YARD,
+  wall: FG.WALL,
+  void: FG.VOID,
 }
 
 export interface Chunk {
@@ -142,6 +147,13 @@ export class Forest {
   lost = false
   private chunks = new Map<string, Chunk>()
   private stamps: Stamp[] = []
+  /** Stamps put out while lost (your lean-to, the copied bus stop): gone once you're found. */
+  private lostStamps = new Set<Stamp>()
+  /**
+   * Gates and doors on the map that are open (PUZZLES.md P05: the service gate): their props drawn
+   * open (`v` 1) and their tiles no longer solid. By the prop's id.
+   */
+  private opened = new Set<string>()
   readonly into: { x: number; y: number }
   readonly facing: Dir
 
@@ -212,6 +224,7 @@ export class Forest {
   /** Puts a stamp into the forest: into the chunks already made, and every one made later. */
   addStamp(st: Stamp) {
     this.stamps.push(st)
+    if (this.lost) this.lostStamps.add(st)
     for (const ch of this.chunks.values()) this.applyStamp(ch, st)
   }
 
@@ -372,6 +385,54 @@ export class Forest {
     }
   }
 
+  /**
+   * Found again: a safe bus ride (PUZZLES.md P04) has brought you back to the map. Everything made
+   * while you were lost is forgotten, with whatever was put out only for the lost (your lean-to,
+   * the copied stop), and the map is made again around you.
+   */
+  found() {
+    this.lost = false
+    this.stamps = this.stamps.filter((st) => !this.lostStamps.has(st))
+    this.lostStamps.clear()
+    this.chunks.clear()
+  }
+
+  /**
+   * Opens a gate on the map (a prop by id, e.g. `servicegate`): drawn open, and you can walk
+   * through it, in the chunks already made and every one made later.
+   */
+  open(propId: string) {
+    if (this.opened.has(propId)) return
+    this.opened.add(propId)
+    for (const ch of this.chunks.values()) this.applyOpen(ch)
+  }
+
+  /** Whether a gate (by its prop's id) is open. */
+  isOpen(propId: string): boolean {
+    return this.opened.has(propId)
+  }
+
+  private applyOpen(ch: Chunk) {
+    if (!this.opened.size || ch.wild) return
+    for (const p of layout().propsIn(
+      ch.cx * CHUNK,
+      ch.cy * CHUNK,
+      ch.cx * CHUNK + CHUNK - 1,
+      ch.cy * CHUNK + CHUNK - 1,
+    )) {
+      if (!this.opened.has(p.id)) continue
+      const o = ch.objects.find(
+        (q) => q.k === 'prop' && q.id === p.id && q.x === p.x && q.y === p.y,
+      )
+      if (o) o.v = 1
+    }
+    // Its tiles: anywhere in this chunk (a wide gate's tiles can be in a neighbouring chunk's).
+    for (const id of this.opened)
+      for (const p of openTiles(id))
+        if (Math.floor(p.x / CHUNK) === ch.cx && Math.floor(p.y / CHUNK) === ch.cy)
+          ch.solid[(p.y - ch.cy * CHUNK) * CHUNK + (p.x - ch.cx * CHUNK)] = 0
+  }
+
   /** Whether the map (story/map.ts) is what's drawn at a tile: its chunk wasn't made lost. */
   isMap(x: number, y: number): boolean {
     const ch = this.chunks.get(`${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`)
@@ -413,8 +474,9 @@ export class Forest {
     ch.ground[k] = g ? MAP_GROUND[g] : noise(x, y, 6, s + 4) > 0.62 ? FG.MOSS : FG.LITTER
     if (L.solid(x, y)) ch.solid[k] = 1
     if (L.clear(x, y) || depth < ENTRY_CLEARING) {
-      // Clearings and verges: the odd fern or mushroom, never on the road or a path.
-      if (!g && r2 < 0.05) put('fern', false)
+      // Clearings and verges: brambles and the odd mushroom, never on the road or a path (a
+      // little thicker along the verges, so the trail feels hemmed in).
+      if (!g && r2 < 0.09) put('fern', false)
       else if (g === 'wild' && r2 < 0.12) put(r2 < 0.04 ? 'shroom' : 'fern', false)
       return
     }
@@ -510,6 +572,16 @@ export class Forest {
       ))
         ch.objects.push({ k: 'prop', x: p.x, y: p.y, v: p.v ?? 0, id: p.id })
     for (const st of this.stamps) this.applyStamp(ch, st)
+    this.applyOpen(ch)
     return ch
   }
+}
+
+/** Every solid tile of the map's props with this id (a gate that can be opened). */
+function openTiles(propId: string): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = []
+  for (const p of layout().propsIn(-1e6, -1e6, 1e6, 1e6))
+    // (Only a barrier lets you through once it's open: a locker or a cage just changes its look.)
+    if (p.id === propId && PROP_SIZE[p.id]?.fence) for (const [x, y] of p.solid) out.push({ x, y })
+  return out
 }

@@ -512,6 +512,57 @@ describe('/api/retirement', () => {
     })
   })
 
+  describe('story progress', () => {
+    const post = (s: unknown) => call({ method: 'POST', op: 'save', body: { save: s } })
+    const me = async () => ((await call({ method: 'GET', op: 'me' })).body as { save: Save }).save
+
+    it('keeps keys, puzzles, places, leads and memory scenes', async () => {
+      const story = {
+        hook: ['ITEM_ADMIN_KEY'],
+        puzzles: ['P01'],
+        events: ['E_NORA_MEET_1'],
+        seen: ['CS_GARDEN'],
+        queued: ['CS_SEARCH'],
+        sites: ['TRAILHEAD', 'BUS_STOP', 'CAMP_YARD'],
+        leads: ['service_gate_locked', 'night_crew_code'],
+      }
+      expect((await post({ ...save(), story })).statusCode).toBe(200)
+      expect((await me()).story).toEqual(story)
+      // Empty lists are dropped; older saves have no story and still load.
+      expect((await post({ ...save(), story: { hook: [], sites: [] } })).statusCode).toBe(200)
+      expect((await me()).story).toBeUndefined()
+      expect((await post(save())).statusCode).toBe(200)
+      // The story is yours alone.
+      await post({ ...save(), story })
+      expect(JSON.stringify((await call({ method: 'GET', op: 'world' })).body)).not.toContain(
+        'ITEM_ADMIN_KEY',
+      )
+    })
+
+    it('lets a key be carried, but never in two places at once', async () => {
+      expect((await post({ ...save(), pocket: ['ITEM_ADMIN_KEY'] })).statusCode).toBe(200)
+      expect((await me()).pocket).toEqual(['ITEM_ADMIN_KEY'])
+      const both = { ...save(), pocket: ['ITEM_ADMIN_KEY'], story: { hook: ['ITEM_ADMIN_KEY'] } }
+      expect((await post(both)).statusCode).toBe(400)
+    })
+
+    it('refuses story progress that is not well-formed', async () => {
+      const bad = [
+        { hook: ['ITEM_MAGIC_KEY'] },
+        { hook: ['ITEM_ADMIN_KEY', 'ITEM_ADMIN_KEY'] },
+        { puzzles: ['P10'] },
+        { events: ['E_SOMETHING'] },
+        { seen: ['CS_NOPE'] },
+        { sites: ['SUNSET_ACRES'] },
+        { leads: ['everything_locked'] },
+        { sites: 'TRAILHEAD' },
+        'all of it',
+      ]
+      for (const story of bad)
+        expect((await post({ ...save(), story })).statusCode, JSON.stringify(story)).toBe(400)
+    })
+  })
+
   describe('pets', () => {
     const pet = {
       kind: 'dog',

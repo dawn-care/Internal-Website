@@ -662,9 +662,10 @@ export function paperRustle(volume = 1) {
 /**
  * The bus: arriving (an engine growing out of the distance over a few seconds, then the hiss of
  * its brakes and the doors folding open) or leaving (doors, then the engine drawing away). An old
- * diesel, synthesized: a rough low drone kept above 100 Hz so it's heard on small speakers.
+ * diesel, synthesized: a rough low drone kept above 100 Hz so it's heard on small speakers. From
+ * inside it, just the brakes or just the doors.
  */
-export function busSound(kind: 'arrive' | 'leave', pan: number, volume = 1) {
+export function busSound(kind: 'arrive' | 'leave' | 'brake' | 'doors', pan: number, volume = 1) {
   if (isMuted()) return
   const ctx = audioContext()
   if (!ctx) return
@@ -700,7 +701,12 @@ export function busSound(kind: 'arrive' | 'leave', pan: number, volume = 1) {
     noiseHit(ctx, p, at, 0.5, 0.09 * volume, 'highpass', 1800)
     thump(ctx, p, at + 0.45, 220, 140, 0.18 * volume)
   }
-  if (kind === 'arrive') {
+  if (kind === 'brake') {
+    engine(t0, 1.4, 0.8, 0.5, false)
+    noiseHit(ctx, p, t0 + 0.3, 1.3, 0.12 * volume, 'highpass', 3000)
+  } else if (kind === 'doors') {
+    doors(t0)
+  } else if (kind === 'arrive') {
     engine(t0, 4, 0.9, 0.75, true)
     // Brakes: a long hiss as it stops.
     noiseHit(ctx, p, t0 + 4, 1.1, 0.12 * volume, 'highpass', 3000)
@@ -708,5 +714,46 @@ export function busSound(kind: 'arrive' | 'leave', pan: number, volume = 1) {
   } else {
     doors(t0)
     engine(t0 + 0.8, 4.5, 0.8, 1.05, false)
+  }
+}
+
+/**
+ * Locks (PUZZLES.md P01, P05): a key turning or a padlock springing open (`open`), a padlock that
+ * won't (`rattle`: the shackle jerked against the chain), a door (`door`: a creak and a knock).
+ */
+export function lockSound(kind: 'open' | 'rattle' | 'door', volume = 1) {
+  if (isMuted()) return
+  const ctx = audioContext()
+  if (!ctx) return
+  build(ctx)
+  const t0 = ctx.currentTime + 0.02
+  const out = ctx.createGain()
+  out.gain.value = volume
+  out.connect(ctx.destination)
+  if (kind === 'open') {
+    noiseHit(ctx, out, t0, 0.05, 0.18, 'bandpass', 2600, 4)
+    noiseHit(ctx, out, t0 + 0.12, 0.08, 0.22, 'bandpass', 1500, 3)
+    thump(ctx, out, t0 + 0.14, 320, 180, 0.12)
+  } else if (kind === 'rattle') {
+    for (let i = 0; i < 3; i++)
+      noiseHit(ctx, out, t0 + i * 0.07, 0.05, 0.14, 'bandpass', 1900 + i * 300, 5)
+    thump(ctx, out, t0 + 0.2, 200, 140, 0.08)
+  } else {
+    // A slow creak (a sliding band of noise), then the door knocking against its frame.
+    const src = ctx.createBufferSource()
+    src.buffer = white
+    const f = ctx.createBiquadFilter()
+    f.type = 'bandpass'
+    f.Q.value = 12
+    f.frequency.setValueAtTime(380, t0)
+    f.frequency.linearRampToValueAtTime(620, t0 + 0.5)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.exponentialRampToValueAtTime(0.16, t0 + 0.08)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.55)
+    src.connect(f).connect(g).connect(out)
+    src.start(t0, Math.random())
+    src.stop(t0 + 0.6)
+    thump(ctx, out, t0 + 0.55, 160, 90, 0.16)
   }
 }

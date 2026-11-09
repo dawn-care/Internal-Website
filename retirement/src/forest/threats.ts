@@ -134,6 +134,11 @@ export class Threats {
     return !!this.now
   }
 
+  /** Back on the map (a safe bus ride, PUZZLES.md P04): no longer lost. */
+  found() {
+    this.wasLost = false
+  }
+
   update(dt: number) {
     const ms = dt * 1000
     if (!this.now) {

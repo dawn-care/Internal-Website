@@ -3,7 +3,7 @@ import type { ForestObj } from '../gen'
 
 /*
  * The story's things, drawn in code like everything else: the Route 9 bus stop and its sign, the
- * letterbox with no house, the small finds and footprints. Each is a cached sprite, drawn once.
+ * camp's buildings and fences, the small finds and footprints. Each is a cached sprite, drawn once.
  * Colours are worn and damp; the forest's grade drains them further.
  */
 
@@ -87,27 +87,6 @@ function busSign() {
     f('#3d3936', 5, 6, 1, 1)
     f('#3d3936', 8, 6, 1, 1)
     f('#58645a', 9, 2, 2, 2)
-  })
-}
-
-/** A letterbox on a post, no house behind it. A small number plate: 14. */
-function letterbox() {
-  return sprite('letterbox', 16, 30, (f, c) => {
-    c.fillStyle = 'rgba(0,0,0,0.3)'
-    c.fillRect(3, 26, 10, 3)
-    f('#3d3127', 7, 11, 3, 17)
-    // The box: rounded top, rusted, its door a little open.
-    f('#5d4e44', 2, 4, 12, 8)
-    f('#6d5d51', 3, 3, 10, 1)
-    f('#6d5d51', 2, 4, 12, 2)
-    f('#3a2f28', 13, 5, 1, 6)
-    f('#7a4a35', 4, 8, 2, 2)
-    // Its flag, down.
-    f('#7a3b30', 14, 7, 1, 4)
-    // The number plate.
-    f('#b4ad98', 5, 12, 6, 3)
-    f('#3a3530', 6, 13, 1, 1)
-    f('#3a3530', 8, 13, 2, 1)
   })
 }
 
@@ -265,89 +244,501 @@ function prints(dir: number, v: number) {
 /** Each prop's sprite: its size (px) and how it's drawn. Drawn with its bottom on its tile's. */
 const PROP_ART: Record<
   string,
-  { w: number; h: number; dx?: number; draw: (f: Pen, v: number) => void; outline?: false }
+  {
+    w: number
+    h: number
+    dx?: number
+    /** Raised (or lowered) by this many px from standing on its tile's bottom. */
+    dy?: number
+    draw: (f: Pen, v: number) => void
+    outline?: false
+  }
 > = {
-  gatepost: {
-    w: 10,
-    h: 30,
-    dx: 3,
-    draw: (f) => {
-      f('#4a3a2c', 2, 2, 6, 27)
-      f('#5c4936', 2, 2, 2, 27)
-      f('#3a2d22', 1, 0, 8, 3)
-      // The enamel number: 14.
-      f('#c9c4b4', 2, 10, 6, 5)
-      f('#2c3d5a', 3, 11, 1, 3)
-      f('#2c3d5a', 5, 11, 1, 3)
-      f('#2c3d5a', 6, 12, 1, 1)
-      f('#2c3d5a', 5, 12, 2, 1)
-    },
-  },
-  chimney: {
-    w: 18,
-    h: 50,
-    dx: -1,
-    draw: (f) => {
-      f('#6a3e30', 2, 4, 14, 45)
-      for (let y = 6; y < 48; y += 4)
-        for (let x = 2 + ((y / 4) % 2) * 3; x < 16; x += 6) f('#56322a', x, y, 1, 3)
-      for (let y = 7; y < 48; y += 4) f('#58342a', 2, y, 14, 1)
-      f('#4a2c24', 1, 0, 16, 5)
-      f('#2a1e1a', 4, 1, 10, 2)
-      // The hearth's mouth, black with soot.
-      f('#1a1414', 5, 34, 8, 14)
-      f('#2b2220', 6, 35, 6, 2)
-    },
-  },
-  ruinwall: {
-    w: 16,
-    h: 24,
-    draw: (f, v) => {
-      const top = [12, 6, 16][v % 3]
-      for (let x = 0; x < 16; x++) {
-        const t = top + ((x * 7 + v * 3) % 5) - 2
-        f('#6f6c64', x, t, 1, 23 - t)
-      }
-      for (let y = 8; y < 23; y += 4) f('#5c5a53', 0, y, 16, 1)
-      f('#4c5a3a', 2, 20, 5, 3)
-      f('#4c5a3a', 11, 21, 4, 2)
-    },
-  },
-  steps: {
-    w: 16,
-    h: 14,
-    draw: (f) => {
-      f('#6a6862', 1, 8, 14, 5)
-      f('#77756e', 2, 4, 12, 4)
-      f('#85837b', 3, 1, 10, 3)
-      f('#3e3d39', 6, 2, 4, 1)
-    },
-  },
-  bed: {
+  // --- insides (story/map.ts INTERIORS) ---
+  desk: {
+    // A plank desk with a drawer, a lamp gone dark on it, papers.
     w: 32,
-    h: 26,
-    draw: (f, v) => {
-      f('#4b3828', 1, 14, 30, 11)
-      f('#5c4532', 1, 14, 30, 2)
-      f('#3c3222', 3, 16, 26, 7)
-      // Canes and netting (tomatoes), or raspberry canes.
-      for (let x = 5; x < 29; x += 5) {
-        f('#7a6a4a', x, v ? 4 : 1, 1, v ? 13 : 16)
-        if (!v) f('#a39f8e', x - 2, 5, 5, 1)
-      }
-      for (let i = 0; i < 14; i++)
-        f(i % 3 ? '#4f6a3a' : '#7a3a2e', 3 + ((i * 11) % 26), 6 + ((i * 7) % 10), 2, 2)
+    h: 24,
+    draw: (f) => {
+      f('#5a4632', 0, 6, 32, 8)
+      f('#6a5440', 0, 6, 32, 2)
+      f('#4a3828', 1, 14, 3, 9)
+      f('#4a3828', 28, 14, 3, 9)
+      f('#4e3c2c', 6, 14, 12, 6)
+      f('#c8a040', 11, 16, 2, 1)
+      f('#3a3a36', 22, 1, 2, 6)
+      f('#5a5a50', 19, 0, 8, 2)
+      f('#d8d0b8', 4, 4, 8, 2)
+      f('#b8a888', 14, 4, 5, 2)
     },
   },
-  fence: {
+  chair: {
+    w: 14,
+    h: 16,
+    dx: 1,
+    draw: (f) => {
+      f('#5a4632', 2, 6, 10, 3)
+      f('#4a3828', 2, 9, 2, 6)
+      f('#4a3828', 10, 9, 2, 6)
+      f('#5a4632', 2, 0, 2, 7)
+    },
+  },
+  stove: {
+    // A pot-bellied stove on four feet, its door hanging open, the pipe going up into the dark.
+    w: 16,
+    h: 34,
+    draw: (f) => {
+      f('#2a2a2c', 6, 0, 4, 12)
+      f('#2e2e30', 2, 12, 12, 16)
+      f('#3a3a3c', 3, 13, 10, 3)
+      f('#0e0e10', 5, 18, 6, 6)
+      f('#3a3a3c', 11, 18, 2, 6)
+      f('#2a2a2c', 3, 28, 2, 5)
+      f('#2a2a2c', 11, 28, 2, 5)
+    },
+  },
+  papers: {
+    w: 16,
+    h: 12,
+    outline: false,
+    draw: (f) => {
+      f('#8a8270', 2, 4, 7, 5)
+      f('#76705e', 7, 6, 6, 5)
+      f('#9a927c', 4, 2, 5, 3)
+      f('#5a5446', 9, 7, 3, 1)
+    },
+  },
+  cabinet: {
+    // A grey steel filing cabinet, four drawers, one hanging open (v 1: all shut).
+    w: 16,
+    h: 34,
+    draw: (f, v) => {
+      f('#5a5e60', 1, 2, 14, 31)
+      f('#6a6e70', 1, 2, 14, 2)
+      for (let i = 0; i < 4; i++) {
+        f('#4a4e50', 2, 6 + i * 7, 12, 1)
+        f('#8a8e90', 6, 8 + i * 7, 4, 1)
+      }
+      if (!v) {
+        f('#4a4e50', 0, 13, 16, 5)
+        f('#c8c0a8', 2, 12, 12, 2)
+      }
+    },
+  },
+  exitdoor: {
+    // The way out, in a front wall: a plank door paler than the wall round it, in a frame, with
+    // its latch, and a thin line of grey light under it.
     w: 16,
     h: 18,
+    draw: (f) => {
+      f('#2a211b', 1, 0, 14, 18)
+      f('#9a7e5c', 3, 1, 10, 15)
+      f('#ab8f6a', 3, 1, 10, 2)
+      for (const x of [6, 9]) f('#7a6248', x, 3, 1, 13)
+      f('#e0b850', 11, 8, 2, 2)
+      f('#c8ccc8', 3, 16, 10, 1)
+    },
+  },
+  doormat: {
+    // A worn doormat on the floor in front of the door, its border faded, its middle walked thin.
+    w: 16,
+    h: 14,
+    outline: false,
+    draw: (f) => {
+      f('#8a4636', 1, 1, 14, 11)
+      f('#a85e48', 2, 2, 12, 9)
+      f('#94503e', 4, 4, 8, 5)
+    },
+  },
+  window: {
+    // On a back wall: grimy black glass (v 0), or boarded over (v 1).
+    w: 16,
+    h: 16,
+    dy: -2,
     draw: (f, v) => {
-      f('#4a3a2c', 2, 3, 3, 14)
-      f('#4a3a2c', 11, v ? 6 : 3, 3, v ? 11 : 14)
-      f('#5a4836', 0, 6, 16, 2)
-      if (!v) f('#5a4836', 0, 11, 16, 2)
-      else f('#5a4836', 0, 12, 8, 2)
+      f('#4a3a2c', 1, 1, 14, 13)
+      f('#0c1014', 2, 2, 12, 11)
+      f('#4a3a2c', 7, 2, 2, 11)
+      if (v) {
+        f('#6a5642', 1, 3, 14, 3)
+        f('#5c4936', 1, 8, 14, 3)
+        f('#6a5642', 2, 6, 3, 2)
+      } else f('#1e2830', 3, 3, 3, 2)
+    },
+  },
+  bunkbed: {
+    // Iron bunks, two high, thin striped mattresses, a grey blanket on the lower one.
+    w: 32,
+    h: 44,
+    draw: (f) => {
+      f('#3a3c3e', 1, 2, 2, 41)
+      f('#3a3c3e', 29, 2, 2, 41)
+      f('#4a4c4e', 1, 2, 30, 2)
+      f('#8a8474', 3, 8, 26, 5)
+      for (let x = 5; x < 29; x += 4) f('#6a6456', x, 8, 1, 5)
+      f('#4a4c4e', 1, 13, 30, 2)
+      f('#8a8474', 3, 26, 26, 5)
+      f('#55585a', 3, 25, 20, 7)
+      f('#4a4c4e', 1, 31, 30, 2)
+    },
+  },
+  locker: {
+    // A tall tin locker, its paint chipped; a vent at the top, a little dial lock (v 1: Bell's,
+    // with a strip of tape for a name; v 2: Bell's, open, the door swung back on a shirt).
+    w: 16,
+    h: 36,
+    draw: (f, v) => {
+      f('#4e5a52', 1, 1, 14, 34)
+      f('#5e6a62', 1, 1, 14, 2)
+      for (let y = 4; y < 10; y += 2) f('#2e3632', 4, y, 8, 1)
+      f('#7a4a35', 2, 22, 3, 4)
+      if (v === 2) {
+        f('#14161a', 2, 3, 12, 31)
+        f('#6a5a46', 4, 6, 8, 14)
+        f('#c8c0a8', 5, 22, 3, 4)
+        f('#c8c0a8', 9, 23, 3, 4)
+        f('#4e5a52', 13, 2, 3, 33)
+        return
+      }
+      f('#3a423e', 8, 2, 1, 33)
+      f('#a8a294', 10, 18, 4, 4)
+      f('#2a2a2a', 11, 19, 2, 2)
+      if (v === 1) {
+        f('#d8d0b8', 3, 12, 10, 3)
+        f('#6a6456', 4, 13, 8, 1)
+      }
+    },
+  },
+  frame: {
+    // A framed typed notice on a wall, the glass cracked across a corner.
+    w: 16,
+    h: 16,
+    dy: -2,
+    draw: (f) => {
+      f('#4a3828', 1, 1, 14, 14)
+      f('#d8d0b8', 3, 3, 10, 10)
+      for (let y = 5; y < 12; y += 2) f('#8a8270', 4, y, 8, 1)
+      f('#f0ece0', 10, 3, 3, 1)
+      f('#f0ece0', 12, 4, 1, 2)
+    },
+  },
+  bench: {
+    // A mechanic's bench: thick planks, a vice at one end, tools on hooks above, a clipboard on a
+    // nail.
+    w: 32,
+    h: 34,
+    draw: (f) => {
+      f('#4a3a2c', 0, 0, 32, 2)
+      f('#8a8a84', 4, 3, 1, 7)
+      f('#8a8a84', 9, 3, 2, 6)
+      f('#6a6a64', 14, 3, 1, 8)
+      f('#c8c0a8', 22, 2, 7, 9)
+      f('#8a8270', 23, 4, 5, 1)
+      f('#8a8270', 23, 6, 5, 1)
+      f('#5a4632', 0, 14, 32, 7)
+      f('#6a5440', 0, 14, 32, 2)
+      f('#4a4a48', 2, 10, 6, 4)
+      f('#4a3828', 1, 21, 3, 12)
+      f('#4a3828', 28, 21, 3, 12)
+    },
+  },
+  burnt: {
+    // What the fire left: two saws charred black and a scorched can, swept against the wall.
+    w: 32,
+    h: 16,
+    draw: (f) => {
+      f('#1a1816', 1, 9, 30, 5)
+      f('#2a2624', 3, 6, 12, 4)
+      f('#3a3634', 4, 7, 9, 1)
+      f('#2a2624', 17, 5, 13, 5)
+      f('#5a3020', 20, 7, 3, 2)
+      f('#24201e', 23, 1, 6, 13)
+      f('#3a3634', 24, 2, 4, 1)
+    },
+  },
+  bay: {
+    // The storage bay in the shed's front wall, seen from inside: the back of the roller shutter
+    // down over it, jammed (v 1: rolled up into its drum, the shelves either side showing a shoebox,
+    // a coil of rope and a tin, and the grey of outside through the opening).
+    w: 48,
+    h: 30,
+    draw: (f, v) => {
+      f('#3a3c3e', 0, 0, 48, 29)
+      f('#4a4c4e', 0, 0, 48, 3)
+      if (v) {
+        f('#5a5c58', 2, 3, 44, 5)
+        f('#4a4c4e', 2, 7, 44, 1)
+        f('#1a1c20', 2, 8, 44, 20)
+        f('#3c4450', 10, 10, 28, 18)
+        f('#3e3024', 2, 14, 8, 2)
+        f('#7a6a50', 3, 9, 6, 5)
+        f('#3e3024', 38, 14, 8, 2)
+        f('#6a5a46', 39, 10, 5, 4)
+        f('#7a7a74', 40, 19, 4, 4)
+        f('#3e3024', 38, 23, 8, 2)
+        return
+      }
+      for (let y = 4; y < 27; y += 3) f('#5a5c58', 2, y, 44, 2)
+      f('#7a4a35', 10, 10, 6, 2)
+      f('#7a4a35', 30, 19, 8, 2)
+      f('#c8c0a8', 2, 27, 44, 1)
+    },
+  },
+  winch: {
+    // The shutter's winch on a post: a spool with a crank, a catch and a toothed ratchet.
+    w: 16,
+    h: 30,
+    draw: (f) => {
+      f('#3a3c3e', 6, 0, 4, 29)
+      f('#6a6a64', 2, 8, 12, 9)
+      f('#8a7a60', 3, 10, 10, 5)
+      f('#4a4a48', 13, 11, 3, 2)
+      f('#2a2a2a', 14, 13, 1, 5)
+      for (let y = 19; y < 25; y += 2) f('#8a8a84', 3, y, 4, 1)
+      f('#a03028', 10, 20, 3, 3)
+    },
+  },
+  diagram: {
+    // A tin plate on a short post: a rope, a pulley, a spool, three numbered steps.
+    w: 16,
+    h: 28,
+    draw: (f) => {
+      f('#3a3c3e', 7, 14, 2, 13)
+      f('#8a8a84', 1, 1, 14, 14)
+      f('#a8a8a0', 1, 1, 14, 1)
+      f('#3a3a36', 7, 3, 1, 7)
+      f('#3a3a36', 6, 3, 3, 2)
+      f('#3a3a36', 4, 9, 6, 3)
+      f('#3a3a36', 11, 4, 2, 1)
+      f('#3a3a36', 11, 7, 2, 1)
+      f('#3a3a36', 11, 10, 2, 1)
+    },
+  },
+  noticeboard: {
+    // On a back wall: cork in a frame, a typed sheet pinned to it, a few scraps.
+    w: 32,
+    h: 18,
+    dy: -2,
+    draw: (f) => {
+      f('#4a3828', 0, 1, 32, 15)
+      f('#8a6a48', 2, 3, 28, 11)
+      f('#d8d0b8', 5, 4, 10, 9)
+      f('#8a8270', 6, 6, 8, 1)
+      f('#8a8270', 6, 8, 7, 1)
+      f('#8a8270', 6, 10, 8, 1)
+      f('#b8a888', 19, 5, 7, 5)
+      f('#a03028', 9, 4, 1, 1)
+      f('#a03028', 22, 5, 1, 1)
+    },
+  },
+  wire: {
+    // The camp's perimeter: a tall chain-link fence on steel posts, barbed wire along the top.
+    // Along a row (v 0), or down a column seen end on (v 1).
+    w: 16,
+    h: 34,
+    outline: false,
+    draw: (f, v) => {
+      if (v) {
+        f('#2b2e2e', 6, 0, 4, 33)
+        f('#575c5a', 7, 0, 2, 33)
+        f('#7a7f7a', 7, 2, 1, 28)
+        f('#3a3d3c', 5, 30, 6, 3)
+        return
+      }
+      f('#3a3d3c', 0, 3, 3, 30)
+      f('#6a706c', 1, 3, 1, 30)
+      // The mesh: diamonds, rusting.
+      for (let y = 7; y < 31; y += 3)
+        for (let x = 3; x < 16; x += 3) f((x + y) % 2 ? '#5c625e' : '#6e5a48', x, y, 1, 1)
+      for (let y = 8; y < 31; y += 3) for (let x = 4; x < 16; x += 3) f('#4c524e', x, y, 1, 1)
+      f('#5c625e', 0, 6, 16, 1)
+      f('#4a4f4c', 0, 31, 16, 1)
+      // Barbed wire along the top.
+      f('#6a706c', 0, 2, 16, 1)
+      for (const x of [2, 7, 12]) f('#8a8f8a', x, 1, 2, 3)
+    },
+  },
+  servicegate: {
+    // A steel vehicle gate between two posts, a pipe frame with a brace, chained shut in the
+    // middle with a heavy padlock (v 0); or swung right back against its post, the chain hanging
+    // loose and the padlock open on it (v 1: P05 solved).
+    w: 64,
+    h: 36,
+    draw: (f, v) => {
+      for (const x of [0, 59]) {
+        f('#3a3d3c', x, 2, 5, 33)
+        f('#5a605c', x + 1, 2, 1, 33)
+        f('#2a2c2c', x, 0, 5, 3)
+      }
+      if (v) {
+        // Seen end on, swung back against the left post: a narrow frame of bars.
+        f('#6a6e5a', 5, 6, 6, 3)
+        f('#6a6e5a', 5, 30, 6, 3)
+        f('#5a5e4c', 5, 6, 2, 27)
+        f('#5a5e4c', 9, 6, 2, 27)
+        f('#7a4a35', 6, 12, 2, 4)
+        for (let i = 0; i < 6; i++) f(i % 2 ? '#8a8a80' : '#6a6a62', 12, 14 + i * 2, 2, 2)
+        f('#a08a40', 11, 26, 5, 5)
+        f('#2a2620', 12, 25, 3, 2)
+        return
+      }
+      f('#6a6e5a', 5, 8, 54, 3)
+      f('#6a6e5a', 5, 28, 54, 3)
+      for (const x of [5, 20, 31, 44, 56]) f('#5a5e4c', x, 8, 3, 23)
+      for (let i = 0; i < 18; i++) f('#5a5e4c', 8 + i * 2, 27 - i, 3, 2)
+      for (let i = 0; i < 18; i++) f('#5a5e4c', 36 + i, 11 + i, 2, 2)
+      // Rust.
+      f('#7a4a35', 12, 9, 6, 2)
+      f('#7a4a35', 47, 29, 5, 2)
+      // The chain round the middle uprights, and the padlock.
+      for (let i = 0; i < 6; i++) f(i % 2 ? '#8a8a80' : '#6a6a62', 27 + i * 2, 16, 2, 2)
+      f('#a08a40', 29, 18, 7, 7)
+      f('#c8b060', 30, 19, 5, 2)
+      f('#2a2620', 31, 22, 3, 1)
+    },
+  },
+  cabin: {
+    // The foreman's cabin: plank walls, a tin roof, a door hanging a little open, one window.
+    w: 64,
+    h: 60,
+    draw: (f) => {
+      f('#5a4836', 0, 24, 64, 35)
+      for (let y = 26; y < 58; y += 4) f('#4a3a2c', 0, y, 64, 1)
+      // Tin roof, ridged and rusting.
+      f('#6a6c66', 0, 6, 64, 20)
+      for (let x = 2; x < 64; x += 5) f('#575954', x, 6, 2, 20)
+      f('#7a4a35', 10, 18, 9, 4)
+      f('#7a4a35', 44, 10, 6, 3)
+      f('#4a4c48', 0, 24, 64, 2)
+      // The door, ajar: dark inside.
+      f('#2a211b', 32, 34, 14, 25)
+      f('#0e0c0c', 34, 36, 6, 23)
+      f('#4a3a2c', 40, 35, 6, 24)
+      // A window, grimed over.
+      f('#4a3a2c', 7, 33, 16, 13)
+      f('#3c4a4a', 8, 34, 14, 11)
+      f('#4a3a2c', 14, 34, 2, 11)
+      // The tin plate by the door.
+      f('#a8a294', 1, 40, 6, 4)
+    },
+  },
+  shed: {
+    // The maintenance shed: corrugated roof, a roller shutter jammed a little way up, a stencil.
+    w: 64,
+    h: 54,
+    draw: (f, v) => {
+      f('#5e5a50', 0, 20, 64, 33)
+      for (let y = 22; y < 52; y += 4) f('#4e4a42', 0, y, 64, 1)
+      f('#5c5e5a', 0, 4, 64, 17)
+      for (let x = 1; x < 64; x += 3) f('#4a4c48', x, 4, 1, 17)
+      f('#7a4a35', 30, 8, 10, 3)
+      // The shutter, jammed: slats down to a dark gap at the bottom (v 1: P03 solved from inside,
+      // rolled up into its drum, the bay's shelves dim behind it).
+      f('#3c3e3a', 4, 26, 34, 27)
+      if (v) {
+        f('#5a5c58', 5, 26, 32, 5)
+        f('#0e0e10', 5, 31, 32, 22)
+        f('#3e3024', 6, 38, 30, 2)
+        f('#5a4c3a', 9, 33, 8, 5)
+        f('#4a4038', 26, 34, 6, 4)
+      } else {
+        for (let y = 27; y < 49; y += 3) f('#6a6c66', 5, y, 32, 2)
+        f('#0c0c0c', 5, 50, 32, 3)
+      }
+      // The side door, under the stencil: planks, a latch.
+      f('#2a211b', 49, 36, 12, 17)
+      f('#4a3a2c', 50, 37, 10, 16)
+      f('#3a2e24', 54, 37, 1, 16)
+      f('#b0a080', 57, 44, 2, 2)
+      // MAINTENANCE, stencilled.
+      f('#c7c0aa', 42, 30, 18, 4)
+      f('#5e5a50', 44, 31, 2, 2)
+      f('#5e5a50', 50, 31, 2, 2)
+      f('#5e5a50', 56, 31, 2, 2)
+    },
+  },
+  forksign: {
+    // A signpost with two arms: west and east.
+    w: 22,
+    h: 44,
+    dx: -3,
+    draw: (f) => {
+      f('#4a3a2c', 10, 6, 3, 37)
+      f('#5c4936', 10, 6, 1, 37)
+      f('#6a5642', 0, 8, 12, 5)
+      f('#6a5642', 0, 10, 1, 1)
+      f('#c7bea0', 2, 10, 8, 1)
+      f('#6a5642', 11, 17, 11, 5)
+      f('#c7bea0', 13, 19, 7, 1)
+      f('#3f5a32', 12, 30, 3, 3)
+    },
+  },
+  closedsign: {
+    // A ROAD CLOSED board on two legs, striped red and white, faded.
+    w: 20,
+    h: 26,
+    dx: -2,
+    draw: (f) => {
+      f('#4a3a2c', 3, 12, 2, 13)
+      f('#4a3a2c', 15, 12, 2, 13)
+      f('#cfc8b8', 0, 4, 20, 9)
+      for (let x = 0; x < 20; x += 6) f('#8a3a30', x, 4, 3, 9)
+      f('#2a2420', 2, 14, 16, 1)
+    },
+  },
+  bedroll: {
+    // A bedroll tied with string, and a thermos beside it.
+    w: 32,
+    h: 16,
+    outline: false,
+    draw: (f) => {
+      f('rgba(0,0,0,0.25)', 2, 12, 26, 3)
+      f('#3a4a5a', 2, 4, 22, 9)
+      f('#4a5c6e', 2, 4, 22, 3)
+      f('#2e3a46', 23, 4, 2, 9)
+      for (const x of [8, 17]) f('#c7bea0', x, 4, 1, 9)
+      f('#e0d8c0', 10, 5, 5, 3)
+      f('#8a3a30', 27, 3, 4, 10)
+      f('#a8a294', 27, 2, 4, 2)
+    },
+  },
+  firepit: {
+    // A ring of stones round grey ash, a thread of smoke, a tin mug on one stone.
+    w: 16,
+    h: 16,
+    outline: false,
+    draw: (f) => {
+      for (const [x, y] of [
+        [2, 8],
+        [5, 5],
+        [9, 5],
+        [12, 8],
+        [10, 12],
+        [4, 12],
+      ])
+        f('#6f6c64', x, y, 3, 3)
+      f('#5a5850', 5, 8, 7, 4)
+      f('#7a7670', 6, 9, 4, 2)
+      f('#2a2420', 7, 9, 2, 1)
+      // The mug.
+      f('#8a8f8a', 12, 4, 3, 4)
+      f('#6a706c', 15, 5, 1, 2)
+    },
+  },
+  kettle: {
+    // Nora's tea kettle, dented on one side, blackened underneath.
+    w: 14,
+    h: 16,
+    dx: 1,
+    draw: (f) => {
+      f('#8a8f8a', 2, 6, 10, 8)
+      f('#a8aca6', 3, 6, 8, 2)
+      f('#6a706c', 9, 9, 2, 3)
+      f('#2a2c2c', 2, 13, 10, 2)
+      f('#6a706c', 0, 7, 2, 3)
+      f('#4a4f4c', 4, 3, 6, 2)
+      f('#4a4f4c', 4, 2, 1, 2)
+      f('#4a4f4c', 9, 2, 1, 2)
     },
   },
   pole: {
@@ -360,45 +751,6 @@ const PROP_ART: Record<
       f('#3a2e26', 0, 8, 14, 3)
       f('#8a8a84', 1, 6, 2, 2)
       f('#8a8a84', 11, 6, 2, 2)
-    },
-  },
-  roadsign: {
-    w: 18,
-    h: 34,
-    dx: -1,
-    draw: (f) => {
-      f('#3d3936', 8, 12, 2, 21)
-      f('#3a5a44', 1, 2, 16, 11)
-      f('#c7c0aa', 2, 3, 14, 1)
-      f('#c7c0aa', 3, 6, 10, 1)
-      f('#c7c0aa', 3, 9, 7, 1)
-      // Ivy over it.
-      for (let i = 0; i < 9; i++) f('#3f5a32', 1 + ((i * 5) % 15), 2 + ((i * 3) % 18), 2, 2)
-    },
-  },
-  swings: {
-    w: 50,
-    h: 40,
-    dx: -1,
-    draw: (f, v) => {
-      void v
-      // A-frames at each end, a bar across.
-      for (const x of [2, 46]) {
-        f('#4f5254', x - 2, 4, 2, 35)
-        f('#4f5254', x + 2, 4, 2, 35)
-      }
-      f('#5d6062', 1, 3, 48, 3)
-      // Three swings: the outer two hang a little askew (they're moving).
-      const seats: [number, number][] = [
-        [12, 2],
-        [25, 0],
-        [38, -2],
-      ]
-      for (const [x, lean] of seats) {
-        f('#7a7a74', x, 6, 1, 22)
-        f('#7a7a74', x + 6, 6, 1, 22)
-        f('#4a3528', x - 1 + lean, 28, 9, 3)
-      }
     },
   },
   table: {
@@ -422,24 +774,6 @@ const PROP_ART: Record<
       f('#6a5a46', 1, 4, 10, 2)
       f('#2a2420', 2, 4, 8, 1)
       f('#7a4a35', 3, 9, 3, 3)
-    },
-  },
-  car: {
-    w: 48,
-    h: 28,
-    draw: (f) => {
-      f('#4a5a62', 2, 10, 44, 14)
-      f('#57686f', 4, 10, 40, 3)
-      f('#3e4c53', 10, 2, 26, 9)
-      f('#5e7076', 12, 3, 9, 6)
-      f('#5e7076', 24, 3, 10, 6)
-      f('#7a4a35', 30, 14, 10, 4)
-      f('#1e2224', 6, 21, 8, 6)
-      f('#1e2224', 34, 21, 8, 6)
-      // Ferns through the windows.
-      f('#4f6a3a', 14, 4, 4, 4)
-      f('#4f6a3a', 27, 5, 5, 3)
-      f('#d8d0a8', 44, 14, 2, 3)
     },
   },
   truck: {
@@ -587,6 +921,10 @@ const PROP_ART: Record<
   },
 }
 
+// Daniel Bell's locker (PUZZLES.md P02): a locker with his name taped on, and once its dial lock is
+// worked (Forest.open: v 1), swung open.
+PROP_ART.belllocker = { ...PROP_ART.locker, draw: (f, v) => PROP_ART.locker.draw(f, v ? 2 : 1) }
+
 function propSprite(id: string, v: number) {
   const a = PROP_ART[id]
   if (!a) return null
@@ -594,13 +932,23 @@ function propSprite(id: string, v: number) {
 }
 
 /**
- * The Route 9 bus, side on, facing left (the way it drives): a long cream-and-green body gone to
- * rust, dark windows, the door at the front, ROUTE 9 · HOLLOW PINES on the destination board.
- * `open`: its door folded open. Drawn with its middle at x and its wheels on y (px).
+ * The Route 9 bus, side on, facing left: a long cream-and-green body gone to rust, the door at the
+ * front, ROUTE 9 on the destination board. `open`: its door folded open. `full`: a crew run, its
+ * windows faintly lit with the shapes of people standing inside; otherwise the windows are black
+ * (no one aboard, no one driving). Drawn facing `dir` (-1 left, 1 right), with its middle at x and
+ * its wheels on y (px), at `alpha`.
  */
-export function drawBus(c: Ctx, x: number, y: number, open: boolean) {
+export function drawBus(
+  c: Ctx,
+  x: number,
+  y: number,
+  open: boolean,
+  full: boolean,
+  dir: -1 | 1 = -1,
+  alpha = 1,
+) {
   const bus = sprite(
-    `bus${open ? 1 : 0}`,
+    `bus${open ? 1 : 0}${full ? 1 : 0}`,
     100,
     46,
     (f) => {
@@ -612,18 +960,36 @@ export function drawBus(c: Ctx, x: number, y: number, open: boolean) {
       f('#7a4a35', 70, 26, 6, 4)
       // Roof.
       f('#a8a084', 4, 3, 92, 4)
-      // Windows, all dark: no one aboard, no one driving.
-      for (let i = 0; i < 7; i++) f('#151619', 18 + i * 11, 10, 9, 10)
-      f('#151619', 4, 10, 10, 10)
+      // Windows: black and empty, or dimly lit with the crew standing in them.
+      for (let i = 0; i < 7; i++) {
+        const wx = 18 + i * 11
+        f(full ? '#3d3a2c' : '#151619', wx, 10, 9, 10)
+        if (full) {
+          // Heads and shoulders, a little different in each, some turned away: very faint, barely
+          // darker than the lit glass.
+          const hx = wx + 2 + ((i * 3) % 4)
+          f('#322f24', hx, 12 + (i % 2), 3, 3)
+          f('#322f24', hx - 1, 15 + (i % 2), 5, 5)
+          if (i % 3 === 0) {
+            f('#322f24', wx + 7, 13, 2, 3)
+            f('#322f24', wx + 6, 16, 3, 4)
+          }
+        }
+      }
+      f(full ? '#3d3a2c' : '#151619', 4, 10, 10, 10)
       f('#2a2c30', 5, 11, 4, 3)
       // The door, just behind the front.
-      f(open ? '#0c0c0e' : '#3c4a40', 15, 10, 8, 24)
-      if (!open) f('#151619', 16, 12, 6, 9)
-      // Destination board.
+      f(open ? (full ? '#2a2820' : '#0c0c0e') : '#3c4a40', 15, 10, 8, 24)
+      if (!open) f(full ? '#3d3a2c' : '#151619', 16, 12, 6, 9)
+      // Destination board: HOLLOW PINES on a crew run, SUNSET ACRES on the empty one.
       f('#1e1f22', 22, 4, 26, 4)
-      f('#d8b860', 24, 5, 3, 2)
-      f('#d8b860', 29, 5, 2, 2)
-      f('#d8b860', 33, 5, 12, 2)
+      if (full) {
+        f('#d8b860', 24, 5, 10, 2)
+        f('#d8b860', 36, 5, 10, 2)
+      } else {
+        f('#d8b860', 24, 5, 12, 2)
+        f('#d8b860', 38, 5, 8, 2)
+      }
       // Headlight and bumper.
       f('#e8e0b0', 2, 26, 3, 3)
       f('#3a3a36', 0, 33, 100, 3)
@@ -635,7 +1001,12 @@ export function drawBus(c: Ctx, x: number, y: number, open: boolean) {
     },
     true,
   )
-  c.drawImage(bus, Math.round(x - 50), Math.round(y - 44))
+  c.save()
+  c.globalAlpha *= alpha
+  c.translate(Math.round(x), Math.round(y - 44))
+  if (dir === 1) c.scale(-1, 1)
+  c.drawImage(bus, -50, 0)
+  c.restore()
 }
 
 /** Draws one of the story's objects with its tile's top-left at (px, py). */
@@ -651,9 +1022,9 @@ export function drawStoryObj(c: Ctx, o: ForestObj, px: number, py: number) {
       const id = o.id ?? ''
       if (id === 'busstop') return c.drawImage(shelter(), px - 1, py + 16 - 46)
       if (id === 'bussign') return c.drawImage(busSign(), px + 1, py + 16 - 46)
-      if (id === 'letterbox') return c.drawImage(letterbox(), px, py + 16 - 30)
       const sp = propSprite(id, o.v)
-      if (sp) c.drawImage(sp, px + (PROP_ART[id].dx ?? 0), py + 16 - sp.height)
+      if (sp)
+        c.drawImage(sp, px + (PROP_ART[id].dx ?? 0), py + 16 - sp.height + (PROP_ART[id].dy ?? 0))
       return
     }
   }
@@ -663,20 +1034,25 @@ export function drawStoryObj(c: Ctx, o: ForestObj, px: number, py: number) {
 export function warmStory() {
   shelter()
   busSign()
-  letterbox()
   for (const id of Object.keys(FIND_ART)) findSprite(id)
   for (let d = 0; d < 4; d++) for (let v = 0; v < 2; v++) prints(d, v)
   for (const id of Object.keys(PROP_ART)) for (let v = 0; v < 3; v++) propSprite(id, v)
   const c = document.createElement('canvas').getContext('2d')!
-  drawBus(c, -200, -200, false)
-  drawBus(c, -200, -200, true)
+  for (const open of [false, true])
+    for (const full of [false, true]) drawBus(c, -200, -200, open, full)
 }
 
 /** Flat on the ground (drawn under people): finds that aren't on a tree, and footprints. */
 export function flatStory(o: ForestObj): boolean {
   return (
     o.k === 'prints' ||
-    (o.k === 'prop' && (o.id === 'rail' || o.id === 'steps')) ||
+    (o.k === 'prop' &&
+      (o.id === 'rail' ||
+        o.id === 'bedroll' ||
+        o.id === 'firepit' ||
+        o.id === 'papers' ||
+        o.id === 'chair' ||
+        o.id === 'doormat')) ||
     (o.k === 'find' && o.id !== 'drawing' && o.id !== 'arrow')
   )
 }
@@ -710,4 +1086,30 @@ export function drawKeepsake(c: Ctx, id: string, px: number, py: number) {
     false,
   )
   c.drawImage(box, px, py)
+}
+
+/**
+ * A key, for your pocket and the board: an old brass key on a paper tag (`tag`: its colour), drawn
+ * at `size` px square (a cached canvas, pixel-scaled).
+ */
+export function keyIcon(tag: string, size: number): HTMLCanvasElement {
+  const small = sprite(`keyicon:${tag}`, 16, 16, (f) => {
+    f('#c8a040', 2, 3, 6, 6)
+    f('#e0bc58', 3, 3, 4, 1)
+    f('#2a211b', 4, 5, 2, 2)
+    f('#c8a040', 7, 5, 7, 2)
+    f('#c8a040', 11, 7, 1, 3)
+    f('#c8a040', 13, 7, 1, 2)
+    // The tag, on a bit of string.
+    f('#8a7a60', 5, 9, 1, 2)
+    f(tag, 3, 11, 6, 4)
+    f('#6a5a46', 4, 12, 4, 1)
+  })
+  const cv = document.createElement('canvas')
+  cv.width = size
+  cv.height = size
+  const c = cv.getContext('2d')!
+  c.imageSmoothingEnabled = false
+  c.drawImage(small, 0, 0, size, size)
+  return cv
 }

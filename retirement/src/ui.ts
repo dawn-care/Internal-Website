@@ -43,8 +43,9 @@ import {
   type Relative,
 } from '../shared/schema'
 import { REL, looksOld, randomFamily, randomRelative } from './family'
-import { BOARD_SIZE, NOTE_MAX, type ClueId } from '../shared/story'
-import { CLUES, type Clue, type PaperLine } from './forest/story/clues'
+import { BOARD_SIZE, LEADS, NOTE_MAX, type ClueId } from '../shared/story'
+import { CLUES, type Paper, type PaperLine } from './forest/story/clues'
+import type { Doc } from './forest/story/docs'
 import { KEEPSAKES } from './forest/story/finds'
 import { THOUGHT_GAP_MS, THOUGHT_MS, THOUGHT_PER_CHAR } from './forest/tuning'
 import type { Person } from './forest/encounter'
@@ -63,6 +64,10 @@ import {
 } from '../shared/tables'
 import { TABLE_PIECES } from './art'
 import { cropIcon, finishSwatch, furnitureIcon, mealIcon, photoIcon, plantIcon } from './art'
+import { keyIcon } from './forest/story/art'
+import { ITEMS } from './forest/story/items'
+import { LANDMARKS } from './forest/story/map'
+import { drawSiteMap } from './forest/story/sitemap'
 import { isMuted, setMuted, sfx, voice } from './audio'
 import { isMusicOn, setMusicOn } from './music'
 import { fmt, type Game } from './game'
@@ -137,8 +142,12 @@ export interface DialogueOptions {
 }
 
 const TYPE_MS = 24
-/** The forest's descriptions and thoughts type out a little slower than speech. */
+/**
+ * The forest's thoughts type out a little slower than speech; what you see when you look at
+ * something types faster (play-testing: it felt slow to read).
+ */
 const NARR_TYPE_MS = 32
+const LOOK_TYPE_MS = 18
 /** The chat box in the forest. */
 const QUIET = "…you can't hear anyone from here."
 
@@ -1002,9 +1011,18 @@ export class UI {
           'btn water',
         )
       : null
-    const pocket = g.save.pocket ?? []
+    // Your pocket: the photo, keys from home, and keys picked up this trip (not yours until home).
+    const pocket = [...(g.save.pocket ?? []), ...(g.trip?.story.carried ?? [])]
     const pocketSlots = Array.from({ length: POCKET_SLOTS }, (_, i) => {
       const it = pocket[i]
+      if (it && it !== 'photo') {
+        const item = ITEMS[it]
+        const k = el('span', { class: 'slot pocket-slot' })
+        k.title = item.name.replace(/^the /, 'The ')
+        k.setAttribute('aria-label', k.title)
+        k.append(keyIcon(item.tag, 36))
+        return k
+      }
       if (it === 'photo') {
         const b = button('', () => this.openPhoto(), 'slot pocket-slot')
         b.title = 'Your family photo (click to look at it)'
@@ -1208,6 +1226,7 @@ export class UI {
     const typed = el('span', {})
     const rest = el('span', { class: 'narr-rest', text: l.text })
     line.append(typed, rest)
+    const per = l.kind === 'look' ? LOOK_TYPE_MS : NARR_TYPE_MS
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       let n = 0
       const timer = window.setInterval(() => {
@@ -1217,16 +1236,17 @@ export class UI {
         typed.textContent = l.text.slice(0, n)
         rest.textContent = l.text.slice(n)
         const ch = l.text[n - 1]
-        if (/[a-z0-9]/i.test(ch) && n % 2 === 1) {
+        // (A blip every other letter, every third when looking: it types faster.)
+        if (/[a-z0-9]/i.test(ch) && n % (l.kind === 'look' ? 3 : 2) === 1) {
           if (l.kind === 'look') voice(360, 'triangle', 1, 0.04)
           else voice(250, 'sine', 0.8, 0.05)
         }
-      }, NARR_TYPE_MS)
+      }, per)
       typed.textContent = ''
     } else typed.textContent = l.text
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) rest.textContent = ''
     const hold =
-      l.text.length * NARR_TYPE_MS +
+      l.text.length * per +
       THOUGHT_MS +
       l.text.length * THOUGHT_PER_CHAR * (l.kind === 'look' ? 1.3 : 1)
     window.setTimeout(() => line.classList.add('out'), hold)
@@ -1243,7 +1263,136 @@ export class UI {
   }
 
   /** A clue's paper, the way it's physically written or printed. */
-  private paperEl(c: Clue): HTMLElement {
+  /** A puzzle document (story/docs.ts): read it, then put it away. */
+  openDoc(doc: Doc, onClose?: () => void) {
+    let closed = false
+    const done = () => {
+      if (closed) return
+      closed = true
+      this.closePanel()
+      onClose?.()
+    }
+    this.showPanel(
+      el(
+        'div',
+        { class: 'panel-body clue-view' },
+        el('p', { class: 'about', text: doc.paper.about }),
+        this.paperEl(doc),
+        doc.lead
+          ? el('p', { class: 'muted center', text: 'You copy it into your notepad.' })
+          : null,
+        el('div', { class: 'row-buttons' }, button('Put it away', done)),
+      ),
+    )
+  }
+
+  /**
+   * A combination lock (the service gate's padlock, PUZZLES.md P05; Bell's locker, P02): four number
+   * dials you turn one at a time (the arrows, or click a dial and type). `pull` is the button that
+   * tries it; `onTry` says whether it opened.
+   */
+  openPadlock(about: string, pull: string, onTry: (code: string) => boolean) {
+    const digits = [0, 0, 0, 0]
+    const dials = digits.map((_, i) => {
+      const face = el('span', { class: 'dial-face', text: '0' })
+      const turn = (by: number) => {
+        digits[i] = (digits[i] + by + 10) % 10
+        face.textContent = String(digits[i])
+        face.setAttribute('aria-label', `Dial ${i + 1}: ${digits[i]}`)
+      }
+      const up = button('▲', () => turn(1), 'btn dial-turn')
+      up.setAttribute('aria-label', `Turn dial ${i + 1} up`)
+      const down = button('▼', () => turn(-1), 'btn dial-turn')
+      down.setAttribute('aria-label', `Turn dial ${i + 1} down`)
+      face.tabIndex = 0
+      face.setAttribute('role', 'spinbutton')
+      face.setAttribute('aria-label', `Dial ${i + 1}: 0`)
+      face.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowUp') turn(1)
+        else if (e.key === 'ArrowDown') turn(-1)
+        else if (/^[0-9]$/.test(e.key)) turn(Number(e.key) - digits[i])
+        else return
+        e.preventDefault()
+        e.stopPropagation()
+      })
+      return el('div', { class: 'dial' }, up, face, down)
+    })
+    const result = el('p', { class: 'muted center', text: '' })
+    const tryIt = button(
+      pull,
+      () => {
+        if (onTry(digits.join(''))) this.closePanel()
+        else result.textContent = 'It doesn’t open.'
+      },
+      'btn primary',
+    )
+    this.showPanel(
+      el(
+        'div',
+        { class: 'panel-body padlock' },
+        el('p', { class: 'about', text: about }),
+        el('div', { class: 'dials' }, ...dials),
+        result,
+        el(
+          'div',
+          { class: 'row-buttons' },
+          tryIt,
+          button('Leave it', () => this.closePanel()),
+        ),
+      ),
+    )
+  }
+
+  /**
+   * The shed's shutter winch (PUZZLES.md P03): three parts to work (the catch, the spool, the
+   * ratchet), with a line saying what each did. `onStep` answers with how far along it is (0–3, shown
+   * as the shutter's height) and what happened; `done` closes it.
+   */
+  openWinch(
+    about: string,
+    onStep: (step: 'catch' | 'spool' | 'ratchet') => {
+      state: number
+      text: string
+      done?: boolean
+    },
+  ) {
+    const shutter = el('div', { class: 'winch-shutter' })
+    shutter.setAttribute('aria-hidden', 'true')
+    const result = el('p', { class: 'muted center', text: '' })
+    result.setAttribute('aria-live', 'polite')
+    const show = (state: number) => shutter.style.setProperty('--raised', String(state / 3))
+    show(0)
+    const act = (step: 'catch' | 'spool' | 'ratchet', label: string) =>
+      button(label, () => {
+        const r = onStep(step)
+        show(r.state)
+        result.textContent = r.text
+        if (r.done) this.closePanel()
+      })
+    this.showPanel(
+      el(
+        'div',
+        { class: 'panel-body winch' },
+        el('p', { class: 'about', text: about }),
+        el('div', { class: 'winch-frame' }, shutter),
+        result,
+        el(
+          'div',
+          { class: 'row-buttons' },
+          act('catch', 'Release the catch'),
+          act('spool', 'Turn the spool'),
+          act('ratchet', 'Set the ratchet'),
+        ),
+        el(
+          'div',
+          { class: 'row-buttons' },
+          button('Leave it', () => this.closePanel()),
+        ),
+      ),
+    )
+  }
+
+  private paperEl(c: { paper: Paper }): HTMLElement {
     const lines = c.paper.lines.map((l: PaperLine) => {
       if (l.style === 'gap') return el('div', { class: 'gap' })
       if (l.style === 'row') {
@@ -1290,7 +1439,7 @@ export class UI {
     } else actions.push(button('Put it away', done))
     const status =
       state === 'known'
-        ? el('p', { class: 'muted center', text: 'You already remember this.' })
+        ? el('p', { class: 'muted center', text: 'It’s on your board at home.' })
         : state === 'taken'
           ? el('p', { class: 'muted center', text: 'It’s in your notepad.' })
           : null
@@ -1339,6 +1488,8 @@ export class UI {
   openNotepad() {
     const story = this.game.trip?.story
     if (!story) return
+    // Locks you've found and can't open yet: kept ones and this trip's.
+    const leads = this.game.openLeads()
     const rows = [...story.found.entries()].map(([id, f]) => {
       const c = CLUES[id]!
       const read = button(
@@ -1363,7 +1514,7 @@ export class UI {
         el('p', {
           class: 'muted',
           text:
-            rows.length || story.kept.size
+            rows.length || story.kept.size || story.carried.size || leads.length
               ? 'What you’ve found out here. It’s only safe once you’re home.'
               : 'Nothing yet. Look closely at what you come across.',
         }),
@@ -1379,11 +1530,55 @@ export class UI {
               }),
             )
           : null,
+        leads.length
+          ? el(
+              'div',
+              { class: 'leads' },
+              el('h3', { text: 'Unresolved' }),
+              el('ul', {}, ...leads.map((l) => el('li', { text: LEADS[l].text }))),
+            )
+          : null,
         el(
           'div',
           { class: 'row-buttons' },
+          button('Map', () => this.openSiteMap(() => this.openNotepad())),
           button('Close', () => this.closePanel()),
         ),
+      ),
+    )
+  }
+
+  /**
+   * The rough site map (MAP.md rule 7): the places you've been (kept, and this trip's) and the
+   * locks you've found there, sketched in pencil. `back`: where Close goes.
+   */
+  openSiteMap(back: () => void) {
+    const g = this.game
+    const sites = new Set<string>([
+      ...(g.save.story?.sites ?? []),
+      ...(g.trip?.story.reached ?? []),
+    ])
+    const leads = new Set(g.openLeads())
+    const names = LANDMARKS.filter((lm) => sites.has(lm.id)).map((lm) => lm.name)
+    const sketch = drawSiteMap(sites, leads, 220)
+    sketch.setAttribute('role', 'img')
+    sketch.setAttribute(
+      'aria-label',
+      names.length ? `A sketch map of: ${names.join(', ')}.` : 'A blank page.',
+    )
+    this.showPanel(
+      el(
+        'div',
+        { class: 'panel-body notepad sitemap' },
+        el('h2', { text: 'Map' }),
+        el('p', {
+          class: 'muted',
+          text: names.length
+            ? 'Only what you’ve seen for yourself.'
+            : 'Nothing yet. You haven’t been anywhere you could draw.',
+        }),
+        el('div', { class: 'sketch' }, sketch),
+        el('div', { class: 'row-buttons' }, button('Back', back)),
       ),
     )
   }
@@ -1515,6 +1710,9 @@ export class UI {
           'div',
           { class: 'row-buttons' },
           toggle,
+          ...(g.save.story?.sites?.length
+            ? [button('Map', () => this.openSiteMap(() => this.openBoard()))]
+            : []),
           button('Close', () => this.closePanel()),
         ),
       ),

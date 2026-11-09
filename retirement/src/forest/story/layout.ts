@@ -19,30 +19,60 @@ import {
  * (default all). Flat props are drawn under people. */
 export const PROP_SIZE: Record<
   string,
-  { w: number; rows: number; cols?: number[]; flat?: true; tall: number }
+  {
+    w: number
+    rows: number
+    cols?: number[]
+    flat?: true
+    tall: number
+    /** Keep only its own tiles and the one below clear of trees (a long fence isn't a clearing). */
+    tight?: true
+    /** A barrier: how far you are from the paths is measured round it, never through it. */
+    fence?: true
+  }
 > = {
   busstop: { w: 3, rows: 1, tall: 3 },
   bussign: { w: 1, rows: 1, tall: 3 },
-  letterbox: { w: 1, rows: 1, tall: 2 },
-  gatepost: { w: 1, rows: 1, tall: 2 },
-  chimney: { w: 1, rows: 1, tall: 3 },
-  ruinwall: { w: 1, rows: 1, tall: 2 },
-  steps: { w: 1, rows: 1, tall: 1 },
-  bed: { w: 2, rows: 1, tall: 2 },
-  fence: { w: 1, rows: 1, tall: 1 },
-  pole: { w: 1, rows: 1, tall: 5 },
-  roadsign: { w: 1, rows: 1, tall: 2 },
-  swings: { w: 3, rows: 1, tall: 3 },
-  table: { w: 2, rows: 1, tall: 2 },
   bin: { w: 1, rows: 1, tall: 1 },
-  car: { w: 3, rows: 1, tall: 2 },
-  truck: { w: 3, rows: 1, tall: 2 },
-  bunk: { w: 5, rows: 2, tall: 4 },
-  office: { w: 4, rows: 2, tall: 4 },
-  flagpole: { w: 1, rows: 1, tall: 5 },
-  campsign: { w: 6, rows: 1, cols: [0, 5], tall: 3 },
-  rail: { w: 1, rows: 0, flat: true, tall: 1 },
+  pole: { w: 1, rows: 1, tall: 5 },
+  forksign: { w: 1, rows: 1, tall: 3 },
+  closedsign: { w: 1, rows: 1, tall: 2 },
   waymark: { w: 1, rows: 1, tall: 2 },
+  cabin: { w: 4, rows: 2, tall: 4 },
+  bedroll: { w: 2, rows: 0, flat: true, tall: 1 },
+  firepit: { w: 1, rows: 1, flat: true, tall: 1 },
+  kettle: { w: 1, rows: 1, tall: 1 },
+  campsign: { w: 6, rows: 1, cols: [0, 5], tall: 3, fence: true },
+  // Insides.
+  desk: { w: 2, rows: 1, tall: 2 },
+  chair: { w: 1, rows: 0, flat: true, tall: 1 },
+  stove: { w: 1, rows: 1, tall: 2 },
+  papers: { w: 1, rows: 0, flat: true, tall: 1 },
+  cabinet: { w: 1, rows: 1, tall: 2 },
+  // (On a back wall: the wall itself is solid.)
+  window: { w: 1, rows: 0, tall: 1 },
+  noticeboard: { w: 2, rows: 0, tall: 1 },
+  frame: { w: 1, rows: 0, tall: 1 },
+  diagram: { w: 1, rows: 1, tall: 2 },
+  bunkbed: { w: 2, rows: 1, tall: 3 },
+  locker: { w: 1, rows: 1, tall: 2 },
+  belllocker: { w: 1, rows: 1, tall: 2 },
+  bench: { w: 2, rows: 1, tall: 2 },
+  burnt: { w: 2, rows: 1, tall: 1 },
+  bay: { w: 3, rows: 1, tall: 2 },
+  winch: { w: 1, rows: 1, tall: 2 },
+  // The way out: a door in the front wall, and the mat in front of it.
+  exitdoor: { w: 1, rows: 0, tall: 2 },
+  doormat: { w: 1, rows: 0, flat: true, tall: 1 },
+  wire: { w: 1, rows: 1, tall: 2, tight: true, fence: true },
+  servicegate: { w: 4, rows: 1, tall: 2, fence: true },
+  truck: { w: 3, rows: 1, tall: 2 },
+  table: { w: 2, rows: 1, tall: 2 },
+  flagpole: { w: 1, rows: 1, tall: 5 },
+  bunk: { w: 5, rows: 2, tall: 4 },
+  shed: { w: 4, rows: 2, tall: 4 },
+  office: { w: 4, rows: 2, tall: 4 },
+  rail: { w: 1, rows: 0, flat: true, tall: 1 },
   leanto: { w: 2, rows: 1, tall: 2 },
 }
 
@@ -61,6 +91,8 @@ const GROUND_CODE: Record<MapGround, number> = {
   stone: 5,
   wild: 6,
   yard: 7,
+  wall: 8,
+  void: 9,
 }
 export const GROUND_NAMES = Object.keys(GROUND_CODE) as MapGround[]
 
@@ -109,13 +141,14 @@ function build(): Layout {
   const inside = (x: number, y: number) =>
     x >= BOUNDS.x0 && x <= BOUNDS.x1 && y >= BOUNDS.y0 && y <= BOUNDS.y1
 
+  // Water first, so a road over it becomes a bridge.
+  const lines = [...LINES].sort((a, b) => Number(a.walk) - Number(b.walk))
   for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++)
     for (let x = BOUNDS.x0; x <= BOUNDS.x1; x++) {
       const i = idx(x, y)
       const cx = x + 0.5
       const cy = y + 0.5
-      // Water first, so a road over it becomes a bridge.
-      for (const line of [...LINES].sort((a, b) => Number(a.walk) - Number(b.walk))) {
+      for (const line of lines) {
         let d = Infinity
         for (let k = 1; k < line.pts.length; k++) {
           const [ax, ay] = line.pts[k - 1]
@@ -147,15 +180,86 @@ function build(): Layout {
           if (a.walk) off[i] = 0
         }
 
+  // Insides (map.ts INTERIORS): walls round the floor (two tiles of back wall, one at the sides and
+  // front), solid, and a barrier, so the distance from the paths never leaks in or out; round them,
+  // a margin of nothing. (A wall shared with a neighbouring room's margin stays a wall.)
+  const barrier = new Set<number>()
+  const rooms = LANDMARKS.flatMap((lm) => lm.areas.filter((a) => a.room))
+  const onFloor = (x: number, y: number) =>
+    rooms.some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1)
+  // The margin of nothing first (reaching past the edge of the screen, so nothing outside ever
+  // shows), never over any room's floor...
+  for (const r of rooms)
+    for (let y = r.y0 - 14; y <= r.y1 + 12; y++)
+      for (let x = r.x0 - 18; x <= r.x1 + 18; x++) {
+        if (!inside(x, y) || onFloor(x, y)) continue
+        const i = idx(x, y)
+        ground[i] = GROUND_CODE.void
+        solid[i] = 1
+        clear[i] = 1
+        off[i] = 999
+      }
+  // ...then every room's walls.
+  for (const r of rooms)
+    for (let y = r.y0 - 2; y <= r.y1 + 1; y++)
+      for (let x = r.x0 - 1; x <= r.x1 + 1; x++) {
+        if (!inside(x, y) || onFloor(x, y)) continue
+        const i = idx(x, y)
+        ground[i] = GROUND_CODE.wall
+        barrier.add(i)
+      }
+
+  // Props: the landmarks', the road's poles, and rails along the bridge.
+  const props: PlacedProp[] = []
+  const place = (p: Prop) => {
+    const size = PROP_SIZE[p.id]
+    const tiles: [number, number][] = []
+    if (size)
+      for (let r = 0; r < size.rows; r++)
+        for (let c = 0; c < size.w; c++)
+          if (!size.cols || size.cols.includes(c)) tiles.push([p.x + c, p.y - r])
+    for (const [tx, ty] of tiles)
+      if (inside(tx, ty)) {
+        solid[idx(tx, ty)] = 1
+        if (size?.fence) barrier.add(idx(tx, ty))
+      }
+    // Keep trees off it and the ground round it (a fence, just off itself and in front of it).
+    const w = size?.w ?? 1
+    const pad = size?.tight ? 0 : 1
+    for (let y = p.y - (size?.rows ?? 1) - 2 * pad; y <= p.y + 1; y++)
+      for (let x = p.x - pad; x <= p.x + w - 1 + pad; x++) if (inside(x, y)) clear[idx(x, y)] = 1
+    props.push({ ...p, solid: tiles })
+  }
+  for (const lm of LANDMARKS) for (const p of lm.props) place(p)
+  for (const [x, y] of ROAD_POLES) place({ id: 'pole', x, y })
+  for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++)
+    for (let x = BOUNDS.x0; x <= BOUNDS.x1; x++)
+      if (ground[idx(x, y)] === GROUND_CODE.plank)
+        for (const dx of [-1, 1])
+          if (inside(x + dx, y) && ground[idx(x + dx, y)] === GROUND_CODE.water)
+            props.push({ id: 'rail', x: x + dx, y, v: dx < 0 ? 0 : 1, solid: [] })
+
+  // Fences (the camp's perimeter, its gates) are barriers: nothing is measured through them.
+  for (const i of barrier) off[i] = 999
+
   // How far from the paths, out across the open forest: a two-pass distance sweep (top-left to
   // bottom-right, then back), so it grows evenly away from every path and clearing in every
   // direction. (A one-way sweep only reached a couple of tiles upwards: behind the camp you were
-  // measured from the road, and got lost exploring it.)
+  // measured from the road, and got lost exploring it.) It goes round fences, never through them,
+  // and never slips diagonally between two fence tiles, so walking along the outside of the camp's
+  // fence you're as far from the paths as the long way round says: you can't skirt a gate.
   const D = Math.SQRT2
+  const fenced = (x: number, y: number) => inside(x, y) && barrier.has(idx(x, y))
   const relax = (x: number, y: number, dirs: readonly (readonly [number, number, number])[]) => {
     const i = idx(x, y)
-    for (const [dx, dy, c] of dirs)
-      if (inside(x + dx, y + dy)) off[i] = Math.min(off[i], off[idx(x + dx, y + dy)] + c)
+    if (barrier.has(i)) return
+    for (const [dx, dy, c] of dirs) {
+      const nx = x + dx
+      const ny = y + dy
+      if (!inside(nx, ny) || fenced(nx, ny)) continue
+      if (dx && dy && (fenced(x + dx, y) || fenced(x, y + dy))) continue
+      off[i] = Math.min(off[i], off[idx(nx, ny)] + c)
+    }
   }
   const FWD = [
     [-1, 0, 1],
@@ -169,35 +273,36 @@ function build(): Layout {
     [1, 1, D],
     [-1, 1, D],
   ] as const
-  for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++)
-    for (let x = BOUNDS.x0; x <= BOUNDS.x1; x++) relax(x, y, FWD)
-  for (let y = BOUNDS.y1; y >= BOUNDS.y0; y--)
-    for (let x = BOUNDS.x1; x >= BOUNDS.x0; x--) relax(x, y, BACK)
-
-  // Props: the landmarks', the road's poles, and rails along the bridge.
-  const props: PlacedProp[] = []
-  const place = (p: Prop) => {
-    const size = PROP_SIZE[p.id]
-    const tiles: [number, number][] = []
-    if (size)
-      for (let r = 0; r < size.rows; r++)
-        for (let c = 0; c < size.w; c++)
-          if (!size.cols || size.cols.includes(c)) tiles.push([p.x + c, p.y - r])
-    for (const [tx, ty] of tiles) if (inside(tx, ty)) solid[idx(tx, ty)] = 1
-    // Keep trees off it and the ground round it.
-    const w = size?.w ?? 1
-    for (let y = p.y - (size?.rows ?? 1) - 2; y <= p.y + 1; y++)
-      for (let x = p.x - 1; x <= p.x + w; x++) if (inside(x, y)) clear[idx(x, y)] = 1
-    props.push({ ...p, solid: tiles })
+  // (Round fences a distance can need to turn back on itself, so sweep until nothing changes.)
+  for (let pass = 0; pass < 8; pass++) {
+    const before = off.slice()
+    for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++)
+      for (let x = BOUNDS.x0; x <= BOUNDS.x1; x++) relax(x, y, FWD)
+    for (let y = BOUNDS.y1; y >= BOUNDS.y0; y--)
+      for (let x = BOUNDS.x1; x >= BOUNDS.x0; x--) relax(x, y, BACK)
+    if (off.every((v, i) => v === before[i])) break
   }
-  for (const lm of LANDMARKS) for (const p of lm.props) place(p)
-  for (const [x, y] of ROAD_POLES) place({ id: 'pole', x, y })
-  for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++)
-    for (let x = BOUNDS.x0; x <= BOUNDS.x1; x++)
-      if (ground[idx(x, y)] === GROUND_CODE.plank)
-        for (const dx of [-1, 1])
-          if (inside(x + dx, y) && ground[idx(x + dx, y)] === GROUND_CODE.water)
-            props.push({ id: 'rail', x: x + dx, y, v: dx < 0 ? 0 : 1, solid: [] })
+  // A fence tile itself counts as its nearest side (play-testing: running up against the fence,
+  // your position can just reach into the fence's row, which counted as "infinitely far" from the
+  // paths, and you were lost on the spot). Done after the sweep, so it never carries a distance
+  // through the fence.
+  const sides: number[] = []
+  for (const i of barrier) {
+    const x = (i % W) + BOUNDS.x0
+    const y = Math.floor(i / W) + BOUNDS.y0
+    let best = Infinity
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ])
+      if (inside(x + dx, y + dy) && !barrier.has(idx(x + dx, y + dy)))
+        best = Math.min(best, off[idx(x + dx, y + dy)] + 1)
+    sides.push(i, best)
+  }
+  for (let k = 0; k < sides.length; k += 2)
+    off[sides[k]] = sides[k + 1] === Infinity ? 999 : sides[k + 1]
 
   const spots = new Map<string, Spot>()
   for (const lm of LANDMARKS) for (const s of lm.spots) spots.set(`${s.x},${s.y}`, s)

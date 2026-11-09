@@ -57,6 +57,9 @@ const GROUND: Record<number, number[][]> = {
   [FG.STONE]: ['#6c6b66', '#5a5955', '#7b7a74'].map(rgb),
   [FG.WILD]: ['#4c5a3c', '#3f4b32', '#5a6a47'].map(rgb),
   [FG.YARD]: ['#77726a', '#68635b', '#837e75'].map(rgb),
+  // A building's inside walls (dark, upright boards), and the nothing round them.
+  [FG.WALL]: ['#3e3026', '#33271f', '#4a3a2e'].map(rgb),
+  [FG.VOID]: ['#08080a', '#08080a', '#08080a'].map(rgb),
 }
 /** Blotchy 0–1 value per cell (leaf drifts), smoothed over the neighbours. */
 function noise2(x: number, y: number): number {
@@ -98,6 +101,8 @@ const MAP_CODE: Record<string, number> = {
   stone: FG.STONE,
   wild: FG.WILD,
   yard: FG.YARD,
+  wall: FG.WALL,
+  void: FG.VOID,
 }
 
 export function chunkGround(ch: Chunk): HTMLCanvasElement {
@@ -203,6 +208,10 @@ export function chunkGround(ch: Chunk): HTMLCanvasElement {
           const blade = (tx === ty || tx === 7 - ty) && tx > 1 && tx < 6
           col = blade ? TILE_BLUE : tx === 0 || ty === 0 ? pal[1] : TILE_WHITE
         }
+      } else if (tile === FG.WALL) {
+        // Upright boards, with dark seams between them.
+        if (gx % 6 === 5) col = [26, 20, 16]
+        else if (hash(gx >> 2, gy >> 3, 1214) < 0.2) col = pal[1]
       } else if (tile === FG.WILD) {
         // Long grass: lighter blades.
         if (hash(gx, gy >> 1, 1209) > 0.9) col = [104, 120, 82]

@@ -62,7 +62,7 @@ Every object has `siteId`, `objectId`, descriptive text, optional `clueId`, opti
 | `P01` | Administration office key | `ADMIN_OFFICE` | `ITEM_ADMIN_KEY` at `FOREMAN_CABIN` | **Yes** |
 | `P02` | Daniel Bell's locker | `BUNKHOUSE` | Fire record/employee number at `MAINTENANCE` | Optional |
 | `P03` | Jammed storage shutter | `MAINTENANCE` | Local pulley/safety mechanism | Optional |
-| `P04` | Route 9 bus rule | `BUS_STOP` | Warning at same stop; optional real pet present | Optional |
+| `P04` | Route 9 bus rule | `BUS_STOP` (or its copy while lost) | Warning and timetable at the same stop; or the real pet aboard | Optional |
 | `P05` | Night-crew service gate | `SERVICE_GATE` | Code registry at `ADMIN_OFFICE` | **Yes** |
 | `P06` | Sunset Acres closet | `SA_ROOM` | `ITEM_CLOSET_KEY` at `SURVEY_LOOKOUT` | **Yes** |
 | `P07` | Escape false Sunset Acres | `FALSE_SUNSET` | Compare fixed personal anchor details | **Yes** |
@@ -99,13 +99,18 @@ Every object has `siteId`, `objectId`, descriptive text, optional `clueId`, opti
 - **Success:** optional storage shelf with a lantern refill and additional camp photographs, one showing a worker standing outside the bunkhouse while that same worker appears at a window inside. No essential plot data locked behind this.
 - **Failure:** wrong order resets pulley after a short mechanical snap, not death. The player can retry.
 
-### `P04` — Bus with the wrong route (optional; rule horror)
+### `P04` — The Route 9 bus (optional; rule horror)
 
-- **Observed at:** `BUS_STOP`. Timetable says last service **1979**. Warning in player's handwriting: **“DO NOT RIDE THE BUS ALONE.”** After the player examines the stop (and on later eligible visits) a bus may arrive with enough time to choose.
-- **Rule:** *with the player's real pet physically accompanying them*, the bus deposits them safely at the public `CAMP_GATE` stop. **Alone**, the bus stops in procedural lost forest and may trigger a telegraphed threat. It never takes the player home and never grants access beyond `SERVICE_GATE`.
-- **Choices:** ignore; board alone; board with pet. No fake pets. Family/Nurse Ada rescuers use their normal escort-home mechanic rather than boarding.
-- **Learning:** the warning itself provides the condition, later safe travel with the pet confirms it. Riding alone is risky but not an unexplained instant game-over; the player still has a chance at genuine rescue.
-- **Dependency:** defer boarding implementation until the planned intermittent pet-in-forest system supports accompanying the player. **Never** require this puzzle for main progression.
+- **Observed at:** `BUS_STOP`, and at the copy of the stop that turns up while the player is lost. Timetable (`route9_timetable`): service ended **1979**, and the crew runs to the camp were **DAY CREW 06:00, SWING 14:00, NIGHT CREW 22:00** on the shared game clock. Warning in the player's handwriting (`bus_warning`): **“DO NOT RIDE THE BUS ALONE.”**
+- **What comes** (the story's rule: STORY.md, “The forest replays what it watched for years”):
+  - **On the timetable** (it pulls up at a crew time, waiting with its doors open long enough to choose), the bus is **full**: the faint shapes of people standing inside show through its windows before you board. Its passengers are the replayed crew, copies who take no notice of you. Ride it and it drives you to the public `CAMP_GATE` stop, where the crew get off and walk in through the gate and are gone.
+  - **Off the timetable**, an **empty** bus comes: dark, empty windows, no one driving, the destination board reading **SUNSET ACRES**. It's a lure.
+- **Rule:** riding with company is safe; riding alone is not. Company is the crew of a scheduled run, or the player's **real pet** physically aboard (any bus). Neither ride ever takes the player home or past `SERVICE_GATE`.
+- **Riding a safe bus while lost rescues you from being lost:** it puts you back on the fixed map at `CAMP_GATE`. It doesn't bank anything; you still have to get home.
+- **Riding the empty bus alone takes you deep into the forest:** the doors shut on empty seats, and it drives a long way, faster and faster. It lets you off far from any path, **lost**, where the dark closes in further than usual until someone finds you, with one more real danger this trip. It never takes you home. Riding alone is risky but not an instant game-over: rescuers still come. The warning is the note in your own handwriting and the empty windows, which anyone can see before boarding; nothing in the game says which bus it is.
+- **Choices:** ignore it; wait at the stop for a crew time (the game clock is in the HUD); board a full bus; board with the pet; board the empty one. No fake pets. Family/Nurse Ada rescuers use their normal escort-home mechanic rather than boarding.
+- **Learning:** the note gives the condition. The timetable gives the times; the shapes in the windows and the crew getting off at the gate confirm it, and NIGHT CREW is the same label as the service gate's padlock (`P05`), so the word is familiar before the code is found. The crew never give the code away.
+- **Dependency:** the timetable rule needs no pet and can be built first; the pet's half waits for the planned pet-in-forest system. **Never** require this puzzle for main progression.
 
 ### `P05` — Locked deep-service-road gate (required)
 
@@ -166,6 +171,7 @@ Every object has `siteId`, `objectId`, descriptive text, optional `clueId`, opti
 - **Site:** `CAMP_YARD` (guaranteed; do not require discovering `CREEK_CAMP`).
 - **Meet 1 trigger:** first visit or shortly after a brief camp examination. Nora initially asks the player to stay back, then introduces herself as a local historian. She mentions researching the abandoned camp, not a private family tragedy.
 - **Meet 2 trigger:** a later visit after **banked** `evie_case_1978`; she recognizes the protagonist and discusses a finding. This exchange makes it plausible she would later trust someone wearing the protagonist's face. Nora's left-cheek mole is shown in her **genuine** dialogue portrait and noted on an interactable sketch/description.
+- **Memory (STORY.md “Memory: how the dementia shows”):** at Meet 2 the protagonist doesn't recognize her (*“Have we met?”*) unless the player has a banked People note about her, in which case the thought is *“Nora. I wrote her down.”* Either way she greets them warmly; when they don't know her she gently introduces herself again and isn't hurt. After Meet 1 (and again after Meet 2) the protagonist writes her into the notepad's **People** page in their own words, including the mole. Banked, it becomes a board card. That note, not the protagonist's memory, is what the player has to go on at `E_NORA_DOOR`.
 - **Timeline:** Nora leaves for the deeper road after Meet 2. Her offscreen death is committed on a subsequent expedition as the player enters the deep region. Reaching the deep road before Meet 2 must be possible and not suddenly present fake Nora.
 - **Continuity/failure:** NPC encounter flags can persist independently of unbanked notes. Don't resurrect her after the offscreen death or make a random chance necessary to find her.
 
@@ -173,6 +179,7 @@ Every object has `siteId`, `objectId`, descriptive text, optional `clueId`, opti
 
 - **Site:** `WATCH_SHELTER`, while the player is inside examining a known object; the small building sits on the only safe crossing into the logging fork, so it is hard to miss on a normal route.
 - **Requires:** both real meetings completed, Nora has gone deeper on a later outing, and fake door event not already completed. The woman banging is **an impostor**, missing Nora's left-cheek mole. Nora is already dead.
+- **The protagonist's notes:** the notepad's People page (or the banked board card) describing Nora is readable during the scene, so the player compares the face at the window with what they wrote, not with what the protagonist remembers. If they never wrote her down (unlikely, since meeting her writes the note), the portrait and inspection text alone must still show the missing mole.
 - **Presentation:** sharp pounding followed by a few seconds to decide. *“LET ME IN! PLEASE! IT'S RIGHT BEHIND ME!”* Her voice is recognizable. Provide readable portrait/peek-through-window inspection at the risk of using decision time; never hide the tell behind an unfair uninspectable timed choice. Pause countdown while dialogue is being read or provide a generous duration, tuned in play-test.
 - **Branch OPEN:** she enters, appears frightened, talks naturally, then suggests leaving together via an unsafe route. The player can decline or observe the missing mole and leave via rear exit; insisting on following her toward woods can cause a fair chase/caught outcome. Simply opening the door is **not** instant death and does not grant the forest special powers.
 - **Branch KEEP LOCKED:** she keeps pounding, then stops abruptly. Player can later examine scratches, dropped scarf or other ambiguous traces, without seeing a gratuitous murder happening at the door.
@@ -237,7 +244,7 @@ Use actual project schema conventions in `shared/schema.ts`, not these literal i
 4. **Office key:** find it, bank it, leave it at home, discover the office locked, return home for it, use it, and later open the office without carrying it again.
 5. **Key loss:** find key and die before bank; source reappears. Bank key and die on another trip; stored copy remains available or unique item is recoverable. Never permanent lockout.
 6. **Code gates:** P02 accepts `0416` with leading zero; P05 accepts `2714`, refuses wrong codes, and persists after successful bank.
-7. **Bus:** solo choice reaches lost forest with a recoverable threat; pet choice reaches public camp gate but not past service gate; regular walking can reach same region without pet.
+7. **Bus:** a bus at a timetable time is full (shapes in its windows) and reaches the public camp gate, from the map or from lost forest, never past the service gate; an empty off-schedule bus ridden alone lets you off deep in the lost forest, never home; with the pet any bus is safe; regular walking reaches the same region without the bus.
 8. **Nora:** optional creek sighting can be skipped; both real meetings remain guaranteed. Real Nora's mole is consistent; fake Nora lacks it. Nora dies before fake door. Your double **already** exists independently of opening door. Her body stays discoverable.
 9. **Photo:** death with photo in pocket removes it; death when left on room wall does not. Reprint is affordable through Rosa's regular garden economy.
 10. **Evidence:** collecting `evie_final_journal` and dying before home does not unlock the ending; retrieving it and banking it does. Clues do not randomly change wording or site.

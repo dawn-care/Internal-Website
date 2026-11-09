@@ -36,7 +36,21 @@ import {
   type PocketItem,
   type Relation,
 } from './catalog.js'
-import { BOARD_LINKS_MAX, BOARD_SIZE, CLUE_IDS, NOTE_MAX, type ClueId } from './story.js'
+import {
+  BOARD_LINKS_MAX,
+  BOARD_SIZE,
+  CLUE_IDS,
+  CUTSCENE_IDS,
+  EVENT_IDS,
+  ITEM_IDS,
+  LEAD_IDS,
+  NOTE_MAX,
+  PUZZLE_IDS,
+  SITE_IDS,
+  type ClueId,
+  type ItemId,
+  type StoryProgress,
+} from './story.js'
 
 /*
  * The save format and its validation, shared by the game (to build saves) and the server (to
@@ -137,6 +151,11 @@ export interface Save {
    * Absent until you bring the first one home.
    */
   board?: Board
+  /**
+   * Your story so far (shared/story.ts StoryProgress): keys on your hook, puzzles, events, memory
+   * scenes, places you've been and leads. Absent until something's kept.
+   */
+  story?: StoryProgress
   /** Garden plot and hallway door. Assigned by the server, never trusted from the client. */
   slot: number
   createdAt: number
@@ -547,10 +566,47 @@ export function validateSave(v: unknown): Save {
     ...recipes(o.recipes),
     ...familyAndPocket(o.family, o.pocket),
     ...(o.board === undefined ? {} : { board: validateBoard(o.board) }),
+    ...validateStory(o.story, o.pocket),
     slot: int(o.slot ?? -1, 'slot', -1, MAX_SLOTS - 1),
     createdAt: num(o.createdAt, 'createdAt', 0, MAX_TIME),
     updatedAt: num(o.updatedAt, 'updatedAt', 0, MAX_TIME),
   }
+}
+
+/** A list of ids from `allowed`, each once (absent or empty: left out). */
+function idList<T extends string>(v: unknown, allowed: readonly T[], what: string): T[] {
+  if (v === undefined) return []
+  const out = arr(v, what, allowed.length).map((it, i) => oneOf(it, allowed, `${what}[${i}]`))
+  if (new Set(out).size !== out.length) throw new SaveError(`${what} has something twice.`)
+  return out
+}
+
+function validateStory(v: unknown, pocket: unknown): { story?: StoryProgress } {
+  if (v === undefined) return {}
+  const o = obj(v, 'story')
+  const hook = idList(o.hook, ITEM_IDS, 'story.hook')
+  // A key is in one place: on your hook or in your pocket, never both.
+  if (Array.isArray(pocket) && hook.some((k) => pocket.includes(k)))
+    throw new SaveError('A key can’t be on your hook and in your pocket.')
+  const story: StoryProgress = {}
+  const lists = {
+    hook,
+    puzzles: idList(o.puzzles, PUZZLE_IDS, 'story.puzzles'),
+    events: idList(o.events, EVENT_IDS, 'story.events'),
+    seen: idList(o.seen, CUTSCENE_IDS, 'story.seen'),
+    queued: idList(o.queued, CUTSCENE_IDS, 'story.queued'),
+    sites: idList(o.sites, SITE_IDS, 'story.sites'),
+    leads: idList(o.leads, LEAD_IDS, 'story.leads'),
+  }
+  for (const [k, list] of Object.entries(lists))
+    if (list.length) (story as Record<string, unknown>)[k] = list
+  if (o.done === true) story.done = true
+  return Object.keys(story).length ? { story } : {}
+}
+
+/** Whether a key is yours now: in your pocket or on your hook. */
+export function hasItem(save: Save, id: ItemId): boolean {
+  return !!save.pocket?.includes(id) || !!save.story?.hook?.includes(id)
 }
 
 function validateBoard(v: unknown): Board {

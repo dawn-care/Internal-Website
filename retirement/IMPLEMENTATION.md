@@ -12,7 +12,7 @@
 
 ## Key implementation decisions
 
-- **Fixed forest roads, branches, fences, structures, gates and clues.** Only the wilderness off those authored corridors is generated per expedition. Following roads always allows walking home; crossing sufficiently far off them triggers fully random *lost forest*. Existing straight-line distance-based point of no return is not the target design.
+- **Fixed forest roads, branches, fences, structures, gates and clues.** Only the wilderness off those authored corridors is generated per expedition. Following roads always allows walking home; crossing sufficiently far off them triggers fully random *lost forest*. (The earlier straight-line point of no return has been replaced by this rule: FOREST.md, Build status, Stage 4.)
 - **Mandatory routes through the camp:** west/east approach paths converge at the open perimeter gate; the administrative office requires a cabin key (`P01`); the deep service road requires a four-digit code (`P05`). Fences prevent safe bypass.
 - **Main-story information always at named fixed sites.** Scene triggers rely on banked IDs after a **safe** return; ordinary ambiance and random threats may vary.
 - **Two investigations:** Evie's 1970s police case and the protagonist's later handwritten research. Evie was a detective, not a camp administrator or scientist. Nora Vale is a short, real present-day acquaintance, murdered by the **player's double** before an imitation of Nora bangs on the shelter door. **Opening that door is not the cause of the double.**
@@ -31,7 +31,10 @@
 | M4 | Evie evidence, family memories, Nora's real meetings and deep-road scripted events | Correct scar/mole details, NPC timing, double predates fake-door invite |
 | M5 | Survey key, hidden room, private echo + P06/P07 | Real multiplayer remains unaffected, user can escape/retry, key survives when banked |
 | M6 | Drainage/first-aid shelter + P08/P09, final Evie and ending | Failed finale loses unbanked proof; successful bank + correct chronology ends story |
-| M7 | Optional Route 9 bus/pet system, extra atmosphere and polish | Solo bus is avoidable danger; real pet safe; no mandatory clue depends on RNG |
+| M3b | **Proposed:** the thing in the deep, with unease and energy gauges (FOREST.md "The thing in the deep") | It starts deep each trip and drifts towards you; heard before seen and always escapable; unease rises as it gets closer but never gives a direction; energy shows the collapse coming and meals refill it; the empty bus drops you near it; it never comes through a door (insides are a refuge, energy still drains); other threats mostly become cues |
+| M7 | Optional Route 9 timetable bus, pet system, extra atmosphere and polish | Scheduled (full) bus is safe and reaches `CAMP_GATE`, even from lost forest; empty bus alone drops you deep in lost forest (warned, survivable); real pet makes any bus safe; no mandatory clue depends on RNG |
+
+**Progress:** M1 is built and tested (`src/forest/story/layout.test.ts`). M2 is built: examining, the notepad, keeping clues on a safe return, the corkboard, the administration key with the key hook at home, unresolved leads, the rough site map, and the saved story progress (puzzle, event and cutscene state are stored and validated, but set from M3 on). M3 is built: the insides of the cabin, the office, the bunkhouse and the maintenance shed; P01 (the office key), P02 (Bell's locker, 0416), P03 (the shed's shutter) and P05 (the service gate's padlock), all kept on a safe return; and the camp's work records (`jonah_journal`, `bell_fire_record`) with `evie_photo_before`. The shelf's lantern refill waits for M3b. STORY.md's "Memory: how the dementia shows" is planned for M4 (Nora) and onwards. FOREST.md's Build status (Stage 4) has the details.
 
 ## IDs and references
 

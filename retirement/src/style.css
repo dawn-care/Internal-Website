@@ -1655,6 +1655,30 @@ button.bc-sq {
   padding: 6px 0;
 }
 
+/* Locks you've found and can't open yet. */
+.notepad .leads ul {
+  margin: 4px 0 14px;
+  padding-left: 18px;
+}
+
+.notepad .leads li {
+  margin: 4px 0;
+}
+
+/* The rough site map: pencil on a page of the notepad. */
+.sitemap .sketch {
+  display: flex;
+  justify-content: center;
+  margin: 0 auto 14px;
+  padding: 10px;
+  max-width: 260px;
+  max-height: 68vh;
+  overflow: auto;
+  background: #f1e8d2;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  transform: rotate(0.5deg);
+}
+
 .btn.link,
 .link {
   background: none;
@@ -1777,4 +1801,70 @@ button.bc-sq {
   margin-top: 4px;
   font-family: 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive;
   color: #3b3a6a;
+}
+
+/* The service gate's padlock: four number dials. */
+.padlock .dials {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px 0 6px;
+}
+
+.padlock .dial {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.padlock .dial-face {
+  display: block;
+  width: 44px;
+  padding: 8px 0;
+  text-align: center;
+  font:
+    800 26px/1 ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+  color: #2b2621;
+  background: linear-gradient(#b89a48, #d8bc68 45%, #a88a38);
+  border: 2px solid #5a4620;
+  border-radius: 6px;
+}
+
+.padlock .dial-face:focus-visible {
+  outline: 3px solid var(--focus, #f2b84b);
+  outline-offset: 2px;
+}
+
+.padlock .dial-turn {
+  min-width: 44px;
+  padding: 2px 0;
+}
+
+/* The shed's shutter winch: the shutter's height shows how far along you are. */
+.winch .winch-frame {
+  position: relative;
+  width: 160px;
+  height: 72px;
+  margin: 10px auto 6px;
+  background: #1a1a1a;
+  border: 3px solid #4a4c4e;
+  overflow: hidden;
+}
+
+.winch .winch-shutter {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(#6a6c66 0 5px, #3c3e3a 5px 7px);
+  transform: translateY(calc(var(--raised, 0) * -100%));
+  transition: transform 0.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .winch .winch-shutter {
+    transition: none;
+  }
 }

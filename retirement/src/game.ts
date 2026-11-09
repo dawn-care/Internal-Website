@@ -22,6 +22,7 @@ import {
   ROOM_FLOOR,
   ROOM_WALL,
   CLOSET,
+  KEY_HOOK,
   POCKET_SLOTS,
   SKIN_TONES,
 } from '../shared/catalog'
@@ -29,6 +30,7 @@ import {
   INTRO,
   MAX_CHAT_CHARS,
   photoOnWall,
+  hasItem,
   photoWhere,
   cleanText,
   type Relative,
@@ -89,6 +91,7 @@ import {
   darknessAt,
   deepness,
   drawFog,
+  mapDeepness,
   forestGrade,
   lightRadius,
   outskirtsGrade,
@@ -105,20 +108,46 @@ import {
   uncanny,
   paperRustle,
   busSound,
+  lockSound,
 } from './forest/sound'
 import { Encounters, type Host, type Person } from './forest/encounter'
 import { prepareScare, showScare, type Scare } from './forest/scare'
 import { Threats, drawArm, drawFace, type ThreatHost } from './forest/threats'
 import { StoryPlan } from './forest/story/plan'
-import { Bus } from './forest/story/bus'
+import { Bus, untilCrew } from './forest/story/bus'
+import { Ride, crewLook, warmRide } from './forest/story/ride'
 import { drawBus } from './forest/story/art'
 import { Director } from './forest/story/director'
 import { CLUES } from './forest/story/clues'
 import { FIND_BY_ID, KEEPSAKES, type Find, type FindId } from './forest/story/finds'
-import { NATURE_LOOKS, PROP_LOOKS, type Spot } from './forest/story/map'
+import {
+  LANDMARKS,
+  NATURE_LOOKS,
+  PROP_LOOKS,
+  roomAt,
+  COMBOS,
+  DOORS,
+  type ComboId,
+  type Door,
+  type Spot,
+} from './forest/story/map'
+import { DOCS, type Doc } from './forest/story/docs'
 import { PROP_SIZE, layout } from './forest/story/layout'
 import { voiceFor } from './forest/story/voice'
-import { BOARD_LINKS_MAX, BOARD_SIZE, NOTE_MAX, type ClueId } from '../shared/story'
+import {
+  BOARD_LINKS_MAX,
+  BOARD_SIZE,
+  ITEM_IDS,
+  LEADS,
+  NOTE_MAX,
+  SITE_IDS,
+  type ClueId,
+  type ItemId,
+  type LeadId,
+  type PuzzleId,
+  type SiteId,
+} from '../shared/story'
+import { ITEMS } from './forest/story/items'
 import { type EventCue } from './forest/story/events'
 import type { DirectorHost } from './forest/story/director'
 import {
@@ -145,13 +174,15 @@ import {
   HOME_GLOW_UNTIL,
   MUSIC_SILENT_FROM,
   OFF_PATH_LOST,
+  OFF_PATH_LOST_MAX,
   MUSE_GAP_MS,
   FEELS_OFF_CHANCE,
   BUS_AFTER,
   BUS_DIST,
-  BUS_LIGHT,
-  BUS_RIDE,
-  BUS_THREAT_MS,
+  BUS_COPY_SOON,
+  BUS_DEEP,
+  BUS_DEEP_WIND,
+  BUS_DROP,
   GRIN_GLOW,
   SHELTER_AFTER,
   SHELTER_DIST,
@@ -159,7 +190,6 @@ import {
   WAIT_EYES_MS,
   WAIT_THOUGHT_MS,
   OFF_PATH_WARN,
-  MAP_DEEP_MAX,
   LOST_DEEP,
   LOST_DANGER,
   DEEP_EASE_S,
@@ -330,8 +360,14 @@ export class Game {
     offPath: boolean
     /** Sitting down to wait (lost): ms you've been sitting, or -1 standing. */
     waiting: number
-    /** The Route 9 bus, once you're lost (story/bus.ts). */
+    /** The Route 9 bus (story/bus.ts): at the stop on the map, or at its copy once you're lost. */
     bus: Bus | null
+    /** Let off the empty bus, deep in: the dark closes right in until you're found. */
+    deeper: boolean
+    /** On the bus (story/ride.ts): the forest stops while you ride. */
+    ride: Ride | null
+    /** The crew walking in through the camp gate after a safe ride, fading as they go. */
+    crewWalk: { x: number; y: number; look: Look; a: number; anim: number }[]
     /** What "Something feels... off." has been said for this trip. */
     offFelt: Set<string>
     /**
@@ -573,7 +609,13 @@ export class Game {
     if (id === 'infirmary') return getInfirmary()
     if (id === 'forest') return forestStub()
     const owner = this.ownerOf(id)!
-    return buildRoom(owner, this.roomOf(owner) ?? { items: [] })
+    const m = buildRoom(owner, this.roomOf(owner) ?? { items: [] })
+    // Your keys on your hook (only in your own room: your story is yours alone).
+    if (owner === this.login) {
+      const hook = m.objects.find((o) => o.k === 'keyhook')
+      if (hook) hook.n = this.save.story?.hook?.length ?? 0
+    }
+    return m
   }
 
   private groundFor(m: GameMap): HTMLCanvasElement {
@@ -719,6 +761,11 @@ export class Game {
       if (this.keys.has('arrowright') || this.keys.has('d')) dx += 1
       if (this.keys.has('arrowup') || this.keys.has('w')) dy -= 1
       if (this.keys.has('arrowdown') || this.keys.has('s')) dy += 1
+    }
+    if (this.trip?.ride) {
+      // On the bus: you walk the aisle instead (story/ride.ts), not the forest.
+      dx = 0
+      dy = 0
     }
     if (this.trip && this.trip.waiting >= 0) {
       // Sitting among the roots: any movement key gets you up.
@@ -1109,6 +1156,13 @@ export class Game {
           return 'Read'
         case 'closet':
           return 'A closet door'
+        case 'keyhook': {
+          if (this.ownerOf(this.mapId) !== this.login) return 'A key hook'
+          const carrying = this.pocketKeys().length
+          if (carrying) return carrying > 1 ? 'Hang up your keys' : 'Hang up the key'
+          const n = this.save.story?.hook?.length ?? 0
+          return n ? (n > 1 ? 'Take the keys' : 'Take the key') : 'A key hook'
+        }
         case 'noticeboard':
           return 'Read the garden noticeboard'
         case 'nest': {
@@ -1259,9 +1313,13 @@ export class Game {
         case 'sign':
           return this.say(it.text)
         case 'closet':
-          // Just a locked door (STORY.md "Act I"). Nothing says what's behind it.
+          // Just a locked door (STORY.md "Act I"). Nothing says what's behind it. (It's noted as a
+          // lead: PUZZLES.md P06.)
           sfx('blip')
+          if (this.ownerOf(this.mapId) === this.login) this.addLeadAtHome('closet_locked')
           return this.say("It's locked.")
+        case 'keyhook':
+          return this.useKeyHook()
         case 'noticeboard':
           sfx('blip')
           return this.ui.openNoticeboard()
@@ -2319,10 +2377,14 @@ export class Game {
     const area = def.wall ? ROOM_WALL : ROOM_FLOOR
     if (x < area.x0 || y < area.y0 || x + def.w - 1 > area.x1 || y + def.h - 1 > area.y1)
       return false
-    // Nothing hangs over the closet door, or stands right in front of it.
+    // Nothing hangs over the closet door or the key hook, or stands right in front of them.
     if (!def.flat && x <= CLOSET.x && x + def.w > CLOSET.x) {
       if (def.wall && y < CLOSET.y + CLOSET.h && y + def.h > CLOSET.y) return false
       if (!def.wall && y <= CLOSET.y + CLOSET.h && y + def.h > CLOSET.y + CLOSET.h) return false
+    }
+    if (!def.flat && x <= KEY_HOOK.x && x + def.w > KEY_HOOK.x) {
+      if (def.wall && y <= KEY_HOOK.y && y + def.h > KEY_HOOK.y) return false
+      if (!def.wall && y <= KEY_HOOK.y + 1 && y + def.h > KEY_HOOK.y + 1) return false
     }
     for (let j = 0; j < this.save.room.items.length; j++) {
       const o = this.save.room.items[j]
@@ -2568,12 +2630,17 @@ export class Game {
           }
   }
 
-  /** Older rooms: anything hung where the closet door now is goes into storage. */
+  /** Older rooms: anything hung where the closet door or the key hook now is goes into storage. */
   private clearCloset() {
     for (const it of this.save.room.items) {
       const def = FURNITURE[it.k]
       if (!def?.wall || it.x < 0) continue
-      if (it.x <= CLOSET.x && it.x + def.w > CLOSET.x && it.y < CLOSET.y + CLOSET.h) {
+      const over = (x: number, y0: number, y1: number) =>
+        it.x <= x && it.x + def.w > x && it.y <= y1 && it.y + def.h > y0
+      if (
+        over(CLOSET.x, CLOSET.y, CLOSET.y + CLOSET.h - 1) ||
+        over(KEY_HOOK.x, KEY_HOOK.y, KEY_HOOK.y)
+      ) {
         it.x = -1
         it.y = -1
       }
@@ -3435,9 +3502,19 @@ export class Game {
     const s = f.start()
     // Build the first few chunks and every sprite now, under the fade, not mid-step.
     warmForest()
+    warmRide()
     for (const ch of f.chunksIn(s.x - 24, s.y - 16, s.x + 24, s.y + 16)) chunkGround(ch)
     this.warp('forest', s.x, s.y, s.dir, true, false)
     this.forest = f
+    // What you opened on an earlier trip and got home from stays open: the service gate (P05),
+    // Bell's locker (P02), the shed's shutter (P03).
+    const solvedBefore = this.save.story?.puzzles ?? []
+    for (const [p, c] of Object.entries(COMBOS))
+      if (solvedBefore.includes(p as ComboId)) f.open(c.prop)
+    if (solvedBefore.includes('P03')) {
+      f.open('bay')
+      f.open('shed')
+    }
     this.trip = {
       gap,
       lostFor: 0,
@@ -3454,7 +3531,10 @@ export class Game {
       danger: DANGER_PER_TRIP,
       offPath: false,
       waiting: -1,
-      bus: null,
+      bus: mapBus(),
+      ride: null,
+      deeper: false,
+      crewWalk: [],
       offFelt: new Set(),
     }
     this.ui.refresh()
@@ -3465,10 +3545,12 @@ export class Game {
   /** Back down the strip of undergrowth, before you're lost: home, to the gap you used. */
   private leaveForest() {
     const r = gapReturn(this.trip!.gap)
-    const { found, kept } = this.trip!.story
+    const plan = this.trip!.story
+    const { found, kept } = plan
     this.warp('grounds', r.x, r.y, r.dir, true, false)
     this.ui.hushNarration()
     this.bank(found, kept)
+    this.bankStory(plan)
     this.ui.renderChat()
   }
 
@@ -3484,6 +3566,8 @@ export class Game {
       if (t.end.t > endLineAt(t.end.kind) + COLLAPSE_HOLD_MS) this.finishTrip(t.end.kind)
       return
     }
+    if (t.ride) return this.updateRide(dt)
+    this.updateCrewWalk(dt)
     // Sitting to wait: everything that comes to you comes three times as fast.
     const wait = t.waiting >= 0 ? WAIT_FASTER : 1
     if (t.waiting >= 0) {
@@ -3497,13 +3581,15 @@ export class Game {
     t.threats.update(t.threats.busy() ? dt : dt * wait)
     if (t.end) return
     this.updateStory(dt, wait)
-    const depth = f.depth(this.me.x, this.me.y)
+    // (Inside a building, as dark as it is at its door.)
+    const room = roomAt(Math.floor(this.me.x), Math.floor(this.me.y))
+    const depth = room ? f.depth(room.out.x, room.out.y) : f.depth(this.me.x, this.me.y)
     // On the map it only gets so dark (so you can see the places); lost, it closes right in.
     // It eases there rather than jumping: losing the path, your light slowly shrinks and the dark
     // closes in over several seconds.
     const deepTo = f.lost
-      ? Math.max(deepness(depth), LOST_DEEP)
-      : Math.min(MAP_DEEP_MAX, deepness(depth))
+      ? Math.max(deepness(depth), t.deeper ? BUS_DEEP : LOST_DEEP)
+      : mapDeepness(depth)
     t.deep += (deepTo - t.deep) * Math.min(1, dt / (deepTo > t.deep ? DEEP_EASE_S : 1.5))
     if (!f.lost) {
       if (f.onWayHome(this.me.x, this.me.y) && f.back(this.me.x, this.me.y) > EXIT_BACK)
@@ -3519,13 +3605,8 @@ export class Game {
       // then everything you can't see is made again.
       const vx = this.vw / TS / 2 + 2
       const vy = this.vh / TS / 2 + 3
-      if (off > Math.max(OFF_PATH_LOST, Math.hypot(vx, vy))) {
-        f.lose({ x0: this.me.x - vx, y0: this.me.y - vy, x1: this.me.x + vx, y1: this.me.y + vy })
-        // Lost is dangerous: one more real danger this trip.
-        t.danger += LOST_DANGER
-        // Where the path was: the nearest bit of it (heading back that way is turning back).
-        const near = nearestPath(this.me.x, this.me.y)
-        t.lostFrom = { x: near.x, y: near.y, heading: 0, lx: this.me.x, ly: this.me.y }
+      if (off > Math.min(OFF_PATH_LOST_MAX, Math.max(OFF_PATH_LOST, Math.hypot(vx, vy)))) {
+        this.getLost()
       } else if (off > Math.max(OFF_PATH_WARN, Math.min(vx, vy)) && !t.offPath) {
         // (Once the path has gone off the edge of the screen.)
         t.offPath = true
@@ -3533,13 +3614,15 @@ export class Game {
       } else if (off < 1 && t.offPath) {
         t.offPath = false
       }
+      this.updateBus(dt)
     } else {
       t.lostFor += dt * 1000 * wait
       this.lookingForPath(dt)
       this.updateShelter()
       this.updateBus(dt)
       // The safety net: lost long enough, you sit down among the roots and wake up at home.
-      if (t.lostFor > COLLAPSE_MS && !t.enc.busy() && !t.threats.busy())
+      // (Not with a bus pulling in: that one might be your way out.)
+      if (t.lostFor > COLLAPSE_MS && !t.enc.busy() && !t.threats.busy() && !t.bus?.visible())
         this.endTrip('collapse', COLLAPSE_LINE)
     }
     f.prune(this.me.x, this.me.y)
@@ -3609,59 +3692,181 @@ export class Game {
     if (!s.seen && Math.hypot(this.me.x - s.x, this.me.y - s.y) < 7) s.seen = true
   }
 
-  /** Lost a minute: the bus stop turns up (off to one side); near it, the bus comes. */
+  /**
+   * The Route 9 bus (PUZZLES.md P04): at the real stop on the map, or, once you're lost, at a copy
+   * of the stop put out off to one side, but only when a crew run is coming soon enough to wait
+   * for before you'd collapse (so a safe ride is always possible from it).
+   */
   private updateBus(dt: number) {
     const t = this.trip!
+    const f = this.forest!
+    const now = this.gameNow()
     if (!t.bus) {
-      if (t.lostFor < BUS_AFTER || t.waiting >= 0 || !t.story.shelter) return
+      if (!f.lost || t.lostFor < BUS_AFTER || t.waiting >= 0 || !t.story.shelter) return
+      const until = untilCrew(now)
+      if (until < BUS_COPY_SOON[0] || until > BUS_COPY_SOON[1]) return
+      if (COLLAPSE_MS - t.lostFor < until + 30_000) return
       // Off to the side of the way you're facing (the lean-to is straight ahead).
       const d = DIR_VEC[this.me.dir]
       const side = Math.random() < 0.5 ? 1 : -1
       const x = Math.floor(this.me.x - d.y * side * BUS_DIST)
       const y = Math.floor(this.me.y + d.x * side * BUS_DIST)
-      t.bus = new Bus(this.forest!, x, y)
+      t.bus = new Bus(x, y, -1, y + 3, f)
       return
     }
-    t.bus.update(dt, this.me, {
-      sound: (kind, x) => busSound(kind, (x - this.me.x) / 10, 0.9),
-      thought: (text) => this.ui.thought(text),
-      offStop: () => this.feelsOff('copy'),
+    t.bus.update(
+      dt,
+      this.me,
+      now,
+      {
+        sound: (kind, x) => busSound(kind, (x - this.me.x) / 10, 0.9),
+        offStop: () => this.feelsOff('copy'),
+      },
+      f.lost,
+    )
+  }
+
+  /**
+   * Getting on the bus (PUZZLES.md P04). A crew run takes you to the camp gate, with the crew
+   * dozing round you; the empty bus is the forest's, and you're riding it alone (story/ride.ts).
+   */
+  private board() {
+    const t = this.trip
+    if (!t?.bus) return
+    const full = t.bus.full
+    t.bus.boarded()
+    t.waiting = -1
+    this.keys.clear()
+    this.fade = 1
+    busSound('leave', 0, 0.7)
+    t.ride = new Ride(full, this.save.look)
+  }
+
+  /**
+   * The way home stops existing: everything you can't see is made again as lost forest. (By
+   * leaving the paths, or being let off the empty bus.)
+   */
+  private getLost() {
+    const t = this.trip!
+    const f = this.forest!
+    const vx = this.vw / TS / 2 + 2
+    const vy = this.vh / TS / 2 + 3
+    const was = f.lost
+    f.lose({ x0: this.me.x - vx, y0: this.me.y - vy, x1: this.me.x + vx, y1: this.me.y + vy })
+    // The real stop is gone with the map; a copied one is left behind (a new copy may turn up).
+    if (t.bus) {
+      t.bus.remove(f)
+      t.bus = null
+    }
+    if (was) return
+    // Lost is dangerous: one more real danger this trip.
+    t.danger += LOST_DANGER
+    // Where the path was: the nearest bit of it (heading back that way is turning back).
+    const near = nearestPath(this.me.x, this.me.y)
+    t.lostFrom = { x: near.x, y: near.y, heading: 0, lx: this.me.x, ly: this.me.y }
+  }
+
+  /**
+   * The empty bus lets you off (PUZZLES.md P04): a long way from where you got on, far from any
+   * path, lost. Deep in: the dark closes right in (BUS_DEEP) until someone finds you, and there's
+   * one more real danger this trip.
+   */
+  private rideDropped() {
+    const t = this.trip!
+    const f = this.forest!
+    t.ride = null
+    const L = layout()
+    let x = this.me.x
+    let y = this.me.y
+    for (let i = 0; i < 60; i++) {
+      const a = Math.random() * Math.PI * 2
+      x = this.me.x + Math.cos(a) * BUS_DROP
+      y = this.me.y + Math.sin(a) * BUS_DROP
+      if (y < -8 && L.off(Math.floor(x), Math.floor(y)) > OFF_PATH_LOST_MAX + 8) break
+    }
+    this.me.x = Math.floor(x) + 0.5
+    this.me.y = Math.floor(y) + 0.5
+    this.me.dir = 0
+    this.getLost()
+    // Somewhere you can stand.
+    for (let r = 0; r < 12 && this.blocked(this.me.x, this.me.y); r++) this.me.x += 1
+    t.deeper = true
+    t.danger += 1
+    t.waiting = -1
+    this.fade = 1
+    const vx = this.vw / TS / 2 + 4
+    const vy = this.vh / TS / 2 + 6
+    for (const ch of f.chunksIn(this.me.x - vx, this.me.y - vy, this.me.x + vx, this.me.y + vy))
+      chunkGround(ch)
+    window.setTimeout(() => this.ui.thought('I shouldn’t have got on.'), 5000)
+  }
+
+  /** Riding: you walk the aisle; nothing else in the forest happens until you're off. */
+  private updateRide(dt: number) {
+    const t = this.trip!
+    let move = 0
+    if (!this.typing() && !this.ui.panelOpen() && !this.ui.dialogueOpen()) {
+      if (this.keys.has('arrowleft') || this.keys.has('a')) move -= 1
+      if (this.keys.has('arrowright') || this.keys.has('d')) move += 1
+    }
+    t.ride!.update(dt, move, this.hurrying(), {
+      sound: (kind) => {
+        busSound(kind, -0.3, 0.9)
+      },
+      arrive: () => this.rideArrive(),
+      dropped: () => this.rideDropped(),
     })
   }
 
   /**
-   * Getting on the bus alone (STORY.md: "DO NOT RIDE THE BUS ALONE"): the doors fold shut, it
-   * takes you the wrong way, and you're put out much deeper, your light cut, out of breath, with
-   * something coming for you. Never home.
+   * A crew run reaches the camp gate: you're let off on the road outside it, the crew walk in
+   * through the gate and are gone, and so is the bus. If you were lost, you're found: the map is
+   * back round you (but nothing is kept until you get home).
    */
-  private rideBus() {
-    const t = this.trip
-    const f = this.forest
-    if (!t || !f || !t.bus) return
-    t.bus.stage = 'gone'
-    busSound('leave', 0, 0.7)
-    this.fade = 1
-    this.keys.clear()
-    const a = Math.random() * Math.PI * 2
-    let x = this.me.x + Math.cos(a) * BUS_RIDE
-    let y = this.me.y + Math.sin(a) * BUS_RIDE
-    // Put out somewhere you can stand.
-    for (let r = 0; r < 6 && this.blocked(x, y); r++) {
-      x += 1
-      y += 0.5
+  private rideArrive() {
+    const t = this.trip!
+    const f = this.forest!
+    t.ride = null
+    if (f.lost) {
+      t.bus?.remove(f)
+      f.found()
+      t.enc.found()
+      t.threats.found()
+      t.lostFor = 0
+      t.lostFrom = undefined
+      t.offPath = false
+      t.deeper = false
+      t.story.shelter = null
     }
-    this.me.x = x
-    this.me.y = y
-    this.me.dir = 0
-    t.lightLeft = Math.max(LIGHT_LEAST, t.lightLeft - BUS_LIGHT)
-    t.stamina = 0
-    t.tired = true
-    t.danger += 1
-    t.threats.soon(BUS_THREAT_MS)
-    this.ui.look(
-      'The doors fold shut. The bus drives a long way, faster and faster, and stops. You get off. It’s gone.',
-    )
-    window.setTimeout(() => this.ui.thought('I shouldn’t have got on.'), 4000)
+    t.bus = mapBus()
+    const gate = campGate()
+    this.me.x = gate.x
+    this.me.y = gate.y
+    this.me.dir = 3
+    this.fade = 1
+    for (const ch of f.chunksIn(gate.x - 24, gate.y - 16, gate.x + 24, gate.y + 16)) chunkGround(ch)
+    // The crew, ahead of you, walking in through the gate.
+    t.crewWalk = Array.from({ length: 7 }, (_, i) => ({
+      x: gate.x - 1.2 + (i % 3) * 1.1 + Math.random() * 0.3,
+      y: gate.y - 1 - Math.floor(i / 3) * 0.9 - Math.random() * 0.4,
+      look: crewLook(),
+      a: 1,
+      anim: Math.random() * 4,
+    }))
+  }
+
+  /** The crew walking in through the gate, fading as they pass it. */
+  private updateCrewWalk(dt: number) {
+    const t = this.trip!
+    if (!t.crewWalk.length) return
+    const gateY = campGate().y - 3.5
+    for (const w of t.crewWalk) {
+      w.y -= 2.2 * dt
+      w.x += (0.5 - w.x) * Math.min(1, dt * 0.8)
+      w.anim += dt * 6
+      if (w.y < gateY) w.a = Math.max(0, w.a - dt * 1.2)
+    }
+    t.crewWalk = t.crewWalk.filter((w) => w.a > 0)
   }
 
   /** The stalker's breath, playing while its arm reaches in. */
@@ -3695,6 +3900,7 @@ export class Game {
   }
 
   private finishTrip(kind: 'collapse' | 'caught' | 'home') {
+    const plan = this.trip?.story
     const found = this.trip?.story.found ?? new Map()
     const kept = this.trip?.story.kept ?? new Set<string>()
     this.ui.hushNarration()
@@ -3704,13 +3910,17 @@ export class Game {
       this.fade = 1
       this.say("You're home.")
       this.bank(found, kept)
+      if (plan) this.bankStory(plan)
       return
     }
     // Caught: if you had the photo with you, it's left out there (FOREST.md "Caught").
     const lostPhoto = kind === 'caught' && photoWhere(this.save) === 'pocket'
     if (lostPhoto) this.losePhoto()
+    // Caught or collapsed: any key in your pocket is gone, back where it was found (PUZZLES.md).
+    const lostKey = this.loseKeys()
     // Caught or collapsed: this trip's notepad is gone (STORY.md "Board, failure and persistence").
     this.wakeInInfirmary(lostPhoto, found.size + kept.size > 0)
+    if (lostKey) window.setTimeout(() => this.say('Your pocket is lighter. The key is gone.'), 8000)
   }
 
   private wakeInInfirmary(lostPhoto = false, lostNotes = false) {
@@ -3743,7 +3953,17 @@ export class Game {
     // Caught: your heart races through the grab, then stops.
     const end = this.trip?.end
     const grabbing = end?.kind === 'caught' && end.t < CAUGHT_GRAB_MS
-    setChase(!this.trip ? 0 : end ? (grabbing ? 1 : 0) : this.trip.enc.chaseLevel())
+    setChase(
+      !this.trip
+        ? 0
+        : end
+          ? grabbing
+            ? 1
+            : 0
+          : this.trip.ride
+            ? this.trip.ride.dread()
+            : this.trip.enc.chaseLevel(),
+    )
     if (f) {
       setAmbience(hour, 'none')
       // The wind drops away as dread builds: the forest holds its breath.
@@ -3751,12 +3971,20 @@ export class Game {
       // An uncanny silence (story/events.ts) stills it all, drones and all.
       const still = 1 - (this.trip?.director.hush() ?? 0)
       const hush = (1 - DREAD_HUSH * Math.min(1, dread * 1.6)) * still
-      setForestAmbience(this.trip?.end ? 0 : hush, still < 1 ? 900 : 2500)
+      // Deep in (after the empty bus), the wind all but dies.
+      const deepest = this.deepest()
+      setForestAmbience(
+        this.trip?.end ? 0 : hush * (1 - (1 - BUS_DEEP_WIND) * deepest),
+        still < 1 ? 900 : 2500,
+      )
       // Drone beds under it: one rising as you go deeper, a heavier one once you're lost.
       const deep = this.trip?.deep ?? 0
       const under = this.trip?.end ? 0 : (0.5 + 0.5 * hush) * still
+      // Deep in (after the empty bus), both at once.
       setForestBeds(
-        f.lost ? 0 : Math.max(0, Math.min(1, (deep - DEEP_BED_FROM) / 0.5)) * DEEP_BED * under,
+        (f.lost ? deepest : Math.max(0, Math.min(1, (deep - DEEP_BED_FROM) / 0.5))) *
+          DEEP_BED *
+          under,
         f.lost ? LOST_BED * under : 0,
       )
       music = 0
@@ -3829,8 +4057,9 @@ export class Game {
     const spr = p.real ? base : fakeSprite(base, `${lookKey(p.look)}|${p.dir}|${frame}`, p.stage)
     c.drawImage(spr, px - SPR_W / 2, py - spr.height + 1)
     // A fake you turned away grins at you as it backs off: a smile far too wide for its face,
-    // whichever way it's facing (from behind, its head has turned all the way round to you).
-    if (!p.real && p.grin) this.drawGrin(p, ox, oy, 'face')
+    // facing you or from behind (its head has turned all the way round to you); side on, no grin
+    // (play-testing: the profile grin didn't work).
+    if (!p.real && p.grin && p.dir !== 1 && p.dir !== 2) this.drawGrin(p, ox, oy, 'face')
   }
 
   /**
@@ -3839,6 +4068,7 @@ export class Game {
    * off beyond your light.
    */
   private drawGrin(p: Person, ox: number, oy: number, part: 'face' | 'pale') {
+    if (p.dir === 1 || p.dir === 2) return
     const frame = p.anim > 0 ? Math.floor(p.anim) % 4 : 0
     // (Its sprite is cached already: this only reads its height, which grows with its stage.)
     const h = fakeSprite(
@@ -4008,6 +4238,12 @@ export class Game {
     const t = this.trip
     const f = this.forest
     if (!t || !f) return null
+    // A building's door: from outside (go in), or its inside's front wall (go out).
+    if (f.isMap(x, y))
+      for (const d of DOORS) {
+        if (d.outside.x === x && d.outside.y === y) return { kind: 'door', door: d, side: 'out' }
+        if (d.door.x === x && d.door.y === y) return { kind: 'door', door: d, side: 'in' }
+      }
     const spot = t.story.spotAt(x, y)
     if (spot) return { kind: 'part', part: spot }
     if (f.isMap(x, y)) {
@@ -4049,12 +4285,23 @@ export class Game {
   }
 
   private forestPrompt(): string | null {
+    const t = this.trip
+    if (t?.ride) return null
     const ft = this.facingTile()
     const thing = this.storyThing(ft.x, ft.y)
-    const t = this.trip
     if (t && t.waiting >= 0) return '[WASD] Get up'
-    if (t?.bus?.canBoard(this.me)) return 'Get on the bus'
+    if (t?.bus?.canBoard(this.me) && !t.enc.busy() && !t.threats.busy()) return 'Get on the bus'
     if (!thing) return this.forest?.lost && t && !t.enc.busy() ? 'Sit down and wait' : null
+    if (thing.kind === 'door') {
+      if (thing.side === 'in') return 'Go out'
+      const d = thing.door
+      if (d.lock && !this.solved(d.lock))
+        return d.key && this.pocketKeys().includes(d.key) ? 'Unlock the door' : 'Try the door'
+      return 'Go in'
+    }
+    if (thing.kind === 'part' && thing.part.combo && this.solved(thing.part.combo))
+      return COMBOS[thing.part.combo].openPrompt
+    if (thing.kind === 'part' && thing.part.winch && this.solved('P03')) return 'Look at the winch'
     if (thing.kind === 'part') return thing.part.prompt
     if (thing.kind === 'look') return thing.prompt
     if (thing.kind === 'find')
@@ -4062,6 +4309,267 @@ export class Game {
         ? thing.find.prompt.replace(/^Look at/, 'Pick up')
         : thing.find.prompt
     return 'Look at the footprints'
+  }
+
+  // --- keys and leads (PUZZLES.md "Core mechanics and state model") -------------------------------
+
+  /** The keys in your pocket: brought from home, and picked up this trip. */
+  pocketKeys(): ItemId[] {
+    const mine = (this.save.pocket ?? []).filter((p): p is ItemId =>
+      (ITEM_IDS as readonly string[]).includes(p),
+    )
+    return [...mine, ...(this.trip?.story.carried ?? [])]
+  }
+
+  /** How full your pocket is (the photo, keys from home, and keys picked up this trip). */
+  private pocketUsed(): number {
+    return (this.save.pocket?.length ?? 0) + (this.trip?.story.carried.size ?? 0)
+  }
+
+  /**
+   * A key where it was left (PUZZLES.md): you see it and take it, into your pocket for this trip.
+   * If it's already yours (in your pocket or on your hook), it isn't here.
+   */
+  private takeItem(part: Spot, firstLook: boolean) {
+    const t = this.trip!
+    const id = part.item!
+    if (hasItem(this.save, id) || t.story.carried.has(id)) return this.ui.look(part.lookAfter ?? '')
+    this.ui.look(part.look ?? '', firstLook ? part.voice : null)
+    if (this.pocketUsed() >= POCKET_SLOTS) {
+      window.setTimeout(() => this.say('Your pocket is full.'), 400)
+      return
+    }
+    t.story.carried.add(id)
+    paperRustle(0.4)
+    window.setTimeout(() => this.say(`You take ${ITEMS[id].name}.`), 300)
+    this.ui.refresh()
+  }
+
+  /** Locks you've found and can't open yet: kept ones and this trip's (for the notepad and map). */
+  openLeads(): LeadId[] {
+    const all = [...(this.save.story?.leads ?? []), ...(this.trip?.story.leads ?? [])]
+    return [...new Set(all)].filter((l) => !this.leadSolved(l))
+  }
+
+  /**
+   * Inside a building (story/map.ts INTERIORS): nobody comes to find you there, and nothing comes
+   * for you (they wait till you're out).
+   */
+  private indoors(): boolean {
+    return !!this.forest && !!roomAt(Math.floor(this.me.x), Math.floor(this.me.y))
+  }
+
+  /** Whether a puzzle is solved: kept from an earlier trip, or done on this one. */
+  private solved(p: PuzzleId): boolean {
+    return !!this.save.story?.puzzles?.includes(p) || !!this.trip?.story.opened.has(p)
+  }
+
+  /** Whether a lead's lock is open (its puzzle solved). */
+  private leadSolved(id: LeadId): boolean {
+    return this.solved(LEADS[id].puzzle)
+  }
+
+  /**
+   * A building's door (story/map.ts DOORS): in, or out again. A locked one (PUZZLES.md P01) opens
+   * with its key in your pocket, for the rest of the trip, and for good once you're home safe.
+   */
+  private useForestDoor(d: Door, side: 'out' | 'in') {
+    const t = this.trip!
+    if (side === 'out' && d.lock && !this.solved(d.lock)) {
+      if (!d.key || !this.pocketKeys().includes(d.key)) {
+        lockSound('rattle', 0.7)
+        if (d.lead) this.noteLead(d.lead)
+        return this.ui.look(d.locked ?? 'It’s locked.')
+      }
+      t.story.opened.add(d.lock)
+      lockSound('open')
+      window.setTimeout(() => this.say('The key turns.'), 300)
+    } else lockSound('door', 0.8)
+    const to = side === 'out' ? d.in : d.out
+    this.me.x = to.x
+    this.me.y = to.y
+    this.me.dir = side === 'out' ? 3 : 0
+    this.keys.clear()
+    this.fade = 1
+    const f = this.forest!
+    for (const ch of f.chunksIn(to.x - 24, to.y - 16, to.x + 24, to.y + 16)) chunkGround(ch)
+    this.ui.refresh()
+  }
+
+  /** A puzzle document (story/docs.ts): read it; what it holds goes in your notepad as a lead. */
+  private readDoc(id: keyof typeof DOCS, firstLook: (key: string) => boolean) {
+    const doc: Doc = DOCS[id]
+    paperRustle(0.8)
+    if (doc.lead) this.noteLead(doc.lead)
+    this.ui.openDoc(doc, () => {
+      if (doc.voice && firstLook(`doc:${id}`)) this.ui.thought(doc.voice)
+    })
+  }
+
+  /**
+   * A combination lock (story/map.ts COMBOS): the service gate's padlock (PUZZLES.md P05) or Bell's
+   * locker (P02), four dials. The right code opens it for the rest of the trip (and for good once
+   * you're home safe); a wrong one just rattles. Once open, there's what's inside to look at.
+   */
+  private useCombo(part: Spot, firstLook: (key: string) => boolean) {
+    const id = part.combo!
+    const c = COMBOS[id]
+    if (this.solved(id)) return c.doc ? this.readDoc(c.doc, firstLook) : this.ui.look(c.open)
+    if (part.lead) this.noteLead(part.lead)
+    this.ui.openPadlock(part.look ?? '', c.pull, (code) => {
+      if (code !== c.code) {
+        lockSound('rattle')
+        return false
+      }
+      this.trip!.story.opened.add(id)
+      lockSound('open')
+      this.forest!.open(c.prop)
+      window.setTimeout(() => this.say(c.sprung), 400)
+      this.ui.refresh()
+      return true
+    })
+  }
+
+  /**
+   * The shed's shutter winch (PUZZLES.md P03): release the catch, turn the spool, set the ratchet,
+   * in that order (the diagram on the wall says so). Out of order, the rope snaps loose and it all
+   * goes back to the start: no harm done, try again.
+   */
+  private useWinch(part: Spot) {
+    if (this.solved('P03'))
+      return this.ui.look('The ratchet holds. The shutter stays up, the shelf behind it open.')
+    this.noteLead('shutter_jammed')
+    const ORDER = ['catch', 'spool', 'ratchet'] as const
+    let done = 0
+    this.ui.openWinch(part.look ?? '', (step) => {
+      if (step !== ORDER[done]) {
+        done = 0
+        lockSound('rattle')
+        return {
+          state: 0,
+          text:
+            step === 'spool'
+              ? 'The crank won’t turn against the catch. Something jerks loose and the rope drops back slack.'
+              : 'It clacks against nothing. The rope jerks loose and drops back slack.',
+        }
+      }
+      done++
+      if (done === 1) {
+        lockSound('door', 0.4)
+        return { state: 1, text: 'The catch lifts with a squeal. The spool is free to turn.' }
+      }
+      if (done === 2) {
+        lockSound('door', 0.6)
+        return {
+          state: 2,
+          text: 'The rope tightens over the pulley. The shutter lifts, shaking, and hangs there.',
+        }
+      }
+      this.trip!.story.opened.add('P03')
+      lockSound('open')
+      this.forest!.open('bay')
+      this.forest!.open('shed')
+      window.setTimeout(() => this.say('The shutter rolls up and stays.'), 400)
+      this.ui.refresh()
+      return { state: 3, text: '', done: true }
+    })
+  }
+
+  /** A lock you can't open yet: noted in this trip's notepad (kept if you get home). */
+  private noteLead(id: LeadId) {
+    const t = this.trip
+    if (!t || this.leadSolved(id) || this.save.story?.leads?.includes(id)) return
+    if (t.story.leads.has(id)) return
+    t.story.leads.add(id)
+    this.ui.refresh()
+  }
+
+  /** A lead found at home (your own closet): straight into your saved story. */
+  private addLeadAtHome(id: LeadId) {
+    if (this.leadSolved(id)) return
+    const story = (this.save.story ??= {})
+    if (story.leads?.includes(id)) return
+    story.leads = [...(story.leads ?? []), id]
+    this.markDirty()
+  }
+
+  /**
+   * Home safe (PUZZLES.md "Safe return must be atomic"): the keys you picked up go in your pocket for
+   * good, and the leads you found and the places you reached are kept.
+   */
+  private bankStory(plan: StoryPlan) {
+    const story = (this.save.story ??= {})
+    // Doors unlocked and gates opened this trip: open for good now.
+    if (plan.opened.size) story.puzzles = [...new Set([...(story.puzzles ?? []), ...plan.opened])]
+    for (const id of plan.carried) if (!hasItem(this.save, id)) (this.save.pocket ??= []).push(id)
+    const leads = [...plan.leads].filter((l) => !this.leadSolved(l))
+    story.leads = [...new Set([...(story.leads ?? []), ...leads])]
+    const sites = [...plan.reached].filter((r): r is SiteId =>
+      (SITE_IDS as readonly string[]).includes(r),
+    )
+    story.sites = [...new Set([...(story.sites ?? []), ...sites])]
+    // (Leads whose lock is now open are done with.)
+    story.leads = story.leads.filter((l) => !this.leadSolved(l))
+    for (const k of ['leads', 'sites'] as const) if (!story[k]?.length) delete story[k]
+    if (!Object.keys(story).length) delete this.save.story
+    this.markDirty()
+    this.ui.refresh()
+  }
+
+  /**
+   * Caught or collapsed: every key in your pocket is gone, and waits back where it was found
+   * (PUZZLES.md: a unique item is recoverable from its source). Keys on your hook are safe.
+   * Whether any went.
+   */
+  private loseKeys(): boolean {
+    const pocket = this.save.pocket
+    if (!pocket) return false
+    const kept = pocket.filter((p) => !(ITEM_IDS as readonly string[]).includes(p))
+    if (kept.length === pocket.length) return false
+    if (kept.length) this.save.pocket = kept
+    else delete this.save.pocket
+    this.markDirty()
+    return true
+  }
+
+  /**
+   * Your key hook: hang up what you're carrying, or (with nothing in your pocket) take down what's
+   * there, as many as your pocket holds. A key is only ever in one place.
+   */
+  private useKeyHook() {
+    if (this.ownerOf(this.mapId) !== this.login) return this.say('Someone else’s key hook.')
+    const story = (this.save.story ??= {})
+    const carrying = this.pocketKeys()
+    if (carrying.length) {
+      story.hook = [...(story.hook ?? []), ...carrying]
+      this.save.pocket = (this.save.pocket ?? []).filter((p) => !carrying.includes(p as ItemId))
+      if (!this.save.pocket.length) delete this.save.pocket
+      this.say(
+        carrying.length > 1
+          ? 'You hang your keys on the hook.'
+          : `You hang ${ITEMS[carrying[0]].name} on the hook.`,
+      )
+    } else if (story.hook?.length) {
+      const room = POCKET_SLOTS - (this.save.pocket?.length ?? 0)
+      if (room <= 0) return this.say('Your pocket is full.')
+      const taking = story.hook.slice(0, room)
+      story.hook = story.hook.slice(room)
+      this.save.pocket = [...(this.save.pocket ?? []), ...taking]
+      this.say(
+        taking.length > 1
+          ? 'You take your keys off the hook.'
+          : `You take ${ITEMS[taking[0]].name} off the hook.`,
+      )
+    } else {
+      if (!Object.keys(story).length) delete this.save.story
+      return this.say('A little key hook. Nothing on it.')
+    }
+    if (!story.hook?.length) delete story.hook
+    if (!Object.keys(story).length) delete this.save.story
+    sfx('blip')
+    this.markDirty()
+    this.refreshRoom()
+    this.ui.refresh()
   }
 
   /** Picks up a keepsake (it goes home with your notepad, if you get home). */
@@ -4077,8 +4585,10 @@ export class Game {
   /** Examining something in the forest: a clue's paper, or a look and maybe a thought. */
   private examine(x: number, y: number) {
     const t = this.trip
+    if (t?.ride) return
     const thing = this.storyThing(x, y)
-    if (t?.bus?.canBoard(this.me) && t.waiting < 0) return this.rideBus()
+    if (t?.bus?.canBoard(this.me) && t.waiting < 0 && !t.enc.busy() && !t.threats.busy())
+      return this.board()
     // Lost, with nothing in front of you: sit down among the roots and wait for someone.
     if (t && !thing && !t.end && this.forest?.lost && t.waiting < 0 && !t.enc.busy()) {
       t.waiting = 0
@@ -4092,6 +4602,14 @@ export class Game {
       t.story.looked.add(key)
       return true
     }
+    if (thing.kind === 'door') return this.useForestDoor(thing.door, thing.side)
+    if (thing.kind === 'part' && thing.part.combo) return this.useCombo(thing.part, first)
+    if (thing.kind === 'part' && thing.part.winch) return this.useWinch(thing.part)
+    if (thing.kind === 'part' && thing.part.shut && !this.solved(thing.part.shut.puzzle)) {
+      if (thing.part.lead) this.noteLead(thing.part.lead)
+      return this.ui.look(thing.part.shut.look)
+    }
+    if (thing.kind === 'part' && thing.part.doc) return this.readDoc(thing.part.doc, first)
     if (thing.kind === 'prints')
       return this.ui.look(
         'Footprints in the soft earth, going on ahead of you. The same tread as your own shoes.',
@@ -4112,15 +4630,20 @@ export class Game {
         ? { x: thing.x, y: thing.y, prompt: thing.find.prompt, clue: thing.find.clue }
         : thing.part
     if (!part.clue) {
+      if (part.lead) this.noteLead(part.lead)
+      if (part.item) return this.takeItem(part, first(part.prompt))
       if (part.keep && !this.keepable(part.keep))
         return this.ui.look(part.lookAfter ?? part.look ?? '')
       this.ui.look(part.look ?? '', first(part.prompt) ? part.voice : null)
       if (part.keep) this.keep(part.keep)
       return
     }
-    const id = part.clue
+    // (A spot with a second clue, like the envelope with Evie's card and photo, shows the one still
+    // to find; once both are yours, the first.)
+    const id = (part.also && t.story.clueAt(part)) || part.clue
     const clue = CLUES[id]
     if (!clue) return
+    if (clue.lead) this.noteLead(clue.lead)
     const state = t.story.banked.has(id) ? 'known' : t.story.found.has(id) ? 'taken' : 'new'
     let took = false
     paperRustle(0.8)
@@ -4132,8 +4655,19 @@ export class Game {
       onClose: () => {
         if (!this.forest) return
         let line: string | null = null
-        if (took) line = clue.voice[Math.floor(Math.random() * clue.voice.length)]
-        else if (state === 'known' && first(`known:${id}`)) line = voiceFor('known')
+        if (took) {
+          const knows =
+            clue.voiceIf &&
+            (t.story.found.has(clue.voiceIf.clue) || t.story.banked.has(clue.voiceIf.clue))
+          const lines = knows ? clue.voiceIf!.voice : clue.voice
+          line = lines[Math.floor(Math.random() * lines.length)]
+          // A second thought, a while after (STORY.md "Memory": rare).
+          const then = clue.then
+          if (then)
+            window.setTimeout(() => {
+              if (this.trip === t) this.ui.thought(then)
+            }, 5000)
+        } else if (state === 'known' && first(`known:${id}`)) line = voiceFor('known')
         if (line) {
           t.director.noteSaid(line)
           window.setTimeout(() => this.ui.thought(line), 500)
@@ -4200,7 +4734,8 @@ export class Game {
         !this.trip.end &&
         !this.trip.enc.busy() &&
         !this.ui.dialogueOpen() &&
-        !this.ui.panelOpen(),
+        !this.ui.panelOpen() &&
+        !this.indoors(),
       deepness: () => this.trip?.deep ?? 0,
       lost: () => !!this.forest?.lost,
       danger: () => (this.trip?.danger ?? 0) > 0,
@@ -4258,7 +4793,11 @@ export class Game {
         uncanny(p.nurse ? 'whistle' : 'name', Math.max(-0.9, Math.min(0.9, dx / 8)), vol)
       },
       quiet: () =>
-        !!this.trip && !this.trip.end && !this.ui.panelOpen() && !this.trip.threats.busy(),
+        !!this.trip &&
+        !this.trip.end &&
+        !this.ui.panelOpen() &&
+        !this.trip.threats.busy() &&
+        !this.indoors(),
       talking: () => this.ui.dialogueOpen() || this.ui.panelOpen(),
       danger: () => (this.trip?.danger ?? 0) > 0,
       spendDanger: () => {
@@ -4276,6 +4815,7 @@ export class Game {
   private renderForest(f: Forest) {
     const c = this.ctx
     const t = this.trip!
+    if (t.ride) return this.renderRide(t.ride)
     this.cam.x = Math.round(this.me.x * TS - this.vw / 2)
     this.cam.y = Math.round((this.me.y - 0.5) * TS - this.vh / 2)
     // Caught: the screen shakes as it grabs you, settling as the light goes (not with reduced motion).
@@ -4347,7 +4887,30 @@ export class Game {
     if (bus?.visible())
       list.push({
         y: (bus.by + 0.6) * TS,
-        draw: () => drawBus(c, bus.bx * TS + ox, (bus.by + 0.6) * TS + oy, bus.stage === 'stopped'),
+        draw: () =>
+          drawBus(
+            c,
+            bus.bx * TS + ox,
+            (bus.by + 0.6) * TS + oy,
+            bus.stage === 'stopped',
+            bus.full,
+            bus.dir,
+            bus.alpha,
+          ),
+      })
+    // The crew walking in through the gate: no shadows, fading.
+    for (const w of t.crewWalk)
+      list.push({
+        y: w.y * TS,
+        draw: () => {
+          c.globalAlpha = w.a
+          c.drawImage(
+            personSprite(w.look, 3, Math.floor(w.anim) % 4),
+            Math.round(w.x * TS + ox - SPR_W / 2),
+            Math.round(w.y * TS + oy - SPR_H + 1),
+          )
+          c.globalAlpha = 1
+        },
       })
     perf?.mark('draw')
     list.sort((a, b) => a.y - b.y)
@@ -4394,7 +4957,7 @@ export class Game {
     // The bus's headlights, cutting through the trees ahead of it.
     if (t.bus?.visible())
       glowsAt.push({
-        x: (t.bus.bx - 3.6) * TS + ox,
+        x: t.bus.front() * TS + ox,
         y: (t.bus.by - 0.6) * TS + oy,
         r: 3.4 * TS,
         a: 0.85 * t.bus.lights(),
@@ -4477,7 +5040,7 @@ export class Game {
     }
     perf?.mark('present')
     const v = this.vctx
-    if (this.canvasFilter) v.filter = forestGrade(t.deep)
+    if (this.canvasFilter) v.filter = forestGrade(t.deep, this.deepest())
     v.drawImage(this.scene, 0, 0)
     if (this.canvasFilter) v.filter = 'none'
     // After the grade (which would drain it to grey): the red at the edge, pulsing with your heart.
@@ -4488,6 +5051,44 @@ export class Game {
       v.globalAlpha = 1
     }
     perf?.mark('overlay')
+    this.renderOverlay()
+  }
+
+  /**
+   * How far into the deepest forest you are (0–1): only after the empty bus has let you off, as
+   * the dark closes in past being lost (LOST_DEEP) towards BUS_DEEP.
+   */
+  private deepest(): number {
+    const t = this.trip
+    if (!t?.deeper) return 0
+    return Math.max(0, Math.min(1, (t.deep - LOST_DEEP) / (BUS_DEEP - LOST_DEEP)))
+  }
+
+  /** On the bus: its inside instead of the forest (story/ride.ts), with the grab if it gets you. */
+  private renderRide(ride: Ride) {
+    const t = this.trip!
+    const c = this.ctx
+    const grab = t.end?.kind === 'caught' ? Math.min(1, t.end.t / CAUGHT_GRAB_MS) : 0
+    const shake = grab > 0 && grab < 1 && !REDUCED_MOTION ? CAUGHT_SHAKE * (1 - grab) : 0
+    ride.draw(c, this.vw, this.vh, this.time, shake)
+    // Caught: the light goes as it takes you, then black (the jumpscare is on top).
+    const black = t.end?.kind === 'caught' ? (grab >= 1 ? 1 : grab * 0.8) : 0
+    const fade = Math.max(this.fade, black)
+    if (fade > 0) {
+      c.fillStyle = `rgba(8,8,12,${fade})`
+      c.fillRect(0, 0, this.vw, this.vh)
+    }
+    const v = this.vctx
+    if (this.canvasFilter) v.filter = forestGrade(Math.min(0.4, t.deep))
+    v.drawImage(this.scene, 0, 0)
+    if (this.canvasFilter) v.filter = 'none'
+    const level = t.end ? (grab < 1 && t.end.kind === 'caught' ? 1 : 0) : ride.dread()
+    if (level > 0) {
+      const beat = 0.8 + 0.2 * Math.sin((this.time / (860 - 460 * level)) * Math.PI * 2)
+      v.globalAlpha = CHASE_VIGNETTE * level * beat
+      v.drawImage(vignette(this.vw, this.vh), 0, 0)
+      v.globalAlpha = 1
+    }
     this.renderOverlay()
   }
 
@@ -4581,6 +5182,18 @@ export class Game {
   }
 }
 
+/** The Route 9 bus at the real stop on the map (story/map.ts BUS_STOP): it drives east along the road. */
+function mapBus(): Bus {
+  const stop = LANDMARKS.find((l) => l.id === 'BUS_STOP')!.props.find((p) => p.id === 'busstop')!
+  return new Bus(stop.x, stop.y, 1, stop.y + 3)
+}
+
+/** Where a safe ride lets you off: on the road just outside the camp gate, facing it. */
+function campGate(): { x: number; y: number } {
+  const sign = LANDMARKS.find((l) => l.id === 'CAMP_GATE')!.props.find((p) => p.id === 'campsign')!
+  return { x: sign.x + 2.5, y: sign.y + 3.5 }
+}
+
 /** The nearest road, path or clearing tile to (x, y), from the map (or where you came in). */
 function nearestPath(x: number, y: number): { x: number; y: number } {
   const L = layout()
@@ -4607,6 +5220,7 @@ const pickAt = (list: readonly string[], x: number, y: number): string =>
 
 /** Something to examine in the forest: a piece of a site, a small find, or footprints. */
 type StoryThing =
+  | { kind: 'door'; door: Door; side: 'out' | 'in' }
   | { kind: 'part'; part: Spot }
   | { kind: 'find'; find: Find; x: number; y: number }
   | { kind: 'look'; prompt: string; look: string }
@@ -4614,9 +5228,9 @@ type StoryThing =
 
 /**
  * The grin, drawn over a fake's face, the person sprite's size: a dark mouth from ear to ear,
- * curling up at the corners, crowded with small pale teeth, and pinprick pale eyes. Side-on it runs
- * back up the cheek to the ear; from behind, the face is on the back of its head (it has turned
- * its head all the way round to keep looking at you). `bob` is the walk's bob (the head is a pixel
+ * curling up at the corners, crowded with small pale teeth, and pinprick pale eyes. From behind,
+ * the face is on the back of its head (it has turned its head all the way round to keep looking at
+ * you). Never side on. `bob` is the walk's bob (the head is a pixel
  * higher on a step). `pale` holds only the teeth and the eyes' glints (drawn over the dark).
  */
 const grins = new Map<string, { face: HTMLCanvasElement; pale: HTMLCanvasElement }>()
@@ -4632,13 +5246,6 @@ function grinSprite(dir: Dir, bob: number, skin: number) {
   }
   const fc = face.getContext('2d')!
   const pc = pale.getContext('2d')!
-  // Left-facing is the right-facing grin, mirrored.
-  if (dir === 1) {
-    for (const c of [fc, pc]) {
-      c.translate(SPR_W, 0)
-      c.scale(-1, 1)
-    }
-  }
   const dark = (x: number, y: number, w = 1, h = 1) => {
     fc.fillStyle = '#140c0e'
     fc.fillRect(x, y, w, h)
@@ -4650,38 +5257,26 @@ function grinSprite(dir: Dir, bob: number, skin: number) {
     }
   }
   const y = 9 - bob
-  if (dir === 1 || dir === 2) {
-    // Side-on: the mouth from the chin back up the cheek nearly to the ear.
-    dark(8, y, 5, 1)
-    dark(9, y + 1, 3, 1)
-    dark(7, y - 1, 1, 1)
-    dark(6, y - 2, 1, 1)
-    for (const x of [8, 10, 12]) light(x, y)
-    for (const x of [9, 11]) light(x, y + 1)
-    dark(9, 6 - bob, 2, 2)
-    light(10, 7 - bob)
-  } else {
-    if (dir === 3) {
-      // The face, where the back of its head should be.
-      fc.fillStyle = SKIN_TONES[skin] ?? SKIN_TONES[0]
-      fc.fillRect(5, 5 - bob, 6, 6)
-    }
-    // Ear to ear, curling sharply up at both ends.
-    dark(4, y, 8, 1)
-    dark(5, y + 1, 6, 1)
-    dark(3, y - 1)
-    dark(12, y - 1)
-    dark(2, y - 2)
-    dark(13, y - 2)
-    // Teeth, top and bottom, crowded.
-    for (const x of [4, 6, 8, 10]) light(x, y)
-    for (const x of [5, 7, 9]) light(x, y + 1)
-    // Its eyes: pinpricks of light in the dark of them.
-    dark(5, 6 - bob, 2, 2)
-    dark(9, 6 - bob, 2, 2)
-    light(6, 7 - bob)
-    light(9, 7 - bob)
+  if (dir === 3) {
+    // The face, where the back of its head should be.
+    fc.fillStyle = SKIN_TONES[skin] ?? SKIN_TONES[0]
+    fc.fillRect(5, 5 - bob, 6, 6)
   }
+  // Ear to ear, curling sharply up at both ends.
+  dark(4, y, 8, 1)
+  dark(5, y + 1, 6, 1)
+  dark(3, y - 1)
+  dark(12, y - 1)
+  dark(2, y - 2)
+  dark(13, y - 2)
+  // Teeth, top and bottom, crowded.
+  for (const x of [4, 6, 8, 10]) light(x, y)
+  for (const x of [5, 7, 9]) light(x, y + 1)
+  // Its eyes: pinpricks of light in the dark of them.
+  dark(5, 6 - bob, 2, 2)
+  dark(9, 6 - bob, 2, 2)
+  light(6, 7 - bob)
+  light(9, 7 - bob)
   g = { face, pale }
   grins.set(key, g)
   return g

@@ -1,6 +1,6 @@
 # Hollow Pines — story bible
 
-**Status:** Authored narrative specification. **No main-story scenes, historical clues, or ending are implemented yet.** Existing forest survival and family encounters are documented in [FOREST.md](FOREST.md). The authoritative physical layout is [MAP.md](MAP.md); interactions, puzzle solutions and failure handling are in [PUZZLES.md](PUZZLES.md). [COMMUNITY.md](COMMUNITY.md) defines Sunset Acres and is not part of the horror-story implementation.
+**Status:** Authored narrative specification. **No main-story scenes or ending are implemented yet;** of the clues, only `route9_timetable`, `bus_warning`, `evie_card`, `evie_photo_before`, `jonah_journal`, `bell_fire_record` and the optional `lost_journal` are written and placed (FOREST.md, Build status, Stage 4). Existing forest survival and family encounters are documented in [FOREST.md](FOREST.md). The authoritative physical layout is [MAP.md](MAP.md); interactions, puzzle solutions and failure handling are in [PUZZLES.md](PUZZLES.md). [COMMUNITY.md](COMMUNITY.md) defines Sunset Acres and is not part of the horror-story implementation.
 
 ## Premise
 
@@ -31,9 +31,21 @@ These are **consistent story rules**, not necessarily statements any character c
 - **Copies are imperfect.** They can have wrong eyes, hair, clothes, scars, names, blinking, shadows or footsteps. Every dangerous NPC encounter must have discoverable tells. The protagonist's real family photograph is reliable when carried. The forest cannot simply change it to make the correct choice unknowable.
 - **Copies lure victims toward forest territory.** Copies can appear outside the treeline, but cannot kill in ordinary Sunset Acres or an ordinary home. Within the woods or a copied forest-space, they can attack. The protagonist's mechanical “death” returns them unconscious to the infirmary; Nora is not rescued and dies. The player is **not immortal in the story**.
 - **Copied places are rare.** The false Sunset Acres is a major authored revelation, not a normal random biome. The locked door is a point at which the protagonist experiences one of these spaces. No invitation, magical coat or special ritual is necessary to create a new copy.
+- **The forest replays what it watched for years.** Besides copying people and places, it keeps old routines running, worn in by repetition. For the decades Hollow Pines was open (the gate sign says EST. 1952), the Route 9 bus ran the crews to their shifts every day, and the forest still runs it **on the old timetable**: a bus full of the day, swing or night crew, dozing against the windows with their lunch tins, who get off at the camp gate and walk in through it. A replay isn't hunting anyone: its passengers are copies (no shadows, never blinking, the same man in two seats), but they take no notice of you. **Off the timetable there is nothing to replay**, and the bus that comes is empty: the forest using the bus's shape as a lure, its board reading SUNSET ACRES. Whoever rides the empty bus alone is carried deep into the forest and left there, lost (see P04 in [PUZZLES.md](PUZZLES.md)). Why company protects you, whether the crew of a scheduled run or the real pet, stays as unknown as the forest's origin.
+- **(Planned, not yet canon: FOREST.md "The thing in the deep".) Something in the deep forest hunts.** It's what a copy is when it stops pretending: too tall, too thin, bloody, wearing nobody's face. It lives deep (the far road, the lost forest) and comes slowly towards anyone it notices; it never speaks, never lures, and never leaves forest territory. Its footsteps carry, so it can be heard before it's seen and escaped by breaking away. What it is and why it hunts stay as unknown as the forest's origin. It never comes through a door: a building is a refuge from it (and only from it), something the protagonist's earlier self noticed and wrote down.
 - **The pet is never a copy.** A genuine dog or cat can behave nervously without being a perfect impostor detector. If the pet offers to lead the player home, following it is always safe.
 - **Forest rules are discoverable.** Past warnings can express incomplete interpretations, but the game cannot randomly change an underlying rule. The origin of the supernatural phenomena remains unknown.
 - **Dementia is real and independent of the forest.** It is never revealed to be imaginary, caused by the forest, or proof that the protagonist is an impostor.
+
+## Memory: how the dementia shows
+
+**(Planned; not built yet except where FOREST.md's Build status says so.)** The protagonist's dementia is a constant, quiet part of play, not a backstory fact and not a mechanic that punishes the player. The rule above holds: it is real, it is not the forest's doing, and it is never the reason anyone is fooled.
+
+- **Other people remember you better than you remember them.** Nora recognizes the protagonist at the second meeting; the protagonist doesn't recognize her. She notices, isn't hurt, and introduces herself again, patiently, as someone who has met people like that before (an elderly relative, an interview subject). Being the one face she keeps finding again is why she trusts it later, which is what the forest uses. The protagonist's forgetting does **not** make her easier to fool: she's fooled by a copy, as anyone would be.
+- **Your notes are how you know people.** After meeting someone, the protagonist writes them down: a **People** page in the notepad, and a card on the board once banked, in their own words (*“Nora. Historian. Dented kettle. A mole on her left cheek.”*). Evie is known the same way: the photograph with the scar is something the earlier self kept, not something the protagonist recalls. When a face comes to the door, the player checks it against what they **wrote**, the same idea as the family photo they carry: memory can't be trusted, so the proof is carried.
+- **The earlier self planned for this.** Notes in the woods are written to someone who won't remember writing them. The voice recognizes the handwriting before the content (*“I know that handwriting.”*).
+- **Bell's forgetting is not the protagonist's.** Jonah suspected Daniel Bell because Bell forgot things he could not have forgotten. That echo is meant to be uncomfortable: the protagonist forgets things too. The game lets the player feel it (one thought, never repeated: *“I forget things. That doesn't make me...”*) but **never** suggests the protagonist is a copy. The difference is in the evidence: a copy lacks a mark it should have; the protagonist forgets and writes it down.
+- **Small touches, rarely.** Reaching a place for the first time on a trip, now and then: *“I've been here before. Haven't I?”* Nurse Ada at home after a trip: *“You went out walking again, didn't you, dear.”* Re-reading something already on the board: *“It's on my board. I remember putting it there... I think.”* Never more than one such line in a few minutes, never an on-screen effect that scrambles text or controls, and never anything that takes away progress the player has banked.
 
 ## Principal characters
 
@@ -116,8 +128,8 @@ After escaping, the player brings that information into the forest, locates the 
 
 | Clue ID | Fixed source | What it establishes | Required? |
 | --- | --- | --- | --- |
-| `route9_timetable` | Route 9 bus stop | Bus service ended with the camp in 1979 | No |
-| `bus_warning` | Route 9 bus stop | Player's earlier handwritten rule | No |
+| `route9_timetable` | Route 9 bus stop | Bus service ended with the camp in 1979; the crew runs to the camp were DAY CREW 06:00, SWING 14:00, NIGHT CREW 22:00 (the times the forest still keeps) | No |
+| `bus_warning` | Route 9 bus stop | Player's earlier handwritten rule: **“DO NOT RIDE THE BUS ALONE.”** True, but incomplete: it doesn't say that the timetable's buses come full | No |
 | `own_warning` | Trailhead marker | Earlier self knew how to survive a threat | No |
 | `evie_card` | Foreman's cabin, stored in old field envelope | Evie and player were friends | Yes, for memory scene |
 | `evie_photo_before` | Same envelope at foreman's cabin | Real Evie's right-eyebrow scar | Yes |
@@ -130,6 +142,7 @@ After escaping, the player brings that information into the forest, locates the 
 | `neighbor_statement` | Administrative office | Someone resembling Evie arrived Sep 20 | Yes |
 | `returned_evie_photo` | Administrative office, old personal case insert | Returned Evie lacked the right-eyebrow scar | Yes |
 | `player_missing` | Administrative office, archived clipping | Player vanished for 11 days in Oct 1987 | Optional |
+| `lost_journal` | Tin box under the protagonist's old lean-to, found only while lost | Their own notes from the eleven days lost in Oct 1987: real rules (a searcher's steady light, waiting) | Optional |
 | `returned_evie_journal` | Administrative office, old field insert | Imitation stayed through Sep 23; odd doorway/coat | Yes |
 | `nora_field_note` | Ravine, with Nora's belongings | Nora followed someone she trusted who looked like player | Yes for Nora resolution; not a final-story gate |
 | `nora_body_evidence` | Ravine | A real human died violently in forest territory | Yes for Nora resolution; not a final-story gate |

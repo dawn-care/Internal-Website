@@ -1,22 +1,40 @@
-import type { ClueId } from '../../../shared/story'
+import type { ClueId, ItemId, LeadId, PuzzleId } from '../../../shared/story'
+import type { DocId } from './docs'
 
 /*
- * Hollow Pines: the forest's fixed map (FOREST.md "The map"). The same every trip, so it's a place
- * you learn: the old Route 9 road runs north from the gap in the treeline to the forestry camp,
- * with footpaths off it to a ruined house plot and a picnic ground, and a creek across it. The
- * woods between are generated (gen.ts), the same every time; off the paths the trees close in,
- * and wander too far from them and you're lost (the forest stops being this map at all).
+ * Hollow Pines: the forest's fixed map (MAP.md). The same every trip, so it's a place you learn. A
+ * footpath runs north from the gap in the treeline to a signed fork. West, a path joins the old
+ * Route 9 road at the bus stop, and the road runs north past the foreman's cabin and over the creek.
+ * East, the creek trail passes Nora's camp and crosses the creek on a footbridge. Both come to the
+ * camp gate, in a wire perimeter fence that runs far out into the woods on either side, so the only
+ * way in is the gate. Inside is the courtyard (bunkhouse, maintenance shed, administrative office)
+ * and, on its north side, the locked service gate onto the deep road (P05, PUZZLES.md).
+ *
+ * The woods between are generated (gen.ts), the same every time; off the paths the trees close in,
+ * and wander too far from them and you're lost (the forest stops being this map at all). How far
+ * "off the paths" is goes round fences, never through them (layout.ts), so you can't skirt a gate.
  *
  * Coordinates are tiles, with the gap you came in by at (0, 0) and the forest to the north
- * (y negative). Everything here is data: lines (road, paths, creek), clearings, props (drawn in
+ * (y negative). Everything here is data: lines (road, paths, creek), areas, props (drawn in
  * story/art.ts) and spots (things to examine: a line of description and maybe a thought, or a
- * clue). Write more here; the engine doesn't need to change.
+ * clue). Landmark ids are MAP.md's location ids.
  */
 
 export type Pt = [number, number]
 
 /** Ground kinds the map can lay down (drawn in forest/art.ts). */
-export type MapGround = 'road' | 'path' | 'water' | 'plank' | 'stone' | 'wild' | 'yard'
+export type MapGround =
+  | 'road'
+  | 'path'
+  | 'water'
+  | 'plank'
+  | 'stone'
+  | 'wild'
+  | 'yard'
+  /** A building's inside walls (solid). */
+  | 'wall'
+  /** Round a building's inside: nothing, never seen (solid). */
+  | 'void'
 
 export interface Line {
   ground: MapGround
@@ -28,6 +46,8 @@ export interface Line {
 }
 
 export interface Area {
+  /** Its own ground, for a yard or the like. Leave it out for a clearing: areas are rectangles,
+   * and a rectangle of different ground looks like a carpet laid in the woods. */
   ground?: MapGround
   /** Inclusive tile rectangle. */
   x0: number
@@ -36,6 +56,11 @@ export interface Area {
   y1: number
   /** Counts as "on the paths" (you're never lost standing here). */
   walk?: boolean
+  /**
+   * A building's inside (INTERIORS): walled round (two tiles of back wall, one at the sides and
+   * front), with nothing round the walls, and the walls block the distance from the paths.
+   */
+  room?: boolean
 }
 
 /** A prop: a drawn thing (story/art.ts PROPS) standing with its bottom-left on tile (x, y). */
@@ -57,8 +82,60 @@ export interface Spot {
   clue?: ClueId
   /** Something you can take home and keep (a keepsake: story/finds.ts KEEPSAKES)... */
   keep?: string
-  /** ...and what it looks like once you have. */
+  /** ...or a key you can take (PUZZLES.md: physical items, one of each)... */
+  item?: ItemId
+  /** ...and what it looks like once you have (or the key is yours). */
   lookAfter?: string
+  /** A lock you can't open yet: looking at it notes it in your notepad (an unresolved lead). */
+  lead?: LeadId
+  /** A puzzle document to read (story/docs.ts). */
+  doc?: DocId
+  /** A second clue in the same place (the card and the photo in one envelope), once the first is taken. */
+  also?: ClueId
+  /** A combination lock (COMBOS): the service gate's padlock (P05) or Bell's locker (P02). */
+  combo?: ComboId
+  /** The shutter's winch (PUZZLES.md P03). */
+  winch?: true
+  /** Until this puzzle is solved, looking here only says `look` (what's behind is shut away). */
+  shut?: { puzzle: PuzzleId; look: string }
+}
+
+export type ComboId = 'P02' | 'P05'
+
+/**
+ * The combination locks (PUZZLES.md P02, P05): their code (as a string, so 0416 keeps its zero),
+ * the prop that opens (Forest.open), what the button says, what's said when it opens, and what's
+ * there to look at afterwards: a line, or a document to read.
+ */
+export const COMBOS: Record<
+  ComboId,
+  {
+    code: string
+    prop: string
+    pull: string
+    sprung: string
+    openPrompt: string
+    open: string
+    doc?: DocId
+  }
+> = {
+  P05: {
+    code: '2714',
+    prop: 'servicegate',
+    pull: 'Pull the shackle',
+    sprung: 'The padlock springs open.',
+    openPrompt: 'Look at the gate',
+    open: 'The gate stands open, the chain hanging loose.',
+  },
+  P02: {
+    code: '0416',
+    prop: 'belllocker',
+    pull: 'Lift the latch',
+    sprung: 'The lock clicks. The locker door swings open.',
+    openPrompt: 'Look in Bell’s locker',
+    open: '',
+    doc: 'bell_locker',
+  },
 }
 
 export interface Landmark {
@@ -74,250 +151,202 @@ export interface Landmark {
   spots: Spot[]
 }
 
-/** The map's extent: outside it there's only forest, and you're lost. */
-export const BOUNDS = { x0: -48, y0: -124, x1: 52, y1: 0 }
+/** The map's extent: outside it there's only forest, and you're lost. (Worked out at the end.) */
+export const BOUNDS = { x0: 0, y0: 0, x1: 0, y1: 0 }
 
 /** The forest's fixed seed: the woods between the paths look the same every trip. */
 export const HOLLOW_SEED = 401_987
 
+// Where things are (tiles). The camp perimeter: the south fence (with the camp gate in it), the
+// sides, and the north fence (with the service gate in it). The south and north fences run out
+// FENCE_WING tiles past the sides, far beyond where you'd be lost, so nothing goes round them.
+const CAMP = { south: -127, north: -158, west: -22, east: 22 }
+const FENCE_WING = 40
+
 export const LINES: Line[] = [
-  // Route 9: north from the gap, east along the bus stop, over the creek, up to the camp.
+  // The footpath in from the treeline, to the fork.
+  {
+    ground: 'path',
+    width: 1.8,
+    walk: true,
+    pts: [
+      [0.5, 2],
+      [0.5, -12],
+      [1, -26],
+    ],
+  },
+  // From the fork, west to Route 9 at the bus stop.
+  {
+    ground: 'path',
+    width: 1.6,
+    walk: true,
+    pts: [
+      [0.5, -26],
+      [-8, -30],
+      [-20, -36],
+      [-32, -43],
+    ],
+  },
+  // Route 9: from where it's closed off in the west, past the bus stop, north past the foreman's
+  // cabin and over the creek, to the camp gate.
   {
     ground: 'road',
     width: 2.4,
     walk: true,
     pts: [
-      [0.5, 2],
-      [0.5, -16],
-      [3.5, -21.5],
-      [9, -23.5],
-      [20, -23.5],
-      [24, -27],
-      [24.5, -44],
-      [23, -58],
-      [22, -78],
-      [17, -90],
-      [13, -97],
+      [-66, -45],
+      [-46, -44.5],
+      [-33, -43.5],
+      [-37, -56],
+      [-40, -70],
+      [-41, -86],
+      [-38, -100],
+      [-30, -112],
+      [-16, -121],
+      [0.5, -124],
+      [0.5, -131],
     ],
   },
-  // The footpath west to the house plot.
-  {
-    ground: 'path',
-    width: 1.6,
-    walk: true,
-    pts: [
-      [0.5, -11],
-      [-5, -12.5],
-      [-12, -13.5],
-      [-17, -16],
-    ],
-  },
-  // The footpath east to the picnic ground.
-  {
-    ground: 'path',
-    width: 1.6,
-    walk: true,
-    pts: [
-      [24.5, -36],
-      [30, -37],
-      [35, -39],
-    ],
-  },
-  // A track west from the road past the old car, looping back to the creek's log crossing.
+  // From the fork, east: the creek trail, past Nora's camp and over the creek, to the camp gate.
   {
     ground: 'path',
     width: 1.4,
     walk: true,
     pts: [
-      [22.5, -68],
-      [12, -66],
-      [2, -60],
-      [-6, -54],
-      [-8, -46],
-      [-4, -36],
-      [0.5, -16],
+      [1.5, -26],
+      [12, -31],
+      [24, -39],
+      [33, -50],
+      [37, -60],
+      [37, -74],
+      [33, -90],
+      [24, -106],
+      [12, -118],
+      [1.5, -124],
     ],
   },
-  // The creek, east to west across the whole map (the road crosses it on a bridge).
+  // In the courtyard: the worn track round the back from the bunkhouse to the maintenance shed.
+  {
+    ground: 'path',
+    width: 1.2,
+    walk: true,
+    pts: [
+      [-13, -135],
+      [-11, -143],
+      [-14, -149],
+    ],
+  },
+  // The deep road, north through the service gate (MAP.md 13–18 are built along it later).
+  {
+    ground: 'road',
+    width: 2.4,
+    walk: true,
+    pts: [
+      [0.5, -150],
+      [0.5, -172],
+      [-3, -188],
+      [-6, -204],
+    ],
+  },
+  // The creek, west to east across the map (the road crosses it on a bridge, the trail on a
+  // footbridge).
   {
     ground: 'water',
     width: 2.6,
     walk: false,
     pts: [
-      [-50, -47],
-      [-30, -50],
-      [-14, -48],
-      [0, -52],
-      [14, -49],
-      [30, -53],
-      [54, -50],
+      [-100, -62],
+      [-70, -68],
+      [-52, -66],
+      [-40, -71],
+      [-20, -73],
+      [0, -69],
+      [20, -72],
+      [37, -67],
+      [60, -71],
+      [110, -66],
     ],
   },
 ]
 
+/** A run of the perimeter's wire fence: along a row (v 0) or down a column (v 1). */
+function wire(x0: number, y0: number, x1: number, y1: number): Prop[] {
+  const out: Prop[] = []
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) out.push({ id: 'wire', x, y, v: x0 === x1 ? 1 : 0 })
+  return out
+}
+
 export const LANDMARKS: Landmark[] = [
   {
-    id: 'trailhead',
+    id: 'TRAILHEAD',
     name: 'The trailhead',
     x: 0.5,
-    y: -6,
+    y: -8,
     r: 5,
     seen: [],
     areas: [],
-    props: [
-      { id: 'roadsign', x: 3, y: -7 },
-      { id: 'pole', x: -2, y: -14 },
-    ],
+    props: [{ id: 'waymark', x: 2, y: -11, v: 1 }],
     spots: [
       {
-        x: 3,
-        y: -7,
-        prompt: 'Read the sign',
-        look: 'A road sign, half swallowed by ivy: ROUTE 9 · HOLLOW PINES CAMP 1½ MI.',
+        x: 2,
+        y: -11,
+        prompt: 'Read the trail marker',
+        // (`own_warning` will be here: MAP.md 02.)
+        look: 'A trail marker, its white band nearly gone. Low on the post, words have been scratched into the wood, too worn to make out in this light.',
       },
     ],
   },
   {
-    id: 'busstop',
+    id: 'SOUTH_FORK',
+    name: 'The fork',
+    x: 1,
+    y: -27,
+    r: 5,
+    seen: [],
+    areas: [{ x0: -2, y0: -29, x1: 4, y1: -24, walk: true }],
+    props: [{ id: 'forksign', x: 3, y: -28 }],
+    spots: [
+      {
+        x: 3,
+        y: -28,
+        prompt: 'Read the signpost',
+        look: 'A signpost where the path splits. One arm points west: ROUTE 9. The other points east: CREEK TRAIL. Under both, in the same faded paint: CAMP.',
+      },
+    ],
+  },
+  {
+    id: 'BUS_STOP',
     name: 'The Route 9 bus stop',
-    x: 11,
-    y: -25,
+    x: -36,
+    y: -45,
     r: 7,
     seen: [],
-    areas: [{ x0: 7, y0: -28, x1: 14, y1: -26, walk: true }],
+    areas: [{ x0: -40, y0: -47, x1: -32, y1: -45, walk: true }],
     props: [
-      { id: 'busstop', x: 10, y: -27 },
-      { id: 'bussign', x: 9, y: -27 },
-      { id: 'pole', x: 17, y: -27 },
+      { id: 'busstop', x: -38, y: -46 },
+      { id: 'bussign', x: -39, y: -46 },
+      { id: 'bin', x: -34, y: -46 },
     ],
     spots: [
       {
-        x: 9,
-        y: -27,
+        x: -39,
+        y: -46,
         prompt: 'Look at the sign',
         look: 'A bus stop sign, the paint flaking off it: ROUTE 9 · HOLLOW PINES CAMP.',
         voice: 'Hollow Pines. I’ve heard that name somewhere.',
       },
-      { x: 10, y: -27, prompt: 'Read the timetable', clue: 'route9_timetable' },
+      { x: -38, y: -46, prompt: 'Read the timetable', clue: 'route9_timetable' },
       {
-        x: 11,
-        y: -27,
+        x: -37,
+        y: -46,
         prompt: 'Look at the bench',
-        look: 'A wooden bench under the shelter. Someone has swept the needles off one end of it, recently.',
-        voice: 'Someone sits here.',
+        look: 'A wooden bench under the shelter. Someone has swept the needles off one end of it.',
       },
-      { x: 12, y: -27, prompt: 'Read the note on the post', clue: 'bus_warning' },
-    ],
-  },
-  {
-    id: 'house',
-    name: 'The house plot',
-    x: -23,
-    y: -20,
-    r: 9,
-    seen: [],
-    areas: [
-      { ground: 'wild', x0: -31, y0: -27, x1: -16, y1: -15, walk: true },
-      { ground: 'stone', x0: -28, y0: -25, x1: -21, y1: -19 },
-      { ground: 'path', x0: -17, y0: -17, x1: -14, y1: -15, walk: true },
-    ],
-    props: [
-      { id: 'gatepost', x: -15, y: -17 },
-      { id: 'letterbox', x: -13, y: -15 },
-      { id: 'chimney', x: -23, y: -25 },
-      { id: 'ruinwall', x: -28, y: -25, v: 0 },
-      { id: 'ruinwall', x: -27, y: -25, v: 1 },
-      { id: 'ruinwall', x: -26, y: -25, v: 2 },
-      { id: 'ruinwall', x: -21, y: -25, v: 1 },
-      { id: 'ruinwall', x: -28, y: -24, v: 2 },
-      { id: 'ruinwall', x: -28, y: -22, v: 0 },
-      { id: 'ruinwall', x: -28, y: -20, v: 1 },
-      { id: 'ruinwall', x: -21, y: -23, v: 0 },
-      { id: 'ruinwall', x: -21, y: -21, v: 2 },
-      { id: 'steps', x: -25, y: -18 },
-      { id: 'bed', x: -19, y: -24 },
-      { id: 'bed', x: -19, y: -21, v: 1 },
-      { id: 'fence', x: -31, y: -15 },
-      { id: 'fence', x: -30, y: -15, v: 1 },
-      { id: 'fence', x: -29, y: -15 },
-      { id: 'fence', x: -20, y: -15, v: 1 },
-      { id: 'fence', x: -19, y: -15 },
-    ],
-    spots: [
+      { x: -36, y: -46, prompt: 'Read the note on the post', clue: 'bus_warning' },
       {
-        x: -15,
-        y: -17,
-        prompt: 'Look at the gatepost',
-        look: 'A gatepost with a little enamel number screwed to it: 14. There’s no gate.',
-        voice: 'Fourteen.',
-      },
-      { x: -13, y: -15, prompt: 'Open the letterbox', clue: 'evie_card' },
-      {
-        x: -23,
-        y: -25,
-        prompt: 'Look at the chimney',
-        look: 'A brick chimney standing on its own. The house it belonged to is gone; the hearth is black with old soot.',
-        voice: 'This was someone’s home.',
-      },
-      {
-        x: -25,
-        y: -18,
-        prompt: 'Look at the steps',
-        look: 'Stone steps up to where a front door used to be. A boot scraper, worn smooth.',
-      },
-      {
-        x: -24,
-        y: -21,
-        prompt: 'Look at the floor',
-        look: 'Under the leaves, floor tiles: blue and white, a pattern of little windmills.',
-        voice: 'I know this floor.',
-      },
-      {
-        x: -19,
-        y: -24,
-        prompt: 'Look at the garden beds',
-        look: 'Raised beds, gone to seed. Tomato canes are still standing in one, tied up with old netting.',
-        voice: 'Tomatoes. And netting.',
-      },
-      {
-        x: -19,
-        y: -21,
-        prompt: 'Look at the garden beds',
-        look: 'Raspberry canes, wild now, and a row of something that might once have been onions.',
-      },
-    ],
-  },
-  {
-    id: 'picnic',
-    name: 'The picnic ground',
-    x: 38,
-    y: -40,
-    r: 8,
-    seen: [],
-    areas: [{ ground: 'wild', x0: 33, y0: -45, x1: 44, y1: -36, walk: true }],
-    props: [
-      { id: 'swings', x: 37, y: -43 },
-      { id: 'table', x: 40, y: -38 },
-      { id: 'bin', x: 35, y: -38 },
-    ],
-    spots: [
-      {
-        x: 38,
-        y: -43,
-        prompt: 'Look at the swings',
-        look: 'A swing set with three swings. Two of them are moving.',
-        voice: 'There’s no wind.',
-      },
-      {
-        x: 40,
-        y: -38,
-        prompt: 'Look at the table',
-        look: 'A picnic table, grey with age. Initials carved into the top: E.M. — and a second set, scratched out.',
-        voice: 'E.M.',
-      },
-      {
-        x: 35,
-        y: -38,
+        x: -34,
+        y: -46,
         prompt: 'Look in the bin',
         look: 'A rusted litter bin. Inside, a child’s red mitten, quite dry.',
         keep: 'mitten',
@@ -326,156 +355,653 @@ export const LANDMARKS: Landmark[] = [
     ],
   },
   {
-    id: 'bridge',
-    name: 'The bridge',
-    x: 24,
-    y: -51,
-    r: 5,
+    id: 'FOREMAN_CABIN',
+    name: 'The foreman’s cabin',
+    x: -46,
+    y: -90,
+    r: 7,
     seen: [],
-    areas: [],
-    props: [],
+    areas: [{ x0: -51, y0: -93, x1: -43, y1: -88, walk: true }],
+    props: [{ id: 'cabin', x: -49, y: -90 }],
     spots: [
       {
-        x: 26,
-        y: -53,
-        prompt: 'Read the plate',
-        look: 'A plate bolted to the bridge rail: WEIGHT LIMIT 3 TONS · HOLLOW PINES FORESTRY · 1961.',
+        x: -49,
+        y: -90,
+        prompt: 'Look at the plate',
+        look: 'A tin plate by the door: FOREMAN · HOLLOW PINES FORESTRY.',
       },
     ],
   },
   {
-    id: 'car',
-    name: 'The car',
-    x: 16,
-    y: -68,
+    id: 'CREEK_CAMP',
+    name: 'The campsite by the creek',
+    x: 41,
+    y: -57,
     r: 6,
     seen: [],
-    areas: [{ x0: 14, y0: -70, x1: 19, y1: -66, walk: true }],
-    props: [{ id: 'car', x: 15, y: -69 }],
+    areas: [{ x0: 39, y0: -61, x1: 46, y1: -53, walk: true }],
+    props: [
+      { id: 'bedroll', x: 42, y: -59 },
+      { id: 'firepit', x: 41, y: -55 },
+      { id: 'kettle', x: 42, y: -55 },
+    ],
     spots: [
       {
-        x: 16,
-        y: -69,
-        prompt: 'Look in the car',
-        look: 'A car nose-down in the ditch, ferns growing through the seats. The keys are still in it. The tax disc in the window says 1987.',
-        voice: '1987.',
+        x: 41,
+        y: -55,
+        prompt: 'Look at the fire',
+        look: 'A ring of stones, the ashes still faintly warm. Someone put this fire out not long ago, and carefully. A tin mug of tea stands on one of the stones.',
+        voice: 'Someone’s been here recently.',
+      },
+      {
+        x: 42,
+        y: -55,
+        prompt: 'Look at the kettle',
+        look: 'A tea kettle, dented on one side and blackened underneath. Well used, and looked after.',
+      },
+      {
+        x: 42,
+        y: -59,
+        prompt: 'Look at the bedroll',
+        look: 'A bedroll, rolled up tight and tied with string, ready to go. A notebook is tucked under the string, its cover too damp to open.',
       },
     ],
   },
   {
-    id: 'camp',
-    name: 'Hollow Pines Camp',
-    x: 12,
-    y: -106,
-    r: 12,
+    id: 'CAMP_GATE',
+    name: 'The camp gate',
+    x: 0.5,
+    y: CAMP.south - 1,
+    r: 8,
     seen: [],
-    areas: [{ ground: 'yard', x0: -1, y0: -117, x1: 27, y1: -97, walk: true }],
+    areas: [],
     props: [
-      { id: 'campsign', x: 10, y: -97 },
-      { id: 'bunk', x: 1, y: -104 },
-      { id: 'bunk', x: 1, y: -111, v: 1 },
-      { id: 'office', x: 17, y: -110 },
-      { id: 'flagpole', x: 13, y: -105 },
-      { id: 'truck', x: 20, y: -101 },
-      { id: 'fence', x: 7, y: -97 },
-      { id: 'fence', x: 8, y: -97, v: 1 },
-      { id: 'fence', x: 9, y: -97 },
-      { id: 'fence', x: 16, y: -97, v: 1 },
-      { id: 'fence', x: 17, y: -97 },
-      { id: 'fence', x: 18, y: -97, v: 1 },
+      { id: 'campsign', x: -2, y: CAMP.south },
+      ...wire(CAMP.west - FENCE_WING, CAMP.south, -3, CAMP.south),
+      ...wire(4, CAMP.south, CAMP.east + FENCE_WING, CAMP.south),
+      ...wire(CAMP.west, CAMP.north + 1, CAMP.west, CAMP.south - 1),
+      ...wire(CAMP.east, CAMP.north + 1, CAMP.east, CAMP.south - 1),
     ],
     spots: [
       {
-        x: 10,
-        y: -97,
+        x: -2,
+        y: CAMP.south,
         prompt: 'Read the sign',
         look: 'A board over the gate: HOLLOW PINES FORESTRY CAMP · EST. 1952. Below it, smaller: ALL VISITORS REPORT TO THE OFFICE.',
         voice: 'This is where the bus went.',
       },
       {
-        x: 19,
-        y: -110,
-        prompt: 'Try the office door',
-        look: 'The field office. The door is locked, and the windows are boarded up from the inside.',
-      },
-      {
         x: 3,
-        y: -104,
-        prompt: 'Look through the window',
-        look: 'Through a broken window: rows of bunks, every one neatly made, the blankets folded back.',
+        y: CAMP.south,
+        prompt: 'Read the notice',
+        look: 'A notice nailed to the gatepost, the print faded: THIS CAMP IS CLOSED. NO ENTRY. HOLLOW PINES FORESTRY, 1979.',
       },
+    ],
+  },
+  {
+    id: 'CAMP_YARD',
+    name: 'The camp courtyard',
+    x: 0,
+    y: -140,
+    r: 10,
+    seen: [],
+    areas: [
       {
-        x: 3,
-        y: -111,
-        prompt: 'Look through the window',
-        look: 'This bunkhouse is empty: no beds, no floor. Just dark, a long way down.',
-        voice: 'I’m not going in there.',
+        ground: 'yard',
+        x0: CAMP.west + 1,
+        y0: CAMP.north + 1,
+        x1: CAMP.east - 1,
+        y1: CAMP.south - 1,
+        walk: true,
       },
+    ],
+    props: [
+      { id: 'flagpole', x: 0, y: -141 },
+      { id: 'truck', x: 10, y: -133 },
+      { id: 'table', x: -8, y: -139 },
+      { id: 'table', x: 5, y: -138 },
+    ],
+    spots: [
       {
-        x: 13,
-        y: -105,
+        x: 0,
+        y: -141,
         prompt: 'Look at the flagpole',
-        look: 'A flagpole with no flag. The rope taps against it, slow and steady, though there’s no wind.',
+        look: 'A flagpole with no flag. The rope taps against it, slow and steady.',
       },
       {
-        x: 21,
-        y: -101,
+        x: 11,
+        y: -133,
         prompt: 'Look in the truck',
-        look: 'A forestry truck on flat tyres. On the dash, a clipboard: a list of names, every one crossed out but one, too faded to read.',
+        look: 'A forestry truck on flat tyres. On the dash, a clipboard: a work roster, the ink run to nothing in the damp.',
+      },
+    ],
+  },
+  {
+    id: 'BUNKHOUSE',
+    name: 'The bunkhouse',
+    x: -17,
+    y: -135,
+    r: 6,
+    seen: [],
+    areas: [],
+    props: [{ id: 'bunk', x: -19, y: -136 }],
+    spots: [
+      {
+        x: -18,
+        y: -136,
+        prompt: 'Look through the window',
+        look: 'Through the window: rows of bunks, a line of tin lockers, work shirts still on their hooks.',
+      },
+    ],
+  },
+  {
+    id: 'MAINTENANCE',
+    name: 'The maintenance shed',
+    x: -17,
+    y: -149,
+    r: 6,
+    seen: [],
+    areas: [],
+    props: [{ id: 'shed', x: -19, y: -150 }],
+    spots: [
+      {
+        x: -18,
+        y: -150,
+        prompt: 'Look at the shutter',
+        // (Once P03 is solved from inside, it's up: the same shutter.)
+        look: 'The roller shutter is up. Behind it, a bay of shelves, and the inside of the shed.',
+        shut: {
+          puzzle: 'P03',
+          look: 'A roller shutter, rusted, jammed a hand’s width off the ground. Too low to get under.',
+        },
+      },
+      {
+        x: -17,
+        y: -150,
+        prompt: 'Read the sign',
+        look: 'MAINTENANCE, stencilled on the wall. Under it, smaller: ALL REPAIRS TO BE LOGGED.',
+      },
+    ],
+  },
+  {
+    id: 'ADMIN_OFFICE',
+    name: 'The administrative office',
+    x: 14,
+    y: -145,
+    r: 6,
+    seen: [],
+    areas: [],
+    props: [{ id: 'office', x: 12, y: -146 }],
+    spots: [
+      {
+        x: 12,
+        y: -146,
+        prompt: 'Look at the windows',
+        look: 'The windows are boarded up from the inside.',
+      },
+    ],
+  },
+  {
+    id: 'SERVICE_GATE',
+    name: 'The service gate',
+    x: 0.5,
+    y: CAMP.north + 2,
+    r: 6,
+    seen: [],
+    areas: [],
+    props: [
+      { id: 'servicegate', x: -1, y: CAMP.north },
+      ...wire(CAMP.west - FENCE_WING, CAMP.north, -2, CAMP.north),
+      ...wire(3, CAMP.north, CAMP.east + FENCE_WING, CAMP.north),
+    ],
+    spots: [
+      {
+        x: 0,
+        y: CAMP.north,
+        prompt: 'Look at the padlock',
+        look: 'A chain round the gate and its post, and a heavy padlock with four number dials. A worn plate on it reads NIGHT CREW.',
+        lead: 'service_gate_locked',
+        combo: 'P05',
+      },
+      {
+        x: 1,
+        y: CAMP.north,
+        prompt: 'Look through the gate',
+        look: 'A vehicle gate, chained shut. Beyond it the road runs on north into the dark.',
       },
     ],
   },
 ]
 
-/** Trail markers where the paths meet (a short post with a white band, a little board). */
+// --- insides (MAP.md: "Interiors are authored") --------------------------------------------------
+//
+// Each building you can go into has its inside here: a small walled room off in a corner of the map
+// nobody can walk to (east of everything, past where you'd be lost), reached only through its door
+// (DOORS). It's part of the same forest, so your trip, your light and your notepad carry on inside.
+
+/** A building's inside, as a landmark (its id isn't a site: it isn't drawn on the site map). */
+function interior(
+  id: string,
+  name: string,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  props: Prop[],
+  spots: Spot[],
+): Landmark {
+  return {
+    id,
+    name,
+    x: x0 + w / 2,
+    y: y0 + h / 2,
+    r: 0,
+    seen: [],
+    areas: [{ ground: 'plank', x0, y0, x1: x0 + w - 1, y1: y0 + h - 1, walk: true, room: true }],
+    props,
+    spots,
+  }
+}
+
+export const INTERIORS: Landmark[] = [
+  // The foreman's cabin (MAP.md 05): a desk with the administration key in its drawer and the field
+  // envelope on top, a stove, a window. (The descriptions are invented.)
+  interior(
+    'IN_FOREMAN_CABIN',
+    'Inside the foreman’s cabin',
+    130,
+    -52,
+    8,
+    5,
+    [
+      { id: 'desk', x: 130, y: -52 },
+      { id: 'chair', x: 132, y: -52 },
+      { id: 'window', x: 135, y: -53 },
+      { id: 'stove', x: 136, y: -52 },
+      { id: 'papers', x: 134, y: -50 },
+    ],
+    [
+      {
+        // ITEM_ADMIN_KEY (PUZZLES.md P01): the look and thought are PUZZLES.md's own.
+        x: 130,
+        y: -52,
+        prompt: 'Open the desk drawer',
+        look: 'In the drawer, an old brass key, its paper tag stamped ADMINISTRATION.',
+        voice: 'An old Hollow Pines key. I wonder if any of these locks still take it.',
+        item: 'ITEM_ADMIN_KEY',
+        lookAfter: 'The drawer: pencil stubs, a dead fly, nothing else.',
+      },
+      // The old field envelope (MAP.md 05): Evie's card, and under it her photograph.
+      {
+        x: 131,
+        y: -52,
+        prompt: 'Look in the envelope',
+        clue: 'evie_card',
+        also: 'evie_photo_before',
+      },
+      {
+        x: 135,
+        y: -53,
+        prompt: 'Look out of the window',
+        look: 'Black glass. Your own face in it, and behind your face, the trees.',
+      },
+      {
+        x: 136,
+        y: -52,
+        prompt: 'Look at the stove',
+        look: 'A pot-bellied stove, cold. Someone has swept the ash out of it and left the door open.',
+      },
+      {
+        x: 134,
+        y: -50,
+        prompt: 'Look at the papers',
+        look: 'Paperwork gone to pulp on the floor: delivery notes, a fuel log. The dates are all 1979.',
+      },
+    ],
+  ),
+  // The administrative office (MAP.md 11): the shift register on the noticeboard (P05's code), the
+  // filing cabinets (Evie's files come with M4), a desk. (The descriptions are invented.)
+  interior(
+    'IN_ADMIN_OFFICE',
+    'Inside the administrative office',
+    150,
+    -53,
+    9,
+    6,
+    [
+      { id: 'noticeboard', x: 151, y: -54 },
+      { id: 'window', x: 154, y: -54, v: 1 },
+      { id: 'cabinet', x: 157, y: -53 },
+      { id: 'cabinet', x: 158, y: -53, v: 1 },
+      { id: 'desk', x: 154, y: -51 },
+      { id: 'chair', x: 156, y: -52 },
+    ],
+    [
+      { x: 151, y: -54, prompt: 'Read the noticeboard', doc: 'shift_register' },
+      {
+        x: 152,
+        y: -54,
+        prompt: 'Read the noticeboard',
+        doc: 'shift_register',
+      },
+      {
+        x: 154,
+        y: -54,
+        prompt: 'Look at the window',
+        look: 'Boarded over from the inside, and the boards nailed again over the first ones.',
+      },
+      {
+        x: 157,
+        y: -53,
+        prompt: 'Open the filing cabinet',
+        look: 'Folders swollen with damp: work orders, timesheets, requisitions for chain oil.',
+      },
+      {
+        x: 158,
+        y: -53,
+        prompt: 'Open the filing cabinet',
+        look: 'The drawers stick, then give. Empty, every one.',
+      },
+      {
+        x: 154,
+        y: -51,
+        prompt: 'Look at the desk',
+        look: 'A desk under a skin of dust, except for one clean square where something stood until not long ago.',
+      },
+    ],
+  ),
+  // The bunkhouse (MAP.md 09): bunks, the line of lockers with Bell's among them (P02), the rules
+  // by the door, and Jonah's journal pushed down behind a bunk. (The descriptions are invented.)
+  interior(
+    'IN_BUNKHOUSE',
+    'Inside the bunkhouse',
+    170,
+    -53,
+    11,
+    6,
+    [
+      { id: 'bunkbed', x: 170, y: -52 },
+      { id: 'bunkbed', x: 173, y: -52 },
+      { id: 'bunkbed', x: 170, y: -49 },
+      { id: 'bunkbed', x: 173, y: -49 },
+      { id: 'window', x: 175, y: -54 },
+      { id: 'frame', x: 176, y: -54 },
+      { id: 'locker', x: 177, y: -53 },
+      { id: 'locker', x: 178, y: -53 },
+      { id: 'belllocker', x: 179, y: -53 },
+      { id: 'locker', x: 180, y: -53 },
+      { id: 'stove', x: 180, y: -49 },
+    ],
+    [
+      {
+        x: 174,
+        y: -49,
+        prompt: 'Look behind the bunk',
+        clue: 'jonah_journal',
+      },
+      {
+        x: 173,
+        y: -49,
+        prompt: 'Look at the bunk',
+        look: 'A bunk stripped to the springs. J.R. is scratched into the iron at the head of it.',
+      },
+      {
+        x: 170,
+        y: -52,
+        prompt: 'Look at the bunk',
+        look: 'A grey blanket folded square at the foot, the way somebody was taught to fold it.',
+      },
+      {
+        x: 171,
+        y: -52,
+        prompt: 'Look at the bunk',
+        look: 'A grey blanket folded square at the foot, the way somebody was taught to fold it.',
+      },
+      {
+        x: 173,
+        y: -52,
+        prompt: 'Look at the bunk',
+        look: 'Work shirts still on the hooks above it, gone stiff. A pair of boots underneath, laced.',
+      },
+      {
+        x: 174,
+        y: -52,
+        prompt: 'Look at the bunk',
+        look: 'Work shirts still on the hooks above it, gone stiff. A pair of boots underneath, laced.',
+      },
+      {
+        x: 170,
+        y: -49,
+        prompt: 'Look at the bunk',
+        look: 'The mattress has been turned over. On the underside, in pencil, a row of tally marks.',
+      },
+      {
+        x: 171,
+        y: -49,
+        prompt: 'Look at the bunk',
+        look: 'The mattress has been turned over. On the underside, in pencil, a row of tally marks.',
+      },
+      { x: 176, y: -54, prompt: 'Read the notice', doc: 'bunkhouse_rules' },
+      {
+        x: 175,
+        y: -54,
+        prompt: 'Look out of the window',
+        look: 'The courtyard, grey. The flagpole. Nobody.',
+      },
+      {
+        x: 177,
+        y: -53,
+        prompt: 'Open the locker',
+        look: 'Empty, but for a coat hanger and a bar of soap worn to a sliver.',
+      },
+      {
+        x: 178,
+        y: -53,
+        prompt: 'Open the locker',
+        look: 'Its lock is long gone. Inside, a calendar for 1979, every day crossed off until August.',
+      },
+      {
+        x: 179,
+        y: -53,
+        prompt: 'Look at the locker',
+        look: 'A tin locker with D. BELL on a strip of tape across the door. A little dial lock, four digits.',
+        lead: 'bell_locker_locked',
+        combo: 'P02',
+      },
+      {
+        x: 180,
+        y: -53,
+        prompt: 'Open the locker',
+        look: 'Locked, but the door is bent at the corner. Through the gap: nothing.',
+      },
+      {
+        x: 180,
+        y: -49,
+        prompt: 'Look at the stove',
+        look: 'A stove, cold. No cooking in the bunkhouse, says the notice. Someone did anyway: a pan on top.',
+      },
+    ],
+  ),
+  // The maintenance shed (MAP.md 10): the bench where the fire started, with Bell's report on its
+  // nail; what the fire left; the storage bay behind the jammed front shutter (the one you see from
+  // outside, left of the door) and the winch that works it (P03), with the diagram on its post. (The descriptions are invented.)
+  interior(
+    'IN_MAINTENANCE',
+    'Inside the maintenance shed',
+    190,
+    -53,
+    9,
+    6,
+    [
+      { id: 'bench', x: 190, y: -53 },
+      { id: 'burnt', x: 192, y: -53 },
+      { id: 'window', x: 195, y: -54 },
+      // In the front wall, left of the door as from outside: the shutter's storage bay, the winch
+      // beside it and the diagram on its post.
+      { id: 'bay', x: 190, y: -48 },
+      { id: 'winch', x: 193, y: -48 },
+      { id: 'diagram', x: 194, y: -48 },
+    ],
+    [
+      { x: 191, y: -53, prompt: 'Look at the clipboard', clue: 'bell_fire_record' },
+      {
+        x: 190,
+        y: -53,
+        prompt: 'Look at the bench',
+        look: 'A bench black along one end, the wood blistered. The vice is rusted shut on nothing.',
+      },
+      {
+        x: 192,
+        y: -53,
+        prompt: 'Look at the burnt things',
+        look: 'Two chainsaws burnt to the metal, and a fuel can split down the seam. Swept up and left.',
+      },
+      {
+        x: 193,
+        y: -53,
+        prompt: 'Look at the burnt things',
+        look: 'Two chainsaws burnt to the metal, and a fuel can split down the seam. Swept up and left.',
+      },
+      {
+        x: 195,
+        y: -54,
+        prompt: 'Look at the window',
+        look: 'The glass has gone brown with smoke. The new boards round it are paler than the old.',
+      },
+      ...[190, 191, 192].map((x) => ({
+        x,
+        y: -48,
+        prompt: 'Look in the bay',
+        doc: 'camp_photos' as const,
+        lead: 'shutter_jammed' as const,
+        shut: {
+          puzzle: 'P03' as const,
+          look: 'The back of the roller shutter, down and jammed, closing a bay in the front wall. Through the gap at the bottom: a shelf, the corner of a box.',
+        },
+      })),
+      {
+        x: 193,
+        y: -48,
+        prompt: 'Work the winch',
+        look: 'The shutter’s winch: a spool with a crank, the rope gone slack, a catch, a toothed ratchet.',
+        winch: true,
+      },
+      { x: 194, y: -48, prompt: 'Read the plate', doc: 'pulley_diagram' },
+    ],
+  ),
+]
+LANDMARKS.push(...INTERIORS)
+
+/**
+ * The doors into the insides: the tile of the building you face to go in (`outside`), where you
+ * stand when you come out (`out`), the tile of the inside's front wall you face to go out (`door`)
+ * and where you stand when you come in (`in`). A locked one opens with its puzzle (`lock`), using
+ * `key`; until then, looking at it says `locked` and notes `lead`.
+ */
+export interface Door {
+  room: string
+  outside: { x: number; y: number }
+  out: { x: number; y: number }
+  door: { x: number; y: number }
+  in: { x: number; y: number }
+  lock?: PuzzleId
+  key?: ItemId
+  locked?: string
+  lead?: LeadId
+}
+
+export const DOORS: Door[] = [
+  {
+    room: 'IN_FOREMAN_CABIN',
+    outside: { x: -47, y: -90 },
+    out: { x: -46.5, y: -88.6 },
+    door: { x: 133, y: -47 },
+    in: { x: 133.5, y: -47.4 },
+  },
+  {
+    // P01 (PUZZLES.md): the administration key. The locked line is PUZZLES.md's own.
+    room: 'IN_ADMIN_OFFICE',
+    outside: { x: 14, y: -146 },
+    out: { x: 14.5, y: -144.6 },
+    door: { x: 154, y: -47 },
+    in: { x: 154.5, y: -47.4 },
+    lock: 'P01',
+    key: 'ITEM_ADMIN_KEY',
+    locked: 'It’s locked. Someone kept this office secure long after the camp closed.',
+    lead: 'office_locked',
+  },
+  {
+    room: 'IN_BUNKHOUSE',
+    outside: { x: -16, y: -136 },
+    out: { x: -15.5, y: -134.6 },
+    door: { x: 175, y: -47 },
+    in: { x: 175.5, y: -47.4 },
+  },
+  {
+    room: 'IN_MAINTENANCE',
+    outside: { x: -16, y: -150 },
+    out: { x: -15.5, y: -148.6 },
+    door: { x: 196, y: -47 },
+    in: { x: 196.5, y: -47.4 },
+  },
+]
+
+// Each inside's way out, drawn so you can find it (play-testing: it was just more wall): a door in
+// the front wall, and a worn doormat on the floor in front of it.
+for (const d of DOORS) {
+  const lm = INTERIORS.find((l) => l.id === d.room)!
+  lm.props.push(
+    { id: 'exitdoor', x: d.door.x, y: d.door.y },
+    { id: 'doormat', x: d.door.x, y: d.door.y - 1 },
+  )
+}
+
+/** The inside you're in at a tile, if any (and its door). */
+export function roomAt(x: number, y: number): Door | undefined {
+  for (const d of DOORS) {
+    const lm = INTERIORS.find((l) => l.id === d.room)!
+    const a = lm.areas[0]
+    if (x >= a.x0 - 1 && x <= a.x1 + 1 && y >= a.y0 - 2 && y <= a.y1 + 1) return d
+  }
+  return undefined
+}
+
+/** Things along the way: trail markers, the road's end, the poles. */
 LANDMARKS.push({
-  id: 'markers',
-  name: 'Trail markers',
+  id: 'DRESSING',
+  name: 'Along the way',
   x: 0,
   y: 0,
   r: 0,
   seen: [],
   areas: [],
   props: [
-    { id: 'waymark', x: 2, y: -10 },
-    { id: 'waymark', x: -2, y: -17, v: 1 },
-    { id: 'waymark', x: 22, y: -35 },
-    { id: 'waymark', x: 24, y: -70, v: 1 },
+    { id: 'closedsign', x: -66, y: -47 },
+    { id: 'waymark', x: 40, y: -64 },
   ],
   spots: [
     {
-      x: 2,
-      y: -10,
-      prompt: 'Read the trail marker',
-      look: 'A trail marker: a short post with a white band painted round it. One little board points up the road: CAMP 1½ MI. The other points west down the footpath and just says PRIVATE.',
+      x: -66,
+      y: -47,
+      prompt: 'Read the sign',
+      look: 'ROAD CLOSED, on a board striped red and white. Past it the old road disappears under the trees.',
     },
     {
-      x: -2,
-      y: -17,
+      x: 40,
+      y: -64,
       prompt: 'Read the trail marker',
-      look: 'A trail marker. Its board points north-west along the track: MILL TRACK.',
-    },
-    {
-      x: 22,
-      y: -35,
-      prompt: 'Read the trail marker',
-      look: 'A trail marker. PICNIC AREA, pointing east. Someone has added, in pencil: CLOSED.',
-    },
-    {
-      x: 24,
-      y: -70,
-      prompt: 'Read the trail marker',
-      look: 'A trail marker. The board that pointed west has been snapped off. The one pointing north says CAMP.',
+      look: 'A trail marker. CREEK TRAIL, and an arrow north: CAMP.',
     },
   ],
 })
 
 /** Poles along the road, every so often (the wires long gone). */
 export const ROAD_POLES: Pt[] = [
-  [-2, -30],
-  [27, -34],
-  [27, -62],
-  [20, -84],
+  [-50, -42],
+  [-44, -60],
+  [-45, -80],
+  [-42, -104],
+  [-22, -114],
 ]
 
 /**
@@ -488,27 +1014,7 @@ export const PROP_LOOKS: Record<string, { prompt: string; look: string[] }> = {
     look: ['A bus shelter, its roof rusted through in places.'],
   },
   bussign: { prompt: 'Look at the sign', look: ['ROUTE 9 · HOLLOW PINES CAMP.'] },
-  letterbox: { prompt: 'Open the letterbox', look: ['A rusted letterbox. Empty now.'] },
-  gatepost: { prompt: 'Look at the gatepost', look: ['A gatepost with the number 14 on it.'] },
-  chimney: { prompt: 'Look at the chimney', look: ['A chimney standing on its own.'] },
-  ruinwall: {
-    prompt: 'Look at the wall',
-    look: [
-      'What’s left of a wall: three courses of stone and some old mortar.',
-      'A broken wall. Ivy has found every crack.',
-      'There’s a scorch mark up this stone, very old.',
-    ],
-  },
-  steps: { prompt: 'Look at the steps', look: ['Stone steps up to nothing.'] },
-  bed: { prompt: 'Look at the garden bed', look: ['A raised bed, gone wild.'] },
-  fence: {
-    prompt: 'Look at the fence',
-    look: [
-      'A split-rail fence, half fallen.',
-      'Fence posts, grey and soft with rot.',
-      'One rail is new, or newer. Someone mended it.',
-    ],
-  },
+  bin: { prompt: 'Look in the bin', look: ['A rusted litter bin.'] },
   pole: {
     prompt: 'Look at the pole',
     look: [
@@ -517,29 +1023,53 @@ export const PROP_LOOKS: Record<string, { prompt: string; look: string[] }> = {
       'A telegraph pole, leaning. The insulators are still on it, cracked.',
     ],
   },
-  roadsign: { prompt: 'Read the sign', look: ['ROUTE 9 · HOLLOW PINES CAMP 1½ MI.'] },
-  swings: { prompt: 'Look at the swings', look: ['Three swings. Two of them are moving.'] },
-  table: { prompt: 'Look at the table', look: ['A picnic table, grey with age.'] },
-  bin: { prompt: 'Look in the bin', look: ['A rusted litter bin.'] },
-  car: { prompt: 'Look in the car', look: ['A car nose-down in the ditch.'] },
+  forksign: {
+    prompt: 'Read the signpost',
+    look: ['ROUTE 9 to the west, CREEK TRAIL to the east.'],
+  },
+  closedsign: { prompt: 'Read the sign', look: ['ROAD CLOSED.'] },
+  waymark: { prompt: 'Read the trail marker', look: ['A trail marker post.'] },
+  cabin: {
+    prompt: 'Look at the cabin',
+    look: ['A small plank cabin with a tin roof. The door hangs open a hand’s width.'],
+  },
+  bedroll: { prompt: 'Look at the bedroll', look: ['A bedroll, tied up tight.'] },
+  firepit: { prompt: 'Look at the fire', look: ['A ring of stones round cold ashes.'] },
+  kettle: { prompt: 'Look at the kettle', look: ['A dented tea kettle.'] },
+  campsign: { prompt: 'Read the sign', look: ['HOLLOW PINES FORESTRY CAMP · EST. 1952.'] },
+  wire: {
+    prompt: 'Look at the fence',
+    look: [
+      'A tall wire fence, rusted, with barbed wire along the top. It runs off into the trees as far as you can see.',
+      'The fence. Something has pushed at the wire here from the other side, and bent it.',
+      'Wire fence, the posts sunk in concrete. Somebody meant this to last.',
+    ],
+  },
   truck: {
     prompt: 'Look at the truck',
     look: ['A forestry truck on flat tyres. HOLLOW PINES stencilled on the door.'],
   },
+  table: { prompt: 'Look at the bench', look: ['A picnic bench, its planks broken through.'] },
+  flagpole: { prompt: 'Look at the flagpole', look: ['A flagpole with no flag.'] },
   bunk: {
     prompt: 'Look at the bunkhouse',
     look: [
-      'A long plank bunkhouse. The door is shut and won’t open.',
+      'A long plank bunkhouse. BUNKHOUSE B over the door.',
       'Names scratched into the planks by the door, dozens of them. None you know.',
     ],
   },
+  shed: {
+    prompt: 'Look at the shed',
+    look: ['A maintenance shed with a corrugated roof, its shutter jammed.'],
+  },
   office: {
     prompt: 'Look at the office',
-    look: ['FIELD OFFICE, on a little sign. It’s locked.'],
+    look: ['ADMINISTRATION, on a little sign over the door. It’s locked.'],
   },
-  flagpole: { prompt: 'Look at the flagpole', look: ['A flagpole with no flag.'] },
-  waymark: { prompt: 'Read the trail marker', look: ['A trail marker post.'] },
-  campsign: { prompt: 'Read the sign', look: ['HOLLOW PINES FORESTRY CAMP · EST. 1952.'] },
+  servicegate: {
+    prompt: 'Look at the gate',
+    look: ['A steel vehicle gate, chained and padlocked.'],
+  },
   rail: {
     prompt: 'Look over the rail',
     look: [
@@ -598,54 +1128,9 @@ export const NATURE_LOOKS: Record<string, { prompt: string; look: string[] }> = 
   },
 }
 
-// --- spreading it out -----------------------------------------------------------------------------
+// --- the bounds ---------------------------------------------------------------------------------
 //
-// Play-testing: things came too close together. Everything above is laid out at a compact scale
-// and spread here by SPREAD: the lines' points and each landmark's position scale out from the
-// trailhead (the road's x stays at the gap), and each landmark moves as a whole (by a whole number
-// of tiles), so its own layout is unchanged. The bounds are worked out afterwards, with room
-// round everything.
-
-export const SPREAD = 1.6
-const spread = (x: number, y: number): Pt => [0.5 + (x - 0.5) * SPREAD, y * SPREAD]
-
-for (const line of LINES) line.pts = line.pts.map(([x, y]) => spread(x, y))
-for (const lm of LANDMARKS) {
-  if (lm.id === 'markers') {
-    // Trail markers sit at junctions: each moves with its own junction.
-    for (const it of [...lm.props, ...lm.spots]) {
-      const [nx, ny] = spread(it.x, it.y)
-      it.x = Math.round(nx)
-      it.y = Math.round(ny)
-    }
-    continue
-  }
-  const [nx, ny] = spread(lm.x, lm.y)
-  const dx = Math.round(nx - lm.x)
-  const dy = Math.round(ny - lm.y)
-  lm.x += dx
-  lm.y += dy
-  for (const a of lm.areas) {
-    a.x0 += dx
-    a.x1 += dx
-    a.y0 += dy
-    a.y1 += dy
-  }
-  for (const it of [...lm.props, ...lm.spots]) {
-    it.x += dx
-    it.y += dy
-  }
-}
-// The road runs on through the camp's gate (between its two posts) into the yard.
-{
-  const sign = LANDMARKS.find((l) => l.id === 'camp')!.props.find((p) => p.id === 'campsign')!
-  LINES[0].pts.push([sign.x + 3, sign.y - 1])
-}
-for (const p of ROAD_POLES) {
-  const [nx, ny] = spread(p[0], p[1])
-  p[0] = Math.round(nx)
-  p[1] = Math.round(ny)
-}
+// Everything walkable and every fence, with room round it.
 {
   const xs: number[] = []
   const ys: number[] = []
@@ -655,13 +1140,19 @@ for (const p of ROAD_POLES) {
         xs.push(x)
         ys.push(y)
       }
-  for (const lm of LANDMARKS)
+  for (const lm of LANDMARKS) {
     for (const a of lm.areas) {
       xs.push(a.x0, a.x1)
       ys.push(a.y0, a.y1)
     }
+    for (const p of lm.props) {
+      xs.push(p.x)
+      ys.push(p.y)
+    }
+  }
   const m = 30
   BOUNDS.x0 = Math.floor(Math.min(...xs)) - m
   BOUNDS.x1 = Math.ceil(Math.max(...xs)) + m
   BOUNDS.y0 = Math.floor(Math.min(...ys)) - m
+  BOUNDS.y1 = 0
 }

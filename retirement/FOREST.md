@@ -1,9 +1,11 @@
 # The Forest: design decisions
 
-Status: **forest survival, family/photo and encounter systems built (stages 1–3)**; the fixed
-road network, authored story, examination, inventory puzzle gates, memory board, cutscenes,
-Nora, locked room and false Sunset Acres are **planned**. The Build status section at the end
-preserves an implementation snapshot, including behavior the planned map system must change.
+Status: **forest survival, family/photo and encounter systems built (stages 1–3)**. **Stage 4
+is in progress:** the fixed map's backbone (IMPLEMENTATION.md M1: roads, fork, camp fence and
+gates, the off-path lost rule) is built, and part of M2 (examining, the notepad, keeping clues
+only on a safe return, the corkboard). Physical keys and room storage, puzzle gates, cutscenes,
+Nora, the locked room's interior and false Sunset Acres are **planned**. The Build status section
+at the end records what the code does now (Stage 4 lists what's built so far).
 
 Documentation responsibilities:
 
@@ -29,7 +31,8 @@ returning alive and putting the evidence on your room's board.
 - **Helplessness, not combat.** There are **no weapons, no armour and no fighting** of any kind.
   You can't fight confusion; you can only hold on to what you know and hope someone brings you
   home. What you have is light, your notes, your judgement, and your legs.
-- **Slow dread, and one jumpscare.** Tension comes from darkness, sound, things at the edge of the
+- **Slow dread, and one jumpscare.** (A persistent hunter is planned to raise the stakes: "The
+  thing in the deep" below.) Tension comes from darkness, sound, things at the edge of the
   light, people who are subtly wrong, and small decisions with uncertain outcomes. Nothing leaps at
   the screen, with one exception (changed after play-testing stage 3): **being caught** is a
   jumpscare, the way /game does them (a random image filling the screen, a random scream). It only
@@ -94,11 +97,12 @@ returning alive and putting the evidence on your room's board.
   along connected paths unless a visible authored gate blocks passage.
 - **Leaving the path is the danger.** Give authored roads/clearings a forgiving walkable corridor.
   When the player strays far enough past it, environmental cues fade, the connected road is no
-  longer available, and the client transitions to the **procedural lost forest**. The earlier
-  implementation uses a straight-line ~40-tile point of no return; replace that with
-  corridor-based disorientation when implementing the fixed map. Do not leave both loss rules
-  active.
-- **Once lost, you need a genuine rescuer**: real family member, Nurse Ada, or the real pet.
+  longer available, and the client transitions to the **procedural lost forest**. (Built in
+  stage 4: the earlier straight-line ~40-tile point of no return is gone; only the off-path rule
+  is active. See Build status, Stage 4.)
+- **Once lost, you need a genuine rescuer**: real family member, Nurse Ada, or the real pet. The
+  one other way out is a **safe bus ride** (P04): a scheduled bus, full of the replayed crew, from
+  the copied stop back to the camp gate.
   The forest can offer convincing impostors; only genuine escorts bank notes safely.
 - **Safety net:** while lost, keep rescuer/threat opportunities coming _(tune: every 1.5–4 min)_.
   If the player remains lost too long _(tune: ~12 min)_ they collapse, awaken in the infirmary,
@@ -393,6 +397,77 @@ carried photo lost; no face, just the line).
 Numbers: `THREAT_*`, `FALSE_ALARM`, `STALK_*`, `ARM_FROM`, `EYES_*`, `LIGHT_TAKEN`, `LIGHT_LEAST` in
 src/forest/tuning.ts; the code is src/forest/threats.ts.
 
+## The thing in the deep (planned, not built)
+
+Proposed after play-testing: the forest's stakes still felt low. One creature, the one drawn for
+the empty bus (`thingSprite` in `story/ride.ts`: too tall and thin, grey-white, arms past its
+knees, blood down its chin and front), hunts you through the forest on every trip. It's the
+forest's one persistent danger, alongside the rarer cues and encounters.
+
+**Where it is:**
+- Each trip it starts **deep**: far up the deep road beyond the service gate, or out in the lost
+  forest. From there it drifts towards you, slowly, never straight at you, and faster the longer
+  you're out.
+- On the map near the trailhead it's a distant worry, which keeps the early places learnable. On
+  the deep road it's close.
+- **The empty bus** drops you deep, where it is: riding alone means it finds you much sooner.
+  That gives the bus rule real teeth without the old scene in the aisle.
+- Lost, it's never far off.
+
+**Keeping it fair** (FOREST.md "Fair, not random"):
+- It's never on top of you without warning. Its heavy, uneven footsteps carry, and your unease
+  climbs as it closes (below).
+- You can always get away: it's slower than you hurrying (the chase's numbers are a starting
+  point), loses you if you break away out of sight, and gives up after a while.
+- Being caught by it is the usual caught: the grab, the jumpscare, the infirmary, the unbanked
+  notepad gone.
+- No combat, as everywhere in the forest.
+- It doesn't speak, wear a face or pretend to be anyone: that's what the copies do. It's what a
+  copy is when it stops pretending (STORY.md).
+
+**How it fits what's built:**
+- It replaces most of the "real" danger budget (`DANGER_PER_TRIP`). The footsteps behind you and
+  the face in the dark become mostly cues, so the forest doesn't pile threats on top of a hunter.
+- Fakes still grin and lunge only if you follow them; rescuers still come.
+- Its chase reuses the encounter chase's sound and the red edge, at a stage that rises with how
+  close it is.
+
+**Unease and energy: two new gauges beside stamina** (planned):
+- **Unease**: how close the thing is, or anything else bad (a fake beginning to change, a threat
+  that's real).
+  - It rises as it nears, falls as you get away, and never says which way: you know it's close,
+    not where. The heartbeat and the drone can follow it.
+  - The name "Unease" (not "Anxiety") is a proposal, so a care-home game doesn't label a medical
+    feeling; change freely.
+  - Being uneasy changes nothing mechanically at first. Later ideas: your light trembling, tells
+    harder to notice when you're very afraid.
+- **Energy**: how long until you collapse, which nothing shows today (the collapse comes 5
+  minutes after getting lost, unseen).
+  - It drains slowly the whole trip and faster when lost, hurrying or very uneasy.
+  - It refills a little sitting down to wait (but sitting is when the thing closes in), and with
+    the planned meals ("Meals" below: soup, pie, tea).
+  - Empty: you collapse, as now.
+  - That makes the planned cooking matter: food lets you stay out longer.
+- Both are upright gauges like stamina, each with its text label and an aria value: never colour
+  alone.
+
+**The insides are a refuge** (decided):
+- It never comes through a door. Inside a building you're safe from it, as from encounters and
+  threats.
+- It can follow you to the door and wait out there: your unease stays up while it's close, so
+  you know it's still about. It drifts off again after a while.
+- Hiding isn't free: energy still drains indoors, a little more slowly, so you can catch your
+  breath but not wait it out forever.
+- The rule has to be learnable, not assumed. Your earlier self should have noticed it too, e.g. a
+  line in the lost pages or a later note in your own hand ("It won't come through a door.").
+- STORY.md says the camp is forest territory where copies can attack. This is a rule about the
+  thing only: the camp's buildings stay forest territory for everything else the story needs.
+
+**Open questions:**
+- Does it ever reach the map near the trailhead, or stay past some line (the fork, the creek)?
+- Does it survive between trips (a position kept per player), or start fresh each time?
+- How does energy interact with the safe crew bus and with being found again?
+
 ## Exploring, examining and documenting (planned)
 
 **The core loop:** explore a **fixed** trail network; examine authored objects at known sites;
@@ -453,11 +528,15 @@ Required gates in PUZZLES.md:
 Optional challenges include Bell's locker (`P02`), an old manual storage-shutter mechanism
 (`P03`), and the Route 9 bus rule (`P04`). None blocks the required route.
 
-**Route 9 rule:** “DO NOT RIDE THE BUS ALONE.” With the **real pet physically aboard**, the
-bus reaches a **public stop at CAMP_GATE**, not behind any story lock. Alone, it deposits the
-player in lost forest with a fair, escapable threat. Never use the bus as a way home, nor a
-mandatory shortcut requiring a random pet spawn. Keep the existing pet's treeline refusal
-until planned intermittent companionship is implemented.
+**Route 9 rule:** “DO NOT RIDE THE BUS ALONE.” The forest still runs the bus on the old crew
+timetable (06:00, 14:00, 22:00, from `route9_timetable`). A **scheduled** bus comes full: faint
+shapes of people standing in its windows, the replayed crew, who ignore you. It takes you to the
+**public stop at CAMP_GATE**, even from the lost forest. So does any bus with the **real pet**
+aboard. An **empty** bus off the timetable is a lure (SUNSET ACRES on its board). Ride it alone
+and it drives a long way, faster and faster, and lets you off deep in the lost forest, where the
+dark closes in further. Never use the bus as a way home, nor a mandatory shortcut.
+Keep the existing pet's treeline refusal until planned intermittent companionship is
+implemented. (PUZZLES.md P04 has the details.)
 
 **Character encounters:** Real Nora has two brief guaranteed conversations at `CAMP_YARD`.
 Later an **imitation** of Nora bangs on the watchman's shelter door, the player's own double
@@ -513,29 +592,35 @@ remains after the ending. **None of this plot is implemented in the current buil
 
 ## Build stages
 
-**Only stages 1–3 below are in the implementation snapshot.** These future milestones are
-specified by STORY.md, MAP.md and PUZZLES.md and must not be described as shipped:
+**Stages 1–3 are built and stage 4 is in progress** (Build status says exactly what). The
+rest are specified by STORY.md, MAP.md and PUZZLES.md and must not be described as shipped:
 
-1. **Built — base forest:** outskirts, darkness, procedural woods, isolation, straight-line
-   point of no return, collapse/infirmary, treeline warning. The **planned fixed road network
-   and corridor-based lost rule are not yet built**.
+1. **Built — base forest:** outskirts, darkness, procedural woods, isolation, collapse/infirmary,
+   treeline warning. (Its straight-line point of no return was replaced in stage 4.)
 2. **Built — family/photo:** family editor, reference photo, Nurse Ada reprints. Preserve the
    rule that death takes the photo **only when carried**; remove free reprint when enforcing
    the intended paid replacement (40 coins starting price).
 3. **Built — rescue encounters:** genuine/fake family and nurse, tells, photo comparison,
    transformation/chase/caught. Keep fair cues; reuse these systems for the final false Evie.
-4. **Next — map backbone:** authored fixed roads, forks, fences, buildings, entrance interiors,
-   corridor-based lost state, path backtracking and route persistence (MAP.md).
-5. **Next — examination and board:** object registry, notepad, physical keys/storage, bank-on-safe-
-   return, annotations, clue ID persistence, unresolved leads, save validation (PUZZLES.md).
-6. **Next — camp puzzles and evidence:** P01/P02/P03/P05 and the Hollow Pines work records,
-   Evie files, reliable return-to-site mapping, and first memory vignettes.
+4. **In progress — map backbone:** authored fixed roads, forks, fences, building exteriors and
+   the corridor-based lost state are built (M1). Still to come: entrance interiors and route
+   persistence (MAP.md).
+5. **Built — examination and board (M2):** examining, the notepad, keeping clues on a safe
+   return, the corkboard with notes and strings, physical keys with the key hook at home,
+   unresolved leads, the rough site map, and the saved story progress (`save.story`) with its
+   server validation. Puzzle, event and cutscene state is stored and validated, but nothing sets
+   it yet (M3 onwards).
+6. **Built — camp puzzles and evidence (M3):** P01/P02/P03/P05, the four camp insides, and the
+   work records (`jonah_journal`, `bell_fire_record`) with `evie_photo_before`. **Next:** the Evie
+   files (M4) and the first memory vignettes.
 7. **Next — Nora and deep forest:** real meetings, watch shelter fake knock, own-double sighting,
    ravine body, fixed survey lookout, recoverable room key.
 8. **Next — room and final shelter:** P06/P07/P08/P09, private false-home scene, final Evie
    evidence, escapable false-Evie encounter, cutscene queue and ending.
-9. **Optional/later — pet and rule bus:** intermittent pet companionship/rescue (always safe),
-   then P04; extra avoidance threats, found lights, forest ingredients and food effects.
+9. **Optional/later — the bus and the pet:** the timetable bus (P04: full and safe on schedule,
+   empty off it, dropping you deep in the lost forest) can come first; then intermittent pet companionship/rescue (always
+   safe) and the pet's half of P04; extra avoidance threats, found lights, forest ingredients and
+   food effects.
 
 Build in slices with testable save migration paths; do not add all lore before navigation
 and retry behavior work.
@@ -548,8 +633,7 @@ and retry behavior work.
 - **Forest architecture target:** fixed tile-level centerlines, authored site polygons and
   interior maps layered into the client forest. The per-expedition seed generates only
   surrounding trees/understory/ambient events. Off-corridor travel can trigger a *separate*
-  fully procedural lost state. Replace the currently built straight-line point of no return;
-  do not keep it active along fixed roads.
+  fully procedural lost state. (Done in stage 4: the straight-line point of no return is gone.)
 - **Persistence:** validate per-player `bankedClues`, key storage, puzzle states, story-event
   flags, cutscene flags and board annotations in `shared/schema.ts`. Temporary expedition
   notes and physical finds remain client-side until a safe-return commit. `PUZZLES.md`
@@ -597,13 +681,13 @@ in STORY.md, MAP.md and PUZZLES.md. These engineering/tuning details still requi
 **Implementation snapshot:** the details below record the forest, family, and encounter
 systems as built and play-tested. They are engineering records, not evidence that the
 story, examination system, evidence board, fixed mapped paths, or intermittent pet companionship
-is already implemented. **In particular, the straight-line point of no return and per-visit
-randomized forest map are current code behaviors that must be replaced when building MAP.md.**
-Any planned behavior described elsewhere must be implemented explicitly.
+is already implemented, except where Stage 4 below says so. Stages 1–3 are kept as they were
+built; where stage 4 changed something (the point of no return, the random forest map), the
+earlier note says so. Any planned behavior described elsewhere must be implemented explicitly.
 
 Tuning numbers live in `src/forest/tuning.ts` (and the grounds' size in `shared/grounds.ts`).
-`?forestfast` (dev builds only) shortens the point of no return to 12 tiles and the collapse to 25
-seconds, for testing.
+`?forestfast` (dev builds only) shortens the off-path distance at which you're lost to 6 tiles and
+the collapse to 25 seconds, for testing.
 
 ### Stage 1: the forest itself (built)
 
@@ -647,7 +731,8 @@ Judgement calls (change freely):
 - **Which way the forest goes.** You keep walking the way you were going when you came in.
   Behind you is the treeline, solid except for a **3-tile-wide strip of undergrowth**; walking
   2.4 tiles back down it (before you're lost) brings you out at the gap you used.
-- **The point of no return** is straight-line distance from where you came in (40 tiles). After
+- **The point of no return** _(replaced in stage 4 by being lost off the paths)_ was straight-line
+  distance from where you came in (40 tiles). After
   it, any piece of forest that held the treeline or the way home is forgotten as soon as it's out
   of sight, and made again as plain forest (from a different seed), so turning back "just leads to
   more forest".
@@ -862,3 +947,378 @@ versions of all of those (her last: "Don't forget me. Everyone forgets me. Don't
 "What is it, {calls}? It's getting dark. Come on." after you look at the photo, the walking-home
 lines, and "Your pocket is empty. The photo is gone." The impostors' motives are not
 established; confirm that their pleading language fits once the story bible is written.
+
+### Stage 4: the fixed map and examining (in progress)
+
+Built so far: IMPLEMENTATION.md **M1** (the map's backbone) and part of **M2** (examining, the
+notepad, keeping clues on a safe return, the corkboard). The map is data in
+`src/forest/story/map.ts`, worked out tile by tile in `layout.ts`; `layout.test.ts` walks it.
+
+**The map (MAP.md 02–12).** Tiles, with the gap you came in by at (0, 0) and north negative:
+
+- A footpath north from the treeline to **the fork** (about 26 tiles in), with a signpost: ROUTE 9
+  west, CREEK TRAIL east, CAMP under both.
+- **West:** a path to the old Route 9 road at **the bus stop** (about 45 tiles in). The road runs
+  north past **the foreman's cabin** (about 90) and over the creek on a bridge.
+- **East:** the creek trail passes **Nora's campsite** (about 57) and crosses the creek on a
+  footbridge.
+- Both reach **the camp gate** (125 tiles in): an open gate in a wire perimeter fence. Inside is
+  **the courtyard** (43 × 30 tiles of gravel) with **the bunkhouse**,
+  **the maintenance shed**, **the administrative office**, a flagpole, benches and a truck.
+- **The service gate** on the north fence is always locked for now (P05 comes with M3). The deep
+  road is laid out beyond it but has nothing on it yet (MAP.md 13–18 come later).
+
+Landmark ids are MAP.md's location ids.
+
+**Judgement calls (change freely):**
+
+- **Clearings keep the forest floor** (play-testing: the fork's grass was "a weird square"). Areas
+  are rectangles, so only the fenced courtyard gets its own ground (gravel); the fork, the cabin
+  and Nora's camp are just cleared of trees. The footpath runs right into the fork, so the three
+  paths meet in a Y.
+- **Route 9 dead-ends** a little west of the bus stop, at a ROAD CLOSED sign. Past it the road is
+  just trees, so walking on means getting lost.
+- **Gone from the earlier map**, since they had no place in MAP.md:
+  - the ruined house plot (gatepost 14, the windmill floor tiles, the chimney)
+  - the picnic ground (the moving swings, the carved E.M.)
+  - the car with the 1987 tax disc
+  - the bridge's weight-limit plate
+
+  The red-mitten keepsake moved to a litter bin at the bus stop.
+- **`evie_card`** is behind "Look inside" at the cabin door until the cabin's interior and its
+  field envelope exist (M3).
+- **Nora's campsite** is drawn and examinable: warm ashes with a tin mug of tea, the dented kettle,
+  a bedroll with a damp notebook under its string. The notebook and the thermos are invented.
+  There's no Nora yet (M4).
+- **Invented text:** the fork signpost, the camp's closure notice ("THIS CAMP IS CLOSED... 1979"),
+  the padlock's wording around NIGHT CREW, the bunkhouse/shed/office/fence descriptions, and the
+  courtyard's props. The office's locked-door line is PUZZLES.md's own.
+- **The random teacup find is no longer warm** (STORY.md: no phantom warm tea). It's full of
+  rainwater now.
+- **Fence tiles count as their nearest side** (play-testing: running up against the fence from
+  inside the courtyard got you lost on the spot). Your feet collide just above your position, so
+  walking down into a fence you can stop within 0.02 of a tile of it, with your position already
+  in the fence's row, and the fence counted as infinitely far from the paths. Now, after the
+  distances are worked out, each fence tile takes its nearest side's distance (0 from the
+  courtyard). It's done after, so nothing is ever measured through the fence. `layout.test.ts`
+  checks every fence edge.
+- **The perimeter:** the south and north fences run 40 tiles beyond the camp's sides (MAP.md
+  "fences extend beyond the safe corridor"). The fence is a barrier: how far you are from the
+  paths is measured round it, never through it. So walking along its outside gets you lost
+  within a few steps of the courtyard, and nothing goes round a gate.
+
+**Getting lost (replaces the point of no return):**
+
+- You're lost once you're further from every road, path or clearing than half the screen's
+  diagonal (at least `OFF_PATH_LOST` 13 tiles, at most `OFF_PATH_LOST_MAX` 24). A thought warns
+  you as the path leaves the screen.
+- MAP.md suggests a 3–5 tile corridor. Play-testing showed that losing the path while it's still
+  on screen reads as a bug, so the corridor is "out of sight" instead.
+- The 24-tile cap is there because a very wide window would otherwise stretch the corridor far
+  enough to walk round the fence ends.
+- `layout.test.ts` checks that every site is reachable on foot without getting lost, that
+  nothing beyond the service gate is, and that the courtyard is only reachable through the camp
+  gate.
+- Once you're lost, everything out of sight is made again as plain forest. The map is gone until
+  someone brings you home.
+- Every gap in the treeline opens onto the same trailhead, facing north. Keys held while crossing
+  the gap are ignored until released.
+- Paths are drawn per pixel with soft edges, and glow faintly through the dark (`PATH_GLOW` 0.2).
+  The dark deepens slowly once you're lost (`LOST_DEEP`, `DEEP_EASE_S`).
+- **Darker the further in** (play-testing: "the forest used to look scarier"). The dark on the map
+  had been held at a flat 0.3 so the places could be seen, which made it tame. It now follows
+  `MAP_DARK`, by straight-line distance from the gap:
+  - 0 at the trailhead, 0.2 at the fork, 0.4 around the bus stop and cabin
+  - 0.6 at the camp, 0.8 on the deep road
+
+  Your light shrinks with it, the colour drains and the deep drone comes up. The path glow went
+  from 0.4 to 0.2, so the paths show only faintly beyond your light.
+- **A little more forest by the paths**, as asked ("don't make the trees close in too much"):
+  - trees just off a path from 0.03 to 0.045 per tile, plus 0.015 more per tile further off
+    (was 0.012)
+  - brambles on the verges from 5% to 9% of tiles
+
+**Examining and keeping (part of M2):**
+
+- Every landmark's props can be examined, as can the trees and stones.
+- Clues open as a paper (`story/clues.ts`). Written so far: `route9_timetable`, `bus_warning`,
+  `evie_card` and the optional `lost_journal`.
+- Clues go into the trip's notepad, with your own note on each. They're kept only if you get home
+  safely, by walking back or with a real escort; being caught or collapsing loses them.
+- Your first kept clue puts a corkboard (furniture, price 0) in your room's storage. On it you can
+  drag cards, write notes and run strings (`save.board`, validated in `shared/schema.ts`).
+- Not built yet: the P09 chronology and the cutscenes. Keys, leads and the site map are below
+  ("Keys, leads and the site map").
+- Every room has a locked closet (`CLOSET`): P06's door.
+- **Clue ids** are now STORY.md's list, plus the optional `lost_journal`. No save can hold a
+  removed id: only four clues had a source, and all four are kept.
+- **Keepsakes** (not in MAP.md or PUZZLES.md; kept as an optional extra, change freely):
+  - The name tag, glasses, teacup and ticket among the small random finds, and the mitten at the
+    bus stop.
+  - Bring one home and it becomes a framed `keep_<id>` furniture piece. Lost if you're caught.
+  - The small random finds are scenery: none of them carries the story.
+
+**The inner voice:**
+
+- It speaks sparingly: at most one unprompted thought a minute (`MUSE_GAP_MS`), and never a
+  question the player should be asking.
+- "Something feels... off." only comes when something really is: a real threat, or a copy.
+- At most two "the path was here" lines when you turn back while lost.
+- No thoughts once a trip is ending, or on the end screen.
+- What you see when you look at something types out at 18 ms a letter (`LOOK_TYPE_MS` in ui.ts),
+  faster than thoughts (32 ms), after play-testing found it slow.
+
+**Lost: things to do** (built before the new documents; kept, they fit "once lost, you need a
+rescuer"):
+
+- Searchers come with torches and call out. A real searcher's light is steady; a copy's gutters,
+  and is sometimes heard from the wrong side.
+- **Sit down and wait** (E): everything comes 3× as fast (`WAIT_FASTER`).
+- You collapse after 5 minutes lost (`COLLAPSE_MS`).
+- **Your old lean-to:** red arrow marks on the trees lead to it, and a tin box under it holds
+  `lost_journal` (October 1987).
+- **A copy of the bus stop** turns up off to one side once you've been lost a minute, but only
+  when a crew run is 70–170 s away and you'd still be on your feet for it (`BUS_COPY_SOON`). So a
+  safe ride is always possible from it. See "The Route 9 bus" below.
+
+**Encounters:**
+
+- Turning a fake away never starts a chase: it stares, then backs off grinning. Follow it and it
+  turns and lunges.
+- The grin shows facing you, and from behind, where its head has turned all the way round
+  (invented). Not side on: a grin up the cheek was tried and dropped after play-testing. Past your light, its teeth and eyes still show in the dark (`GRIN_GLOW`).
+- Real danger per trip: `DANGER_PER_TRIP` 1, plus 1 once lost, plus 1 more if you're let off the empty bus.
+
+**Not yet reconciled with the new documents:** a family-photo reprint is still free after a game
+day (`REPRINT_WAIT_MS`) as well as 40 coins straight away. The documents want paid only.
+
+### The Route 9 bus (built: PUZZLES.md P04, the timetable half)
+
+The forest still runs the bus on the crew timetable (`route9_timetable`, now a crew service:
+6:00 am, 2:00 pm, 10:00 pm at the stop). The code is `story/bus.ts` and `story/ride.ts`; the
+numbers are `BUS_*` and `RIDE_*` in `tuning.ts`.
+
+- **Where it runs:** at the real stop on the map, and at the copied stop when you're lost. At the
+  real stop it comes out of the trees past the ROAD CLOSED sign and pulls in facing east. Leaving,
+  it doesn't drive off down the road: it pulls away and fades out a little way on.
+- **On the timetable:** if you're within 26 tiles of the stop, a full bus sets off 6 s ahead of
+  the hour so it stops on time. It waits 25 s (25 game minutes) with its doors open.
+- **Off the timetable:** an empty one comes once you've been within 9 tiles of the stop for 20 s
+  in all. Never with a crew run less than a minute away, and never within 45 s of the last bus.
+- **Telling them apart** is up to you: a full bus has dim windows with the shapes of people
+  standing in them, only very faintly darker than the glass (play-testing: at first they were too
+  dark and stood out); an empty one has black windows. Nothing says which it is (play-testing: a line
+  saying "The bus is empty" as it stopped gave the choice away). This departs from PUZZLES.md's
+  "text as well as pixels" rule, by choice. Nothing is described when you get on or off either (play-testing: it explained too
+  much): the inside of the bus, the crew walking in through the gate and the bus being gone show
+  it. The only line is the thought "I shouldn't have got on." after the empty bus lets you off.
+- **Inside** (`ride.ts`), drawn like a room: the back wall with the windows and the forest going
+  past, seats either side of the aisle, the empty driver's seat, and the door at the front. You
+  start a few steps in and can walk the aisle with A/D. Nothing else in the forest happens while
+  you ride.
+- **The crew run** (9 s): the seats are full of workers in work shirts and caps, most of them
+  dozing. One man is in two seats: they're copies. Nobody looks at you.
+  - You're let off on the road just outside the camp gate. The crew walk in through the gate ahead
+    of you and fade, with no shadows, and the bus is gone.
+  - **If you were lost, you're found** (`Forest.found`): the map is made again round you, and your
+    lean-to and the copied stop are forgotten. Nothing is kept until you get home.
+- **The empty bus** (changed after play-testing: the creature's design was liked, the scene in the
+  aisle wasn't):
+  - Every seat is empty, the lights are cold and one flickers. It drives 10 s, faster and faster,
+    your heartbeat rising, then brakes and the doors open on the dark.
+  - You're let off `BUS_DROP` 70 tiles from where you got on, far from any path, **lost**. If you
+    were already lost, the forest round you is made again; a copied stop you left is forgotten.
+  - Deep in: the dark closes in to `BUS_DEEP` 0.92 (lost is usually 0.75) and stays until you're
+    found, and the trip has one more real danger. Then "I shouldn't have got on."
+  - It looks and sounds deeper too (play-testing: it should feel as ominous as it is). As the dark
+    closes in past being lost:
+    - the colour grade goes on past the forest's deepest, almost to grey (`FOREST_DEEPEST` in
+      light.ts: saturation 0.1, brightness 0.72)
+    - both drones play at once, the deep one and the lost one
+    - the wind drops to 30% (`BUS_DEEP_WIND`): the forest holds its breath
+  - The creature drawn for the earlier scene (`thingSprite` in `ride.ts`: too tall and thin,
+    grey-white, arms past its knees, blood down its chin, front and hands) is kept for later.
+- **The collapse waits** while a bus is pulling in or stopped, since it might be your way out.
+- **Not built yet:** the pet's half of P04 (any bus is safe with your real pet aboard). It needs
+  the pet in the forest.
+- **Invented:** the crew's look (red, orange, green, blue or navy shirts, caps), the timetable's
+  other stops and times (Millbrook Depot, Old Mill Road).
+
+### Keys, leads and the site map (built: IMPLEMENTATION.md M2)
+
+**Story progress in the save:**
+- `save.story` (`StoryProgress` in `shared/story.ts`) holds:
+  - the keys on your hook
+  - puzzles solved, scripted events that have happened
+  - memory scenes seen and waiting
+  - the places you've reached
+  - your unresolved leads
+- Every list is checked on the server against its ids, each id once.
+- A key can't be on your hook and in your pocket at the same time.
+- Older saves have no `story` and still load. Tests are in `api/_lib/retirement.test.ts`.
+- Puzzles, events and memory scenes are stored but nothing sets them yet (M3 onwards).
+
+**Keys** (`ITEM_IDS`; their names in `story/items.ts`):
+- **Where a key can be:** in exactly one place: your pocket (`save.pocket`, shared with the
+  photo, 3 slots), the key hook in your room, or back where it was found.
+- **The administration key** (`ITEM_ADMIN_KEY`, P01) is in the foreman's cabin's desk drawer
+  (since M3). The look and thought are PUZZLES.md's own lines.
+- **Picking it up:** it goes in your pocket and shows there, but it's only "carried" this trip.
+  If your pocket is full you can't take it.
+- **Home safe** (walking back, or a real escort): the key is yours, and stays in your pocket.
+- **Caught or collapsed:** every key in your pocket is lost, including ones you brought from home,
+  and it waits back where it was found. A line after waking: "Your pocket is lighter. The key is
+  gone." Keys on your hook are always safe.
+  - Judgement call: losing keys on a collapse as well as when caught, since PUZZLES.md treats any
+    failed outing alike. The photo, as before, is only lost when caught.
+- **The key hook** (`KEY_HOOK` in `shared/catalog.ts`) is on the back wall left of the closet
+  door, part of the room like the closet, so nothing can hang over it.
+  - Carrying keys, E hangs them all on it. With none in your pocket, E takes them down, as many
+    as your pocket holds.
+  - The keys show on the hook only in your own room: visitors see an empty hook, since your story
+    is yours alone.
+
+**Unresolved leads** (`LEADS` in `shared/story.ts`):
+- Looking at a lock you can't open notes it in the notepad under "Unresolved". It's kept if you
+  get home, or straight away for the closet in your own room.
+- A lead disappears once its puzzle is solved.
+- The leads so far: the office door (P01), the service gate's padlock (P05), Bell's locker, the
+  locker rule and Bell's employee number (P02), the jammed shutter (P03), your closet (P06).
+  There's also one for the first-aid shelter's blocked door (P08), waiting for that place.
+- The lead ids and their wording are the game's own; PUZZLES.md names only the puzzles.
+
+**The rough site map** (`story/sitemap.ts`; "Map" in the notepad, and on the corkboard at home):
+- A pencil sketch on a notepad page, always at the same scale.
+- It shows only the roads, paths and creek within 24 tiles of the places you've reached (kept
+  ones and this trip's), the camp's fence as little crosses, each place's name, and a red padlock
+  with a question mark beside each lead's lock.
+- It never shows a place you haven't been. "home" is marked at the bottom.
+- The places are listed in its text label for screen readers.
+
+### The camp, part 1: insides, P01 and P05 (built: IMPLEMENTATION.md M3, first half)
+
+**Insides** (`INTERIORS` and `DOORS` in `story/map.ts`):
+- Each building you can go into has its inside as a small walled room in the same forest, off in
+  a corner east of everything (x 130 onwards) where nobody can walk.
+  - Facing the building's door says "Go in" and puts you inside; facing the inside's front wall
+    says "Go out".
+  - Being part of the forest, your trip, light, sounds and notepad carry on indoors.
+  - Leaving the forest map would have ended the trip, which is why the insides aren't separate
+    maps.
+- The room's walls (two tiles of back wall, one at the sides and front) are solid and block the
+  off-path distance, so it never leaks in or out.
+- Round them is a margin of nothing, reaching past the edge of the screen, so nothing outside ever
+  shows through the dark. `layout.test.ts` checks the insides are sealed and that you're never
+  lost in them.
+- **The way out is drawn** (play-testing: it was hard to find, just more wall): a pale plank door
+  with a brass latch in the front wall, and a worn red doormat on the floor in front of it.
+- Indoors it's as dark as at the building's door.
+- Nobody comes to find you indoors and nothing comes for you: encounters and threats wait till
+  you're out. Judgement call, so the insides are a place to read in peace; change freely.
+- **The foreman's cabin:**
+  - the desk drawer with the administration key
+  - the field envelope on the desk (Evie's birthday card, and under it her photograph: part 2)
+  - a window, a cold stove, paperwork gone to pulp
+- **The administrative office:**
+  - the noticeboard with the shift register
+  - a boarded window, two filing cabinets (Evie's files are M4), a desk with one clean square in
+    its dust, a chair
+- All the furniture and its descriptions are invented.
+
+**P01, the office door:**
+- With the key in your pocket the door says "Unlock the door"; the key turns ("The key turns.")
+  and you're in.
+- It stays unlocked for the rest of the trip, and for good once you're home safe
+  (`save.story.puzzles`). If you're caught or collapse, it's locked again, and the key's back in
+  the drawer.
+- Without the key it rattles, says PUZZLES.md's locked line, and notes the lead.
+- You keep the key afterwards, though it's no longer needed (PUZZLES.md: no need to carry it
+  forever).
+
+**The shift register** (`story/docs.ts`, a puzzle document, not a story clue):
+- Reading it shows the paper and notes "NIGHT CREW, allocation 2714" in your notepad (the
+  `night_crew_code` lead), so the code is never left to memory.
+- DAY CREW (1840) and SWING (0933) are there too, each under its own label: the padlock's NIGHT
+  CREW plate is what picks the line, as PUZZLES.md asks.
+- The names (D. Okafor, M. Lindqvist, J. Reed for Jonah Reed) and the other numbers are invented.
+
+**P05, the service gate:**
+- The padlock opens a panel of four dials you set yourself: ▲ ▼, or click a dial and type a digit
+  (arrow keys work too).
+- The code isn't tied to the time of day: NIGHT CREW names whose lock it is (the register: crew
+  gates are set to the crew's allocation), so it opens at any hour. (Asked in play-testing; a
+  night-only gate was offered and left out.)
+- "Pull the shackle" tries it (the same dials as Bell's locker, P02: `COMBOS` in `story/map.ts`). A wrong code rattles ("It doesn't open."). 2714 springs it open,
+  and the gate is drawn swung back against its post with the chain hanging loose.
+- Its tiles stop being solid, so you can walk through onto the deep road (`Forest.open`).
+- Kept like P01: open for the rest of the trip, and for good once you're home safe. Every later
+  trip starts with it open.
+- Leads whose lock is open are dropped from your notepad.
+
+### The camp, part 2: the bunkhouse, the shed, P02 and P03 (built: IMPLEMENTATION.md M3, second half)
+
+**Insides:** two more rooms east of the first two (x 170 and 190), with the same walls, margin,
+drawn door and doormat.
+- **The bunkhouse** (outside door on the bunkhouse's front, where "Try the door" was):
+  - four iron bunks (one with J.R. scratched into it), a cold stove with a pan on it, a window
+  - the rules in a frame on the wall (`bunkhouse_rules`, a puzzle document: notes the
+    `locker_rule` lead; the locker line is PUZZLES.md's own)
+  - four tin lockers: three ordinary, and Bell's, D. BELL on tape, with a four-digit dial lock
+  - Jonah's journal behind a bunk (`jonah_journal`)
+- **The maintenance shed** (a side door is now drawn on the shed, under the stencil, right of the
+  shutter; inside, the front wall matches: the shutter's bay on the left, the door on the right):
+  - the bench where the fire started, with the clipboard holding Bell's report
+    (`bell_fire_record`), and what the fire left (two burnt saws and a split fuel can)
+  - a smoke-browned window
+  - against the front wall, the storage bay behind the roller shutter (the same shutter you see
+    jammed from outside: play-testing caught the inside and outside not matching), the winch
+    beside it, and the diagram on a post (`pulley_diagram`)
+- All the furniture and its descriptions are invented.
+
+**The clues** (`story/clues.ts`; wording invented around STORY.md's facts):
+- `jonah_journal`: ordinary entries (March), the shed fire (9 May 1978: Danny got them all out and
+  signed for it), Bell missing (2 June) and back (5 June), then the contradictions (no sugar; "there
+  was never a fire"; sleeping with his eyes open; the office said leave it). The thought is
+  STORY.md's "He came home. But was it him?" and, five seconds later, once, the memory echo
+  (STORY.md "Memory: how the dementia shows"): "I forget things too. That doesn't make me..."
+  (a clue's `then`).
+- `bell_fire_record`: an incident report for that fire, signed Daniel Bell, employee no. 0416.
+  Opening it notes the `bell_number` lead (a clue's `lead`), so the number is never left to memory.
+  The thought is PUZZLES.md's own ("How could he have forgotten the fire?"), but only if you've
+  read Jonah's journal, which is where he forgets it (a clue's `voiceIf`; play-testing caught it
+  referring to something not yet seen). Read first, it's "He got them all out. And signed for it
+  in the morning."
+- `evie_photo_before`: in the cabin's envelope under the card (a spot's `also`: the envelope shows
+  the card first, then, once that's yours, the photo). Evie on a porch step in a blue raincoat; the
+  scar through her right eyebrow is written out in the description, and on the back, in the
+  protagonist's later hand, "THE SCAR. RIGHT EYEBROW." (the earlier self writing it down, STORY.md
+  "Memory").
+
+**P02, Bell's locker:**
+- The same four dials as the service gate (`COMBOS`), with "Lift the latch". 0416 opens it (kept as
+  a string, so the zero stays); a wrong code rattles.
+- Open, the locker is drawn swung back on a shirt, and looking in reads `bell_locker`: the two hand
+  photographs (a scar across the knuckles in March, none in July) and the unsigned note ("He is
+  learning us."). Wording invented; it doesn't claim to know what every copy wants.
+- Kept like P05: open for the rest of the trip, for good once you're home safe.
+
+**P03, the shutter:**
+- The winch opens a panel with three things to work: release the catch, turn the spool, set the
+  ratchet. A little shutter in the panel rises a third with each right step.
+- Out of order it rattles and drops back to the start, with a line saying what happened (turning
+  the spool against the catch, or setting the ratchet with nothing to hold). No harm and no limit.
+- The right order rolls the shutter up for good: the bay is drawn open inside and the shed's
+  shutter is drawn up outside (`Forest.open('bay')` and `'shed'`), and looking at it from outside
+  says so (a spot's `shut`). Opening a prop only lets you walk through it if it's a barrier, so the
+  locker, the bay and the shed stay solid.
+- Behind it, the shelf: `camp_photos`, a document (the day crew, the flagpole going up in 1952, and
+  Danny outside the bunkhouse waving while the same man stands at its window).
+- **Judgement call:** PUZZLES.md also puts a lantern refill on the shelf. There's no lantern fuel
+  (your light never runs out) and stamina refills on its own, so there's nothing for it to refill
+  yet. It waits for the energy gauge (M3b), where it would be a flask or something to eat.
+
+**Small changes alongside:**
+- Re-reading a clue already on your board says "It's on your board at home." (it said "You already
+  remember this", the wrong idea for someone who doesn't).
+- STORY.md now has "Memory: how the dementia shows", and PUZZLES.md's Nora scenes use it: the
+  People page and notes about Nora are planned (M4), not built.

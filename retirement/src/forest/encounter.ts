@@ -242,6 +242,11 @@ export class Encounters {
     return !!this.person
   }
 
+  /** Back on the map (a safe bus ride, PUZZLES.md P04): no longer lost. */
+  found() {
+    this.wasLost = false
+  }
+
   update(dt: number) {
     const ms = dt * 1000
     this.out += dt / 60
