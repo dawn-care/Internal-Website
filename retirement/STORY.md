@@ -1,104 +1,197 @@
-# Hollow Pines: the forest's story
+# Hollow Pines — story bible
 
-The story behind the forest beyond Sunset Acres, kept apart from FOREST.md (the game's design
-and build record) so it can be written and revised on its own. FOREST.md covers how the forest
-works; this covers what it's about: what players can piece together, and the story bible that
-keeps every fragment consistent.
+**Status:** Authored narrative specification. **No main-story scenes, historical clues, or ending are implemented yet.** Existing forest survival and family encounters are documented in [FOREST.md](FOREST.md). The authoritative physical layout is [MAP.md](MAP.md); interactions, puzzle solutions and failure handling are in [PUZZLES.md](PUZZLES.md). [COMMUNITY.md](COMMUNITY.md) defines Sunset Acres and is not part of the horror-story implementation.
 
-**Where the words live in the game:** the lines people say in encounters are in
-src/forest/encounters.ts; story fragments, events and the voice in your head will be data files
-in src/forest/ as they're built. When you change the story here, check those still fit it.
+## Premise
 
-## The story (draft, to be revised as we go)
+The player is an older resident of the peaceful, multiplayer retirement community Sunset Acres. They live with dementia, garden, care for a dog or cat, and have a customizable family pictured on the wall of their room. Beyond the grounds is a forest threaded with old logging paths and the abandoned **Hollow Pines forestry camp**. The forest can imitate people who have entered it and sometimes reproduce familiar places. Its copies are convincing but not perfect. Some relatives and Nurse Ada who offer to lead the player home are genuine; others are copies. The only way to keep clues discovered on an expedition is to return to the real Sunset Acres alive and put them on the investigation board.
 
-**Working title: _Hollow Pines._** A random forest with a fixed story: the fragments are written,
-the places they turn up are random. Each fragment stands on its own and can be found in any order;
-the deeper and rarer locations hold the later revelations.
+The player eventually learns that their closest friend, **Detective Evelyn “Evie” Mercer**, disappeared in these woods in 1987. Someone resembling her returned to the player's home days later. The protagonist admitted that person inside, then spent decades trying to understand who came back. Their earlier self left records and warnings; now they must piece those records together despite not reliably remembering writing them.
 
-How the story works:
+This is a **short atmospheric mystery**, not a sprawling investigation into a supernatural conspiracy. The story answers what happened to Evie, why the protagonist has returned to the woods, and what happened to a present-day person they befriended. It **does not** reveal the forest's ultimate origin or promise to destroy the forest.
 
-- **We know the full truth; the player only gets part of it.** The truth is written down below in
-  the story bible so every fragment stays consistent. Fragments give players enough to form a
-  satisfying theory, and the final step is never stated outright.
-- **The rules are consistent; the origin stays out of reach.** Players can learn exactly how the
-  forest behaves. Why it does is left to conflicting, unreliable sources.
+## The full truth (for writers; not direct exposition)
 
-## What players can learn
+1. The forest's imitations and dangerous spaces predate Hollow Pines. **The camp did not create them.** It is the first location with substantial surviving records.
+2. In 1978, forestry worker **Daniel Bell** went missing near Hollow Pines and returned apparently normal. His coworker **Jonah Reed** noticed factual memory gaps and physical inconsistencies. Detective Evie Mercer investigated several such incidents. Officials closed the camp in 1979; the records never established the truth.
+3. In September 1987, former worker Jonah Reed sent Evie a **dated letter and a copied 1978 survey sketch** he had found among old camp belongings. His letter indicated that first-aid records had been moved beneath the shelter before the camp closed and might contain proof that official incident reports were altered. Evie returned to inspect the abandoned first-aid shelter. She disappeared on **September 14**, was injured and trapped, and died there on **September 16**. Jonah's letter is genuine; no anonymous supernatural mastermind is needed to explain her visit.
+4. On **September 20, 1987**, a copy of Evie arrived at the protagonist's house. It was missing the small scar across the real Evie's **right eyebrow**. The protagonist was relieved to see their closest friend and welcomed her in. She stayed for a few nights, behaved subtly wrong, and repeatedly suggested they walk together at Hollow Pines. She could not kill the protagonist in their ordinary home; she wanted to bring them into forest territory.
+5. The returned Evie vanished on **September 23**. An inexplicable interior doorway had appeared in the house. The protagonist kept an identical **blue raincoat** left by the visitor. The real Evie's original blue coat remained with her at the shelter. **The coats are evidence of duplication, not a magical device that controls the forest.**
+6. The protagonist investigated throughout adulthood. They went missing for eleven days in **October 1987**, returned disoriented, and later left deliberate notes, maps, photographs, and safety warnings at places in the woods. Some notes predate their dementia; later ones anticipate future memory difficulties. They eventually moved to Sunset Acres near the forest, believing it would allow them to finish the investigation. A strange closet door began behaving like the impossible doorway they had seen in earlier homes. They locked it and hid its key at the old survey lookout.
+7. In the present, the protagonist meets **Nora Vale**, a local amateur historian who has been researching the abandoned camp. Nora is real. She is wary of strangers because she has seen convincing imitations. They meet only a few times, but she comes to recognize and trust the protagonist.
+8. The forest has observed the protagonist and Nora together. It produces a copy of the **protagonist**, which Nora mistakes for the person she knows. The copy leads Nora toward the ravine and **kills her there**. The forest also copies Nora. The Nora who later pounds on the watchman's shelter door is **not** the real Nora; she lacks the mole on her cheek. Opening that door does **not** grant the forest any new copying ability. The player may subsequently see their own double, then find Nora's body and field notes implying what happened.
+9. The closet at Sunset Acres opens into a copied interior associated with the protagonist's past. Stepping back out once leads to a deserted, distorted **copy** of Sunset Acres, not the real multiplayer community. The forest is capable of reproducing places as well as people. Its imitation territory is dangerous even when it looks like home. The player escapes the copy and returns to real Sunset Acres.
+10. Guided by the board and a survey map recovered from the hidden room, the protagonist finds the real Evie's remains, original coat, and final journal in the collapsed first-aid shelter. They survive a final encounter with a copy of Evie and return with the evidence. At home, they arrange the dates proving the September 20 return could not have been real. The investigation ends with a clear record of Evie, not with the forest's destruction.
 
-**The premise.** Long before Sunset Acres, there was another care home deeper in the woods:
-**Hollow Pines Home**. It closed in 1979 after residents kept wandering off and never coming back.
-The bus route to it was cancelled; the building was left to rot.
+## Rules of the supernatural
 
-**The guide.** Three years ago a Sunset Acres resident, **Margaret "Maggie" Hale**, a retired
-schoolteacher, wandered into the forest and was never found. She left **warnings in red paint and
-notes signed "M."** across the forest. Her trail is the spine of the story: you're following
-someone who got lost before you.
+These are **consistent story rules**, not necessarily statements any character can prove scientifically.
 
-**Why some people are real.** Nurse Ada and families from Sunset Acres really do search the woods
-for residents who wander off. The forest has learned to look like them, too.
+- **The forest observes before it copies.** A person seen in the forest can be duplicated; the forest can also observe genuine relatives and staff who enter looking for missing residents. It notices relationships and often uses a trusted identity to approach a particular target. Photos and documents can reinforce what a copy knows, but **a photograph is not a required ingredient for imitation**.
+- **Copies are imperfect.** They can have wrong eyes, hair, clothes, scars, names, blinking, shadows or footsteps. Every dangerous NPC encounter must have discoverable tells. The protagonist's real family photograph is reliable when carried. The forest cannot simply change it to make the correct choice unknowable.
+- **Copies lure victims toward forest territory.** Copies can appear outside the treeline, but cannot kill in ordinary Sunset Acres or an ordinary home. Within the woods or a copied forest-space, they can attack. The protagonist's mechanical “death” returns them unconscious to the infirmary; Nora is not rescued and dies. The player is **not immortal in the story**.
+- **Copied places are rare.** The false Sunset Acres is a major authored revelation, not a normal random biome. The locked door is a point at which the protagonist experiences one of these spaces. No invitation, magical coat or special ritual is necessary to create a new copy.
+- **The pet is never a copy.** A genuine dog or cat can behave nervously without being a perfect impostor detector. If the pet offers to lead the player home, following it is always safe.
+- **Forest rules are discoverable.** Past warnings can express incomplete interpretations, but the game cannot randomly change an underlying rule. The origin of the supernatural phenomena remains unknown.
+- **Dementia is real and independent of the forest.** It is never revealed to be imaginary, caused by the forest, or proof that the protagonist is an impostor.
 
-The story unfolds in four layers, roughly by depth:
+## Principal characters
 
-1. **The rules** (near the edge): Maggie's warnings. How to survive, never why.
-   - _"They never blink."_ / _"Count the shadows."_ / _"If they call you something your family
-     never called you, run."_ / _"DON'T GET ON THE BUS ALONE."_ / _"Look at the photo, not the
-     face."_
-2. **The history** (bus stop, warehouse): Hollow Pines, the disappearances, residents nobody
-   visited.
-   - Bus stop: a timetable for **Route 9 to Hollow Pines**, last service 1979; a newspaper
-     clipping, _"Third resident missing from Hollow Pines Home."_
-   - Warehouse (Hollow Pines' supply depot): crates of old name tags; a staff memo, _"Do not let
-     residents leave with unregistered visitors"_; a visitors' log with **most pages empty for
-     months at a time**; and, on the last page, **your family's names**, in handwriting that isn't
-     theirs.
-3. **The pattern** (chapel): the Wanderers were people, and the faces are made of forgotten
-   things.
-   - Memorial plaques for the lost residents, with **Maggie's name freshly scratched** at the end.
-   - A Hollow Pines nurse's letter: _"Today I saw myself walk out of the trees and lead Mr. Abbott
-     away. She had my face, but not my scar. I don't think it knew about the scar."_
-   - A resident's diary: _"My daughter came today. Her eyes were the wrong colour. I couldn't
-     remember the right one, so I went with her anyway."_
-4. **The edge of the truth** (the ruins of Hollow Pines): conflicting explanations and Maggie's
-   last note.
-   - Three sources that disagree, each unreliable: **a doctor's memo** blaming an experimental
-     memory treatment; **the groundskeeper's journal**, saying the land was always like this;
-     **the chaplain's letter**, calling it a kind of grace, _"a place where nothing forgotten is
-     ever lost."_
-   - Maggie's last note: _"If you're reading this, you came back for me. Don't. Go home with the
-     one who knows your real name."_
+| Character | Role and voice | What the player discovers |
+| --- | --- | --- |
+| **Protagonist** | Player-created older resident. Thoughtful, sometimes uncertain; no fixed name, pronouns, spouse, or child. | They investigated Hollow Pines for decades and deliberately left tools for their future self. |
+| **Evie Mercer** | Detective, long-time friend. Practical, dryly funny, fond of visiting the protagonist's garden. Small scar across **right eyebrow**. | Her professional case connects the 1970s disappearances to the 1987 tragedy. She died before the return. |
+| **Returned Evie** | A copy, almost the same voice and appearance, missing the scar. | Wanted to coax the protagonist back into the woods. Never present it as the real Evie after her date of death. |
+| **Nora Vale** | Present-day amateur local historian, practical, tentative humor. Travels with a dented tea kettle. Has a visible mole on her **left cheek**. | Real, then killed after trusting the protagonist's double; her copy lacks the mole. |
+| **Jonah Reed** | 1970s forestry worker; appears only in documents. | His ordinary journal gradually becomes testimony about Daniel Bell's altered return. |
+| **Daniel Bell** | Hollow Pines worker who disappeared in 1978 and seemingly returned. | His case demonstrates the pattern years before Evie disappeared. His ultimate fate is not a separate required mystery. |
+| **Nurse Ada and family** | Authentic rescuers when genuine. Player-defined 2–3 family members; Nurse Ada has a fixed look. | Some forest encounters copy them; their real counterparts genuinely want the resident home. |
+| **Player's pet** | Actual dog or cat, customizable at Sunset Acres. | Uneasy companion and occasional **guaranteed safe** guide home. Never a monster. |
 
-**Ending (draft):** with every fragment on your wall, a final event appears: you find Maggie, or
-something that looks like her, sitting on the old ward's bed. She asks you to leave her and go
-home. Whether it's her is never confirmed. Your last note: _"Maggie wanted to be remembered, not
-found."_
+**Character continuity:** Nora is **not** Daniel Bell's daughter. The protagonist is **not** secretly an impostor. Do not assume the player is female or that a given family member exists. Distinctive scars/moles need readable examination text and portraits, not pixel-only cues.
 
-## Story bible (SPOILERS, for writers only; never stated outright in the game)
+## Fixed historical chronology
 
-- **What the forest is:** where forgotten things go. Names, faces, voices, the details of people
-  you love that slip away.
-- **What the impostors are:** made from what you've forgotten. A fake son is assembled from the
-  parts of him you can't quite remember anymore. This is why the mechanics work the way they do:
-  - **The tells are the gaps in your memory.** The wrong hair colour, the nickname nobody used,
-    the missing shadow are the pieces you've lost, filled in wrongly.
-  - **The family photo is the answer key** because it's a memory aid: it's literally what helps
-    you remember what's real.
-  - **Clarity** (herbal tea) helps because it helps you remember.
-- **What they want: to be remembered.** They aren't evil. They're lonely. A forgotten thing wants
-  someone to recognize it, to be somebody's person again. When you go with one, it leads you
-  deeper to keep you, so it's never forgotten again. Refusing one is its own small tragedy: being
-  forgotten twice. This keeps the horror sad and empathetic rather than monstrous, and it never
-  treats people with dementia as monsters.
-- **Where they come from: Hollow Pines.** Many of its residents were rarely visited (the empty
-  visitors' log). Their longing for faces nobody brought gave the forest its first shapes. That's
-  why fake nurses wear Hollow Pines badges: those were the faces residents saw most, so the forest
-  learned "nurse" there.
-- **What happens to people who are taken:** they become **Wanderers**, the slow shapes walking
-  loops between the trees: residents who went with the wrong face, now forgotten themselves.
-- **What stays a mystery, even to us:** _why_ the forest does this. The doctor, the groundskeeper
-  and the chaplain each believe something different, and none of them is confirmed. Writers should
-  keep their accounts contradictory.
-- **Maggie** at the end could be the real Maggie, a Wanderer, or the forest's version of her built
-  from everything Sunset Acres remembers about her. Her request to be left and for you to go home
-  is true in all three cases. Never resolve it.
-- **Hint that you've been here before:** the note in your own handwriting you don't remember
-  writing. Never confirm it.
+| Date | Established event | Evidence |
+| --- | --- | --- |
+| 1978 | Daniel Bell missing and apparently returns; Jonah records contradictions; Evie investigates | Jonah's journal, fire record, Evie's 1978 file |
+| 1979 | Hollow Pines closes and Route 9 service ends | Camp closure memo, bus timetable |
+| Sep 14, 1987 | Evie enters woods near the abandoned first-aid shelter and disappears | Missing notice, last-lead file |
+| Sep 16, 1987 | Real Evie dies near/in the collapsed shelter | Final journal, original coat and remains |
+| Sep 20, 1987 | Returned Evie arrives at protagonist's door | Neighbor statement, photograph, recollection |
+| Sep 23, 1987 | Imitation leaves; impossible doorway and duplicate coat remain | Protagonist's dated journal |
+| Oct 1987 | Protagonist disappears while investigating, reappearing eleven days later | Missing-person clipping and field notes |
+| Present day | Protagonist lives at Sunset Acres, searches again, meets Nora and completes the investigation | In-game encounters, board, locked room |
+
+Do not assign a precise current-year date to Nora's notes; use the game/session date where needed. Evie was already a working detective in 1978, so write her age and appearance in 1987 accordingly.
+
+## Four-act progression (branching geography, structured revelations)
+
+The player can discover sites in different orders. **Physical locations are always fixed**; item access and minimum clue sets provide pacing. The mandatory path is designed in [MAP.md](MAP.md). The player must never be asked to find a story-critical landmark in an unbounded random forest.
+
+### Act I — The path into the woods
+
+Start at friendly Sunset Acres. The player notices an unremarkable locked door in their own room and may wander beyond the grounds. Gradual color/music fading leads to the treeline, where the pet reacts. The fixed path branches: one side has the Route 9 bus stop and foreman's cabin; the other has the creek and an apparently recent campsite. Beyond the branches stands the fenced Hollow Pines gate.
+
+Early discovery types:
+- A weathered timetable whose Route 9 service ended in 1979.
+- An authentic-looking handwritten warning in the protagonist's own handwriting: **“DO NOT RIDE THE BUS ALONE.”**
+- A recently snuffed fire or still-warm tea near Nora's campsite; no inexplicable phantom tea unless a person has actually been there.
+- A distant figure who sees the player, panics, and runs out of sight. This is Nora, not a malicious copy.
+- A foreman's key, and an early personal card or photograph of Evie that the protagonist's earlier self tucked into their notes.
+
+**Emotional beat:** “Why have I been here before?” **Gameplay beat:** follow roads, examine objects, risk a first expedition, learn banking.
+
+### Act II — Hollow Pines and the detective
+
+The two approach roads meet at the camp gate. The open courtyard branches into a bunkhouse, maintenance shed and locked administrative office. Jonah's worker journal goes from everyday complaints to an unnerving account of Daniel Bell forgetting an important fire he witnessed. The fire report objectively confirms Bell signed the original form. Evie's 1978 police file describes multiple people returning altered. A case update and missing-person materials explain her return to the deserted site in 1987.
+
+The player brings the foreman's key to unlock the administrative office. The office contains 1970s work records **and a later personal evidence cache** deposited by the protagonist, accounting for 1987 photographs and documents inside a camp building closed in 1979. A separate decipherable service-gate combination opens the deeper road. Along the way Nora has two brief **real** conversations with the player: an introduction and a more relaxed exchange about the records. She is friendly but understandably cautious.
+
+**Revelation:** Evie investigated Hollow Pines, disappeared in 1987, and mattered deeply to the protagonist. The player also participated in the search. **Cutscenes:** an ordinary memory of friendship, then the search, after sufficient evidence is safely banked.
+
+### Act III — The wrong people
+
+Past the service gate, the player follows the watchman's shelter to a logging-road fork with the ravine and survey lookout on branches. The watchman's shelter event occurs **after the player has met the real Nora twice**. Something bearing Nora's face pounds on the door begging to be let inside. It has no mole on its left cheek. The player can help, refuse, or safely retreat after noticing the tell. The choice affects immediate consequences and recovered evidence but **does not cause a copy of the protagonist to exist**.
+
+Later, on the unavoidable logging-road crossing, the player glimpses their own double. At the ravine they find Nora's actual body, her kettle, her notebook, signs of an attack and indications she followed someone she believed was the protagonist. The player understands that their likeness was used to kill a person who trusted them. Never play a cutscene of Nora's death: the protagonist wasn't present, and the player should infer it from physical evidence.
+
+The Evie documents also yield the 1987 homecoming memory: the false Evie arrived, and the protagonist let her in. It is a parallel to the present-day Nora incident, **not** a new invitation-based magic rule.
+
+**Revelation:** Familiarity is the forest's weapon. **Plot purpose of Nora:** a short human connection and a present-day consequence, not a second long biography.
+
+### Act IV — The room, the false home, the final evidence
+
+At the survey lookout, the earlier self has hidden a brass key labeled with the protagonist's **current Sunset Acres room number**. The player must safely return with it, then bring it to the locked door in their bedroom.
+
+Inside is a dirty, impossible interior that resembles the protagonist's 1987 house. The **second blue raincoat** hangs there, alongside journals and photos of an impossible doorway in several residences. On leaving, the player enters a deserted, distorted **copy of Sunset Acres** with no other players. They must identify the accurate route back by comparing familiar details. This is a short, private, scripted level; no real neighbor, garden or multiplayer data changes. They find a drainage survey showing how to reach the collapsed first-aid shelter.
+
+After escaping, the player brings that information into the forest, locates the drainage entrance at the ravine, clears the sluice, and enters the shelter. Evie's last journal, original raincoat and remains prove she died on September 16, before the September 20 visitor arrived. While leaving, a copy of Evie offers to take the player home; the scar is absent. Rejecting her may cause a chase, and the player must carry the evidence home safely. At the board the player orders the three dated events and confirms the conclusion.
+
+**Final beat:** The player writes who Evie really was and what happened; their evidence remains preserved for a future self who might forget. Life at Sunset Acres continues. The forest still exists. The locked room may now look ordinary, but there is **no magical coat-return ritual** and no promise that the forest has been destroyed.
+
+## Major evidence (canonical IDs and fixed sources)
+
+**Acquisition:** Examining a source can add an **unbanked** note or item to the current expedition. Bank it by returning alive; only then can it meet a cutscene/board gate. Re-examinable sources are stable and permanent. Items dropped on failure are recoverable at the same fixed location. Full interaction and gate specifications: [PUZZLES.md](PUZZLES.md).
+
+| Clue ID | Fixed source | What it establishes | Required? |
+| --- | --- | --- | --- |
+| `route9_timetable` | Route 9 bus stop | Bus service ended with the camp in 1979 | No |
+| `bus_warning` | Route 9 bus stop | Player's earlier handwritten rule | No |
+| `own_warning` | Trailhead marker | Earlier self knew how to survive a threat | No |
+| `evie_card` | Foreman's cabin, stored in old field envelope | Evie and player were friends | Yes, for memory scene |
+| `evie_photo_before` | Same envelope at foreman's cabin | Real Evie's right-eyebrow scar | Yes |
+| `jonah_journal` | Bunkhouse | Bell returned with memory gaps | Yes |
+| `bell_fire_record` | Maintenance shed | Bell was present at the fire he later denied | No; enriches deduction |
+| `evie_case_1978` | Administrative office | Evie investigated imitations in 1978 | Yes |
+| `evie_last_lead` | Administrative office | Jonah's Sep 1987 letter and old shelter sketch prompted Evie to return | Yes |
+| `evie_missing` | Administrative office | Missing since Sep 14, 1987 | Yes |
+| `search_roster` | Administrative office | Protagonist searched for Evie | Yes |
+| `neighbor_statement` | Administrative office | Someone resembling Evie arrived Sep 20 | Yes |
+| `returned_evie_photo` | Administrative office, old personal case insert | Returned Evie lacked the right-eyebrow scar | Yes |
+| `player_missing` | Administrative office, archived clipping | Player vanished for 11 days in Oct 1987 | Optional |
+| `returned_evie_journal` | Administrative office, old field insert | Imitation stayed through Sep 23; odd doorway/coat | Yes |
+| `nora_field_note` | Ravine, with Nora's belongings | Nora followed someone she trusted who looked like player | Yes for Nora resolution; not a final-story gate |
+| `nora_body_evidence` | Ravine | A real human died violently in forest territory | Yes for Nora resolution; not a final-story gate |
+| `closet_key_note` | Survey lookout | The old self hid today's room key here | Yes |
+| `closet_journal` | Hidden room | Doorway recurred in homes for decades | Yes |
+| `drainage_survey` | Hidden room | Map of access to final shelter through ravine | Yes |
+| `false_home_observation` | Echo Sunset Acres | Forest can recreate a familiar place | Yes |
+| `evie_final_journal` | First-aid shelter | Evie alive through Sep 16; died there | Yes |
+| `evie_original_coat` | First-aid shelter | Real Evie's coat never left forest | Yes |
+| `evie_remains` | First-aid shelter | Identifies real Evie's final resting place | Yes |
+
+Puzzle documents such as the gate combination log and locker roster have **puzzle IDs** in [PUZZLES.md](PUZZLES.md); not every examinable object needs a separate primary-story clue ID.
+
+## Cutscenes and memory vignettes
+
+Cutscenes are short, **in-engine, private**, with no combat and minimal camera movement. They are recollections or reconstructed impressions **from the protagonist's own perspective**, never unexplained omniscient footage. They can be incomplete. Their content must not contradict physical evidence. **Only a safe return commits clue IDs**, then eligible memories play during the return-home transition or the first board interaction. Death/infirmary never triggers a clue cutscene. Queued memories play one at a time and can be replayed from the board.
+
+| ID | Trigger: all banked | Duration target | What appears, and what it withholds |
+| --- | --- | --- | --- |
+| `CS_GARDEN` | `evie_card` + `evie_photo_before` | 20–30 s | A sunny 1980s gardening moment with Evie. Ordinary familiarity, laugh, her scar visible. No mystery exposition. |
+| `CS_SEARCH` | `evie_missing` + `search_roster` | 20–30 s | Flashlights in wet woods, volunteers calling Evie's name, the protagonist worried. No image of Evie's death. |
+| `CS_HOMECOMING` | `neighbor_statement` + `returned_evie_photo` | 35–50 s | Rain; Evie knocks Sep 20. The protagonist welcomes her, she hesitates and asks to enter. A detail near the eyebrow feels wrong; no monster transformation. |
+| `CS_LOCKING` | `closet_journal` + `false_home_observation` | 20–30 s | A later memory of elderly protagonist locking the inexplicable closet and writing themself a warning. No explanation of the forest's origin. |
+| `CS_ENDING` | Banked `evie_final_journal`, `evie_original_coat`, `evie_remains` **and** solved `P09` | 30–45 s | Back at the corkboard, the protagonist writes the dated conclusion and a personal note to a future self. Community sounds continue outside. |
+
+**Queue rules:** If several memories unlock on one safe return, show one, then queue others for board replay/next room interaction. Never trap the player in repeated unskippable cinematics. Respect reduced motion, allow skip and replay, and retain completion flags on save.
+
+**Historical depiction rule:** The protagonist cannot remember Nora's death or Evie's final moments because they were not present. Those moments are communicated by physical evidence, not first-person flashback.
+
+## The inner voice
+
+The voice is the protagonist's own subjective thought, **not a separate entity giving solutions**. Keep it short and contextual; silence is useful. Examples:
+
+- Trailhead: *“It's quieter than it ought to be.”*
+- First earlier note: *“I know that handwriting.”*
+- Warm tea: *“Someone's been here recently.”* (Nora really has.)
+- Jonah's final entry: *“He came home. But was it him?”*
+- Evie photograph: *“I knew this woman.”*
+- Fake Nora at door: *“There's something different about her face.”* (Only after inspection; never label her fake.)
+- Own double: *“That's me.”*
+- Nora's body: *“She thought she was following me.”*
+- Hidden room: *“I locked this. I was afraid of it.”*
+- False Sunset Acres: *“Where has everyone gone?”*
+- Real Evie's remains: *“She never came back.”*
+
+Never have the voice reveal evidence the player has not observed. Do not equate dementia with irrationality or villainy.
+
+## Ending and post-story play
+
+The final return is another ordinary **risk-bearing expedition**. Finding Evie's evidence is not sufficient if the player is caught before making it home; the unbanked findings must be retrieved on another outing. The final copied-Evie encounter has fair tells, an escape route, and the usual safe rescuers. Once the evidence is banked, the board presents a simple chronology ordering:
+
+1. **Sep 14:** Evie reported missing.
+2. **Sep 16:** Real Evie died at the shelter.
+3. **Sep 20:** Someone resembling Evie returned.
+
+The board then creates the lasting conclusion, *“Evie never came home. Something wearing her face did.”* It preserves both the horror and the record of a real friendship. Sunset Acres remains the cozy shared game afterward; the forest can still be explored. The wider origin, intelligence and purpose of the forest remain unknowable from the evidence available in this story.
+
+## Writing / implementation constraints
+
+- Characters, items, scenes and triggers use the exact IDs in this document and [PUZZLES.md](PUZZLES.md). Don't introduce alternate names for equivalent assets.
+- Narrative documents should be intelligible out of order. **Required** clue sources remain at their fixed sites. Never shuffle keys, buildings or primary clues into procedural wilderness.
+- Don't gate the main plot on Nora's friendship meter, random rescue chance, optional Bell locker, generator/pulley, or the bus.
+- Real family member or Nurse Ada: always safe escort. Copy: always an observable tell. Pet escort: always safe. Ordinary home is not lethal; false-home instance is forest territory.
+- All major events and puzzles must be recoverable after a failed outing; no unique-item softlocks or permanently missed cutscenes.
+- Only copied places are isolated single-player instances. The real community retains its residents, economy, pet and shared gardens; [COMMUNITY.md](COMMUNITY.md) is unchanged by narrative implementation.

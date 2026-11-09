@@ -5,6 +5,8 @@ import {
   EYES_APPROACH,
   EYES_BEYOND,
   EYES_CATCH,
+  EYES_CREEP,
+  EYES_FALSE_NEAR,
   EYES_MS,
   EYES_RETREAT,
   FACE_DOT,
@@ -19,6 +21,8 @@ import {
   STALK_S,
   THREAT_DEEP_FASTER,
   THREAT_EVERY,
+  THREAT_LOST_EVERY,
+  THREAT_LOST_FIRST,
   THREAT_FIRST,
 } from './tuning'
 
@@ -59,6 +63,11 @@ export interface ThreatHost {
   /** The smaller harms: some of your light, or your breath (stamina). */
   takeLight(): void
   takeBreath(): void
+  /** Whether this trip can still have a real danger (one at most), and using it up. */
+  danger(): boolean
+  spendDanger(): void
+  /** Something real is starting (never a false alarm): a gut feeling, sometimes. */
+  realStarting(): void
 }
 
 const DIRS: Record<Dir, { x: number; y: number }> = {
@@ -99,6 +108,10 @@ export interface Eyes {
   closing: number
   /** They've already taken some of your light. */
   took: boolean
+  /** How far you've walked towards it (tiles, net), and where you were last frame. */
+  toward: number
+  lx: number
+  ly: number
 }
 
 export type Threat = Stalker | Eyes
@@ -107,8 +120,14 @@ export class Threats {
   now: Threat | null = null
   private next = between(THREAT_FIRST)
   private last: Threat['kind'] | null = null
+  private wasLost = false
 
   constructor(private host: ThreatHost) {}
+
+  /** Something comes within `ms` (the bus ride). */
+  soon(ms: number) {
+    if (!this.now) this.next = Math.min(this.next, ms)
+  }
 
   /** Whether something is happening (no encounters start, and no collapse, until it's over). */
   busy(): boolean {
@@ -118,6 +137,10 @@ export class Threats {
   update(dt: number) {
     const ms = dt * 1000
     if (!this.now) {
+      if (this.host.lost() && !this.wasLost) {
+        this.wasLost = true
+        this.next = Math.min(this.next, between(THREAT_LOST_FIRST))
+      }
       // Sooner the deeper you are and once you're lost.
       const faster =
         1 - THREAT_DEEP_FASTER * Math.max(this.host.deepness(), this.host.lost() ? 1 : 0)
@@ -141,7 +164,12 @@ export class Threats {
             ? 'steps'
             : 'eyes'
     this.last = kind
-    const real = Math.random() >= FALSE_ALARM
+    // Real only while the trip's danger isn't used up: after that, every cue is only a cue.
+    const real = Math.random() >= FALSE_ALARM && this.host.danger()
+    if (real) {
+      this.host.spendDanger()
+      this.host.realStarting()
+    }
     const me = this.host.me
     if (kind === 'steps') {
       // Behind you: the opposite of the way you're facing.
@@ -178,7 +206,19 @@ export class Threats {
       const y = me.y + Math.sin(a) * r
       if (this.host.blocked(x, y)) continue
       if (r < this.host.lightTiles() * 0.8) continue
-      this.now = { kind, real, x, y, d0: r, t: 0, closing: 0, took: false }
+      this.now = {
+        kind,
+        real,
+        x,
+        y,
+        d0: r,
+        t: 0,
+        closing: 0,
+        took: false,
+        toward: 0,
+        lx: me.x,
+        ly: me.y,
+      }
       this.host.sound('eyes', x, y)
       return
     }
@@ -191,7 +231,7 @@ export class Threats {
       this.host.breath(false, at.x, at.y)
     }
     this.now = null
-    this.next = between(THREAT_EVERY)
+    this.next = between(this.host.lost() ? THREAT_LOST_EVERY : THREAT_EVERY)
   }
 
   // --- footsteps behind you -----------------------------------------------------------------
@@ -254,24 +294,43 @@ export class Threats {
       return
     }
     const me = this.host.me
-    const d = Math.hypot(e.x - me.x, e.y - me.y)
+    let d = Math.hypot(e.x - me.x, e.y - me.y)
+    // How much of your last step was towards it.
+    if (d > 0.01) {
+      const step = ((me.x - e.lx) * (e.x - me.x) + (me.y - e.ly) * (e.y - me.y)) / d
+      e.toward = Math.max(0, e.toward + step)
+    }
+    e.lx = me.x
+    e.ly = me.y
+    // It drifts towards you, slowly, through the trees (it was never quite standing on the ground).
+    if (d > EYES_CATCH * 0.8) {
+      const k = Math.min(1, (EYES_CREEP * dt) / d)
+      e.x += (me.x - e.x) * k
+      e.y += (me.y - e.y) * k
+      d = Math.hypot(e.x - me.x, e.y - me.y)
+    }
+    // Got away from it (it couldn't keep up), or it's given up.
     if (d > e.d0 + EYES_RETREAT || e.t > EYES_MS) {
       e.closing = 1
       return
     }
-    if (d < e.d0 - EYES_APPROACH) {
-      if (!e.real) {
-        e.closing = 1
-        return
-      }
-      if (d < EYES_CATCH) {
-        this.end()
-        return this.host.caught('You should never have gone closer.')
-      }
-      if (!e.took) {
-        e.took = true
-        this.host.takeLight()
-      }
+    // Only a cue: it gets so close, then isn't there.
+    if (!e.real) {
+      if (d < EYES_FALSE_NEAR || e.toward > EYES_APPROACH) e.closing = 1
+      return
+    }
+    // Walking towards it: it takes some of your light.
+    if (e.toward > EYES_APPROACH && !e.took) {
+      e.took = true
+      this.host.takeLight()
+    }
+    if (d < EYES_CATCH) {
+      this.end()
+      return this.host.caught(
+        e.toward > EYES_APPROACH
+          ? 'You should never have gone closer.'
+          : 'It was so slow. You should have kept away from it.',
+      )
     }
   }
 }

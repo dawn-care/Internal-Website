@@ -43,15 +43,39 @@ export const EXIT_BACK = 2.4
 
 // --- getting lost -----------------------------------------------------------------------------
 
-/** Past this distance from where you came in, the way home stops existing. */
-export const NO_RETURN = FAST ? 12 : 40
-/** Lost for this long (without being brought home), you collapse and wake in the infirmary. */
-export const COLLAPSE_MS = FAST ? 25_000 : 12 * 60_000
 /**
- * The home's lights glow through the trees behind you, fainter as you go, and are gone at the
- * point of no return: the only sign you've passed it.
+ * Lost by leaving the paths (FOREST.md "The map"): this far from the nearest road, path or
+ * clearing (tiles) a thought warns you, and this far the way home stops existing. On the paths you
+ * can always walk back.
  */
-export const HOME_GLOW_UNTIL = NO_RETURN
+export const OFF_PATH_WARN = FAST ? 3 : 6
+export const OFF_PATH_LOST = FAST ? 6 : 13
+/**
+ * Lost, walking back towards where the path was (this fraction of your steps heading that way, for
+ * this long, ms): a thought ("That tree wasn't there before."), at most this often (ms).
+ */
+export const TURN_BACK_DOT = 0.6
+export const TURN_BACK_MS = 2000
+export const TURN_BACK_GAP_MS = 18_000
+/** At most this many of those a trip. */
+export const TURN_BACK_MAX = 2
+/** Unprompted thoughts (the inner voice, not about something you looked at): at most one this
+ * often (ms). Losing the path and turning back aren't held back. */
+export const MUSE_GAP_MS = 60_000
+/** How often a real threat starting brings "Something feels... off." (a gut feeling, not a rule). */
+export const FEELS_OFF_CHANCE = 0.5
+/** Lost for this long (without being brought home), you collapse and wake in the infirmary. */
+export const COLLAPSE_MS = FAST ? 25_000 : 5 * 60_000
+/**
+ * Sitting down to wait while lost: time runs this much faster for everything that comes to you
+ * (people, threats, uncanny moments, the collapse). Your eyes close after this long (ms), and a
+ * thought comes this long into the wait.
+ */
+export const WAIT_FASTER = 3
+export const WAIT_EYES_MS = 4000
+export const WAIT_THOUGHT_MS = 20_000
+/** The home's lights glow through the trees behind you, fainter as you go, gone this far in. */
+export const HOME_GLOW_UNTIL = 40
 
 // --- the forest itself ------------------------------------------------------------------------
 
@@ -63,6 +87,10 @@ export const MAX_CHUNKS = 90
 export const TREE_DENSITY = 0.065
 export const TREE_DENSITY_PER_TILE = 0.0004
 export const TREE_DENSITY_MAX = 0.12
+/** On the map (story/map.ts): trees per tile just off a path, and how much denser per tile further
+ * off (up to TREE_DENSITY_MAX). Kept lighter than the lost forest, so the paths read. */
+export const MAP_TREES_NEAR = 0.03
+export const MAP_TREES_PER_TILE = 0.012
 /** Clearings: where the soft noise is above this, trees thin right out. */
 export const CLEARING_ABOVE = 0.7
 /** Winding open paths: where a second noise is within this of its middle. */
@@ -75,15 +103,28 @@ export const SEE_THROUGH_H = 5.6
 
 // --- darkness and light -----------------------------------------------------------------------
 
-/** How dark it is outside your circle of light (0–1): at the entry, deep in, and extra at night. */
-export const DARK_NEAR = 0.72
-export const DARK_DEEP = 0.9
-export const DARK_NIGHT = 0.05
-/** Depth (tiles) at which it's as dark as it gets. */
-export const DARK_FULL_AT = 70
+/**
+ * How dark it is outside your circle of light (0–1): at the entry, deep in, and extra at night.
+ * (Lightened for the map: 0.72 / 0.9 hid the places you're meant to explore; night still adds.)
+ */
+export const DARK_NEAR = 0.58
+export const DARK_DEEP = 0.82
+export const DARK_NIGHT = 0.12
+/** On the map, it never gets darker than this far along (0–1) from DARK_NEAR to DARK_DEEP, so the
+ * places can be seen; once you're lost it goes the rest of the way. */
+export const MAP_DEEP_MAX = 0.3
+/** Lost, it's at least this far along (0–1) towards full dark... */
+export const LOST_DEEP = 0.75
+/** ...and the dark closes in over about this long (s): your light shrinks slowly, not at once. */
+export const DEEP_EASE_S = 4
+/** Depth (tiles) at which it's as dark as it gets (the camp is about 110 in). */
+export const DARK_FULL_AT = 100
 /** Your circle of light, in tiles: at the entry, and deep in. */
-export const LIGHT_NEAR = 6
-export const LIGHT_DEEP = 3.6
+export const LIGHT_NEAR = 6.5
+export const LIGHT_DEEP = 4.4
+/** How much of the dark is lifted off the road and paths beyond your light (0–1), so you can see
+ * where they go. */
+export const PATH_GLOW = 0.4
 /** Fog: how many drifting banks, and how thick at most. */
 export const FOG_BANKS = 9
 export const FOG_ALPHA = 0.16
@@ -131,9 +172,27 @@ export const REPRINT_COST = 40
 // --- encounters: the nurse and the family (stage 3) ------------------------------------------
 
 /** The first person finds you this long after you come in (ms, random between the two)... */
-export const ENCOUNTER_FIRST: [number, number] = FAST ? [6_000, 10_000] : [45_000, 90_000]
-/** ...and the next ones this long after the last one ended (FOREST.md: every 1.5–4 minutes). */
-export const ENCOUNTER_EVERY: [number, number] = FAST ? [12_000, 20_000] : [90_000, 240_000]
+export const ENCOUNTER_FIRST: [number, number] = FAST ? [6_000, 10_000] : [100_000, 180_000]
+/** ...and the next ones this long after the last one ended (every 3–6 minutes since the turn to
+ * exploration; it was 1.5–4). */
+export const ENCOUNTER_EVERY: [number, number] = FAST ? [12_000, 20_000] : [180_000, 360_000]
+/** Once you're lost, someone comes within this long (ms), then this often (play-testing: lost,
+ * there's nothing to do but wait for someone). */
+export const ENCOUNTER_LOST_FIRST: [number, number] = FAST ? [3_000, 5_000] : [12_000, 22_000]
+/**
+ * Lost, people don't walk straight up: a searcher stands off in the dark (at least CALL_NEAREST
+ * tiles, at the edge of what you can see) with a torch, calling. A real one calls every CALL_EVERY
+ * ms with a steady torch; a fake at odd intervals (CALL_EVERY_FAKE), its torch guttering, and
+ * sometimes (CALL_WRONG_SIDE) from the wrong side. Come within CALL_COME tiles and they come to
+ * you; otherwise they come anyway after CALL_WAIT ms (half that if you're sitting).
+ */
+export const CALL_NEAREST = 8
+export const CALL_EVERY = 4500
+export const CALL_EVERY_FAKE: [number, number] = [1800, 7000]
+export const CALL_WRONG_SIDE = 0.35
+export const CALL_COME = 5
+export const CALL_WAIT = 30_000
+export const ENCOUNTER_LOST_EVERY: [number, number] = FAST ? [8_000, 12_000] : [30_000, 55_000]
 /** How likely someone is to be real at first, and the least likely it gets. (FOREST.md 60–65%) */
 export const REAL_CHANCE = 0.63
 export const REAL_CHANCE_MIN = 0.4
@@ -246,12 +305,41 @@ export const LOOK_LIGHT = 0.6
 // wrong and you're caught.
 
 /** The first threat comes this long into a trip (ms), then the next this long after the last. */
-export const THREAT_FIRST: [number, number] = FAST ? [5_000, 8_000] : [25_000, 50_000]
-export const THREAT_EVERY: [number, number] = FAST ? [10_000, 16_000] : [30_000, 70_000]
+export const THREAT_FIRST: [number, number] = FAST ? [5_000, 8_000] : [90_000, 150_000]
+export const THREAT_EVERY: [number, number] = FAST ? [10_000, 16_000] : [100_000, 200_000]
 /** Deeper and lost, they come more often: the gap shrinks to this much at most. */
 export const THREAT_DEEP_FASTER = 0.5
+/** Once you're lost: the first threat comes within this long (ms), then this often. */
+export const THREAT_LOST_FIRST: [number, number] = FAST ? [3_000, 5_000] : [20_000, 35_000]
+export const THREAT_LOST_EVERY: [number, number] = FAST ? [8_000, 12_000] : [35_000, 60_000]
+/** Getting lost adds this many real dangers to the trip's budget (DANGER_PER_TRIP). */
+export const LOST_DANGER = 1
 /** The chance a cue is only a cue (nothing is there). */
 export const FALSE_ALARM = 0.35
+/**
+ * Real danger is rare (FOREST.md, after the turn to exploration): a trip has at most this many,
+ * shared between the threats and a fake coming for you. After that every cue is only a cue, and
+ * every fake you turn away just walks off.
+ */
+export const DANGER_PER_TRIP = 1
+/** A fake you turn away stares at you for this long (ms) before it backs off, grinning. */
+export const STARE_MS = 2600
+/**
+ * How strongly its grin (the teeth and the pinprick eyes) shows through the dark as it backs off
+ * beyond your light (0–1): a smile hanging in the black after the rest of it has gone.
+ */
+export const GRIN_GLOW = 0.75
+/**
+ * Then it backs off into the dark, facing you, grinning, for up to this long (ms). Follow it
+ * (closer than FOLLOW_NEAR tiles, walking after it, for FOLLOW_MS) and it stops, grows, turns
+ * (TURN_MS) and lunges at LUNGE_SPEED (tiles/s): you're caught. Your own choice, so it isn't
+ * limited by DANGER_PER_TRIP.
+ */
+export const FAKE_LEAVE_MS = 14_000
+export const FOLLOW_NEAR = 5
+export const FOLLOW_MS = 2500
+export const TURN_MS = 900
+export const LUNGE_SPEED = 9
 
 /** Footsteps behind you: rule, turn round. They're this far behind (tiles), closing as it nears. */
 export const STALK_FAR = 6
@@ -271,15 +359,23 @@ export const STALK_EXTRA_STEPS = 1
 /** A false alarm's footsteps just stop after this long (s). */
 export const STALK_FALSE_S = 6
 
-/** The eyes: rule, never walk towards them. They open this far beyond the edge of your light... */
+/**
+ * The face in the dark: rule, keep away from it (never walk towards it). It opens this far beyond
+ * the edge of your light...
+ */
 export const EYES_BEYOND = 3
-/** ...stay open this long (ms) if left alone, then close. */
-export const EYES_MS = 12_000
-/** Walk this much closer and it takes some of your light; come within this many tiles and it has you. */
+/** ...and drifts towards you this fast (tiles/s): slow, but it doesn't stop. Stand still and it
+ * reaches you in about 12 s. */
+export const EYES_CREEP = 0.55
+/** It gives up after this long (ms). */
+export const EYES_MS = 20_000
+/** Walk this far towards it and it takes some of your light; within this many tiles it has you. */
 export const EYES_APPROACH = 1.5
 export const EYES_CATCH = 2.2
-/** Back away this far and they close. */
-export const EYES_RETREAT = 2
+/** Get this much further away than it started and it's lost you. */
+export const EYES_RETREAT = 4
+/** A false alarm creeps too, then just isn't there once it's this close. */
+export const EYES_FALSE_NEAR = 4
 
 /** How strongly the face shows in the dark (it's dim greys, drawn at this much on top). */
 export const FACE_ALPHA = 0.5
@@ -310,3 +406,51 @@ export const CAUGHT_SHAKE = 3
 /** Fading to black, holding on the black screen with its line, then waking. */
 export const COLLAPSE_FADE_MS = 3000
 export const COLLAPSE_HOLD_MS = 3500
+
+// --- the story: things to find, the inner voice, uncanny moments (Act I) -----------------------
+
+/** Small look-only finds lying about each trip (random between the two), at the map's find spots. */
+export const FINDS_PER_TRIP: [number, number] = [5, 8]
+/** Clues glint faintly in the dark (within this many tiles), every so often (ms period). */
+export const GLINT_NEAR = 12
+export const GLINT_PERIOD = 2600
+
+/** Thoughts: on screen this long (ms) plus this per character, and at least this far apart. */
+export const THOUGHT_MS = 2400
+export const THOUGHT_PER_CHAR = 45
+export const THOUGHT_GAP_MS = 1500
+
+/** Uncanny moments (story/events.ts): the first this long into a trip, then this far apart (ms). */
+export const EVENT_FIRST: [number, number] = FAST ? [4_000, 8_000] : [20_000, 40_000]
+export const EVENT_EVERY: [number, number] = FAST ? [8_000, 14_000] : [30_000, 90_000]
+/** Lost, uncanny moments come this much more often (the gap is divided by it). */
+export const EVENT_LOST_FASTER = 2.5
+/** How long the hush and the thick fog last (ms). */
+export const HUSH_MS = 7_000
+export const FOG_MS = 14_000
+/** Footprints laid beside you (how many, tiles apart). */
+export const PRINTS = 9
+
+/**
+ * Lost: your 1987 self's lean-to (with the tin box of notes) is put out this long (ms) after you
+ * get lost, this far off (tiles) the way you're facing, with your red marks on the trees every
+ * SHELTER_MARK_EVERY tiles leading to it from just off-screen.
+ */
+export const SHELTER_AFTER = FAST ? 4_000 : 20_000
+export const SHELTER_DIST = 26
+export const SHELTER_MARK_EVERY = 4
+
+/**
+ * The bus (story/bus.ts): once you've been lost this long (ms), a copy of the bus stop is put out
+ * this far off (tiles); come within BUS_NEAR tiles and the bus comes, waits BUS_WAIT_MS with its
+ * doors open, then goes. Ride it alone and you're put out BUS_RIDE tiles further on, your light
+ * cut by BUS_LIGHT (never below LIGHT_LEAST), out of breath, with one more real danger and a
+ * threat within BUS_THREAT_MS.
+ */
+export const BUS_AFTER = FAST ? 8_000 : 60_000
+export const BUS_DIST = 24
+export const BUS_NEAR = 9
+export const BUS_WAIT_MS = 25_000
+export const BUS_RIDE = 60
+export const BUS_LIGHT = 0.25
+export const BUS_THREAT_MS = 6_000

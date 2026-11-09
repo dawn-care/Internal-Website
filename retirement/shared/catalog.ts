@@ -36,6 +36,11 @@ export const ROOM_H = 10
 export const ROOM_FLOOR = { x0: 1, y0: 3, x1: 12, y1: 8 } as const
 export const ROOM_WALL = { x0: 1, y0: 1, x1: 12, y1: 2 } as const
 export const ROOM_DOOR_X = 7
+/**
+ * The closet door in every room (STORY.md "Act I"): in the back wall's right-hand corner, two
+ * tiles tall. It's part of the room, not furniture: nothing can hang over it.
+ */
+export const CLOSET = { x: 12, y: 1, h: 2 } as const
 
 export interface CropDef {
   id: string
@@ -141,6 +146,28 @@ export const FURNITURE: Record<string, FurnitureDef> = {
   photos: { id: 'photos', name: 'Family photos', price: 15, w: 1, h: 1, wall: true },
   // Your family photo (FOREST.md "Your family"): everyone has one, it can't be bought (price 0).
   familyphoto: { id: 'familyphoto', name: 'Your family photo', price: 0, w: 1, h: 1, wall: true },
+  // Your corkboard (STORY.md "Board"): it goes up the first time you bring a clue home (price 0).
+  corkboard: { id: 'corkboard', name: 'Your corkboard', price: 0, w: 2, h: 1, wall: true },
+  // Keepsakes brought home from the forest (FOREST.md "Keepsakes"), framed: never sold (price 0).
+  keep_nametag: {
+    id: 'keep_nametag',
+    name: 'Hollow Pines name tag',
+    price: 0,
+    w: 1,
+    h: 1,
+    wall: true,
+  },
+  keep_glasses: { id: 'keep_glasses', name: 'Reading glasses', price: 0, w: 1, h: 1, wall: true },
+  keep_teacup: { id: 'keep_teacup', name: 'China teacup', price: 0, w: 1, h: 1, wall: true },
+  keep_ticket: { id: 'keep_ticket', name: 'Route 9 ticket', price: 0, w: 1, h: 1, wall: true },
+  keep_mitten: {
+    id: 'keep_mitten',
+    name: 'A child’s red mitten',
+    price: 0,
+    w: 1,
+    h: 1,
+    wall: true,
+  },
   fern: { id: 'fern', name: 'Potted fern', price: 20, w: 1, h: 1 },
   basket: { id: 'basket', name: 'Knitting basket', price: 25, w: 1, h: 1 },
   painting: { id: 'painting', name: 'Flower painting', price: 30, w: 1, h: 1, wall: true },

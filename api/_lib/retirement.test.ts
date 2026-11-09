@@ -449,6 +449,69 @@ describe('/api/retirement', () => {
     })
   })
 
+  describe('the story board', () => {
+    const post = (s: unknown) => call({ method: 'POST', op: 'save', body: { save: s } })
+    const clue = (id: string, extra = {}) => ({ id, x: 20, y: 30, at: 1_700_000_000_000, ...extra })
+
+    it('keeps pinned clues, your notes and the strings between them', async () => {
+      const board = {
+        clues: [clue('route9_timetable', { note: 'Last bus 1979?' }), clue('bus_warning')],
+        links: [['route9_timetable', 'bus_warning']],
+      }
+      expect((await post({ ...save(), board })).statusCode).toBe(200)
+      expect(((await call({ method: 'GET', op: 'me' })).body as { save: Save }).save.board).toEqual(
+        board,
+      )
+      // Older saves have no board and still load.
+      expect(save().board).toBeUndefined()
+      expect((await post(save())).statusCode).toBe(200)
+    })
+
+    it('cleans notes and keeps the board to itself', async () => {
+      const board = { clues: [clue('evie_card', { note: '  who\n is   Evie?  ' })] }
+      expect((await post({ ...save(), board })).statusCode).toBe(200)
+      const me = ((await call({ method: 'GET', op: 'me' })).body as { save: Save }).save
+      expect(me.board?.clues[0].note).toBe('who is Evie?')
+      const world = JSON.stringify((await call({ method: 'GET', op: 'world' })).body)
+      expect(world).not.toContain('evie_card')
+    })
+
+    it('keeps keepsakes from the forest in your room, hung or in storage', async () => {
+      const s = save()
+      s.room.items.push({ k: 'keep_nametag', x: 8, y: 1 }, { k: 'keep_mitten', x: -1, y: -1 })
+      expect((await post(s)).statusCode).toBe(200)
+      // Keepsakes hang on the wall, not the floor.
+      const bad = save()
+      bad.room.items.push({ k: 'keep_ticket', x: 6, y: 5 })
+      expect((await post(bad)).statusCode).toBe(400)
+    })
+
+    it('refuses boards that are not well-formed', async () => {
+      const bad = [
+        { clues: [clue('a_clue_that_does_not_exist')] },
+        { clues: [clue('evie_card'), clue('evie_card')] },
+        { clues: [clue('evie_card', { x: 140 })] },
+        { clues: [clue('evie_card', { note: 'x'.repeat(141) }), clue('bus_warning')] },
+        { clues: [clue('evie_card')], links: [['evie_card', 'evie_card']] },
+        // A string has to join two clues that are actually on the board.
+        { clues: [clue('evie_card')], links: [['evie_card', 'bus_warning']] },
+        {
+          clues: [clue('evie_card'), clue('bus_warning')],
+          links: [
+            ['evie_card', 'bus_warning'],
+            ['bus_warning', 'evie_card'],
+          ],
+        },
+        { clues: 'everything' },
+      ]
+      // An over-long note is trimmed, not refused.
+      const long = bad.splice(3, 1)[0]
+      expect((await post({ ...save(), board: long })).statusCode).toBe(200)
+      for (const b of bad)
+        expect((await post({ ...save(), board: b })).statusCode, JSON.stringify(b)).toBe(400)
+    })
+  })
+
   describe('pets', () => {
     const pet = {
       kind: 'dog',

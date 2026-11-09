@@ -534,3 +534,179 @@ export function threatSound(kind: 'eyes' | 'snatch', volume: number, pan: number
     src.stop(t + 0.45)
   }
 }
+
+// --- uncanny moments (story/events.ts) and the story's small sounds ---------------------------
+
+/**
+ * Something the forest does with nothing behind it: three knocks on wood, a few notes of a music
+ * box, or your name called from far off (a voice with no words, two falling syllables). `pan` is
+ * where it comes from (-1 left, 1 right).
+ */
+export function uncanny(kind: 'knock' | 'musicbox' | 'name' | 'whistle', pan: number, volume = 1) {
+  if (isMuted()) return
+  const ctx = audioContext()
+  if (!ctx) return
+  build(ctx)
+  const p = ctx.createStereoPanner()
+  p.pan.value = Math.max(-1, Math.min(1, pan))
+  // Far off: dulled, with a little echo from the trees.
+  const lp = ctx.createBiquadFilter()
+  lp.type = 'lowpass'
+  lp.frequency.value = kind === 'musicbox' || kind === 'whistle' ? 3200 : 1400
+  const out = ctx.createGain()
+  out.gain.value = volume
+  const echo = ctx.createDelay(1)
+  echo.delayTime.value = 0.23
+  const fb = ctx.createGain()
+  fb.gain.value = 0.32
+  lp.connect(out)
+  out.connect(p)
+  out.connect(echo).connect(fb).connect(echo)
+  fb.connect(p)
+  p.connect(ctx.destination)
+  const t0 = ctx.currentTime + 0.05
+  if (kind === 'knock') {
+    for (let i = 0; i < 3; i++) {
+      const t = t0 + i * 0.42
+      noiseHit(ctx, lp, t, 0.09, 0.32, 'bandpass', 620, 3)
+      thump(ctx, lp, t, 240, 150, 0.28)
+    }
+  } else if (kind === 'musicbox') {
+    // A slow little tune, each note a touch late and flat, as if the spring were running down.
+    const notes = [880, 1174.7, 987.8, 880, 784, 880]
+    let t = t0
+    notes.forEach((f, i) => {
+      for (const [mult, vol] of [
+        [1, 0.07],
+        [3.01, 0.018],
+      ]) {
+        const o = ctx.createOscillator()
+        o.type = 'sine'
+        o.frequency.value = f * mult * (1 - i * 0.004)
+        const g = ctx.createGain()
+        g.gain.setValueAtTime(0.0001, t)
+        g.gain.exponentialRampToValueAtTime(vol, t + 0.006)
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1)
+        o.connect(g).connect(lp)
+        o.start(t)
+        o.stop(t + 1.2)
+      }
+      t += 0.38 + i * 0.06
+    })
+  } else if (kind === 'whistle') {
+    // Nurse Ada's whistle: two short notes, the second higher, with a little breath in them.
+    ;[
+      [0, 0.18, 1180, 1250],
+      [0.26, 0.32, 1560, 1640],
+    ].forEach(([at, len, from, to]) => {
+      const t = t0 + at
+      const o = ctx.createOscillator()
+      o.type = 'sine'
+      o.frequency.setValueAtTime(from, t)
+      o.frequency.linearRampToValueAtTime(to, t + len)
+      const g = ctx.createGain()
+      g.gain.setValueAtTime(0.0001, t)
+      g.gain.exponentialRampToValueAtTime(0.16, t + 0.03)
+      g.gain.setValueAtTime(0.16, t + len - 0.06)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + len)
+      o.connect(g).connect(lp)
+      o.start(t)
+      o.stop(t + len + 0.05)
+      noiseHit(ctx, lp, t, len, 0.03, 'bandpass', 2400, 2)
+    })
+  } else {
+    // Two syllables, the second lower, like someone calling a name across a field.
+    ;[
+      [0, 0.34, 330, 300],
+      [0.42, 0.55, 262, 220],
+    ].forEach(([at, len, from, to]) => {
+      const t = t0 + at
+      const o = ctx.createOscillator()
+      o.type = 'sawtooth'
+      o.frequency.setValueAtTime(from, t)
+      o.frequency.linearRampToValueAtTime(to, t + len)
+      // Formants: an open "ah"-ish vowel.
+      const f1 = ctx.createBiquadFilter()
+      f1.type = 'bandpass'
+      f1.frequency.value = 750
+      f1.Q.value = 6
+      const f2 = ctx.createBiquadFilter()
+      f2.type = 'bandpass'
+      f2.frequency.value = 1200
+      f2.Q.value = 7
+      const g = ctx.createGain()
+      g.gain.setValueAtTime(0.0001, t)
+      g.gain.exponentialRampToValueAtTime(0.5, t + 0.06)
+      g.gain.setValueAtTime(0.5, t + len - 0.12)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + len)
+      o.connect(f1).connect(g)
+      o.connect(f2).connect(g)
+      g.connect(lp)
+      o.start(t)
+      o.stop(t + len + 0.05)
+    })
+  }
+}
+
+/** Paper: unfolding a note, or tucking it into your notepad. */
+export function paperRustle(volume = 1) {
+  if (isMuted()) return
+  const ctx = audioContext()
+  if (!ctx) return
+  build(ctx)
+  const t = ctx.currentTime
+  for (let i = 0; i < 3; i++)
+    noiseHit(ctx, ctx.destination, t + i * 0.07, 0.08, 0.09 * volume, 'highpass', 2500 + i * 700)
+}
+
+/**
+ * The bus: arriving (an engine growing out of the distance over a few seconds, then the hiss of
+ * its brakes and the doors folding open) or leaving (doors, then the engine drawing away). An old
+ * diesel, synthesized: a rough low drone kept above 100 Hz so it's heard on small speakers.
+ */
+export function busSound(kind: 'arrive' | 'leave', pan: number, volume = 1) {
+  if (isMuted()) return
+  const ctx = audioContext()
+  if (!ctx) return
+  build(ctx)
+  const p = ctx.createStereoPanner()
+  p.pan.value = Math.max(-1, Math.min(1, pan))
+  p.connect(ctx.destination)
+  const t0 = ctx.currentTime + 0.05
+  const engine = (start: number, len: number, from: number, to: number, rise: boolean) => {
+    const g = ctx.createGain()
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 700
+    for (const [f, type] of [
+      [108, 'sawtooth'],
+      [162, 'square'],
+    ] as const) {
+      const o = ctx.createOscillator()
+      o.type = type
+      o.frequency.setValueAtTime(f * from, start)
+      o.frequency.linearRampToValueAtTime(f * to, start + len)
+      o.connect(lp)
+      o.start(start)
+      o.stop(start + len + 0.1)
+    }
+    lp.connect(g).connect(p)
+    const peak = 0.11 * volume
+    g.gain.setValueAtTime(rise ? 0.0001 : peak, start)
+    g.gain.exponentialRampToValueAtTime(rise ? peak : 0.0001, start + len)
+    if (rise) g.gain.exponentialRampToValueAtTime(0.0001, start + len + 0.4)
+  }
+  const doors = (at: number) => {
+    noiseHit(ctx, p, at, 0.5, 0.09 * volume, 'highpass', 1800)
+    thump(ctx, p, at + 0.45, 220, 140, 0.18 * volume)
+  }
+  if (kind === 'arrive') {
+    engine(t0, 4, 0.9, 0.75, true)
+    // Brakes: a long hiss as it stops.
+    noiseHit(ctx, p, t0 + 4, 1.1, 0.12 * volume, 'highpass', 3000)
+    doors(t0 + 5.2)
+  } else {
+    doors(t0)
+    engine(t0 + 0.8, 4.5, 0.8, 1.05, false)
+  }
+}

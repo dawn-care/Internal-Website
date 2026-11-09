@@ -169,9 +169,13 @@ drawing; the adoption panel in src/ui.ts). How it works and the calls made:
 - **At the treeline (built with the forest, FOREST.md "Your pet"):** the grounds now have a wide
   band of outskirts that fade (colours, music, grass) as you walk out. Near the treeline a dog
   growls and a cat hisses at the trees (over a low rumble), hackles up, and won't go any closer;
-  petting it there only gets "looks nervous...". It waits where it stopped while you're in the
-  forest. The growl and hiss are sfx/pet-growl.mp3 and
+  petting it there only gets "looks nervous...". **As built,** it waits where it stopped while
+  you're in the forest. The growl and hiss are sfx/pet-growl.mp3 and
   sfx/pet-hiss.mp3, cut from the recordings in retirement/sounds.
+- **Planned forest update (not yet built):** the pet may sometimes follow into the woods,
+  get separated and later find you. A rescue by your own pet is always safe; reacting to a
+  suspicious person or place is **not** a reliable fake-person detector. The pet is never
+  permanently harmed. See FOREST.md for the proposed companion and rescue mechanics.
 - **Offline:** in LocalNet, Nana June walks with Pickles (a calico) and Grandpa Walt's dog Duke
   is asleep at home in his room. Both have beds.
 

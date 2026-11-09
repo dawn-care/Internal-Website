@@ -1,0 +1,259 @@
+import {
+  BOUNDS,
+  LANDMARKS,
+  LINES,
+  ROAD_POLES,
+  type Landmark,
+  type MapGround,
+  type Prop,
+  type Spot,
+} from './map'
+
+/*
+ * The map (story/map.ts) worked out tile by tile, once: what ground each tile has, which tiles
+ * are solid or kept clear of trees, where props stand, what can be examined where, and how far
+ * each tile is from the paths (which decides when you're lost).
+ */
+
+/** How each prop sits: its width in tiles, how many rows at its base are solid, and which columns
+ * (default all). Flat props are drawn under people. */
+export const PROP_SIZE: Record<
+  string,
+  { w: number; rows: number; cols?: number[]; flat?: true; tall: number }
+> = {
+  busstop: { w: 3, rows: 1, tall: 3 },
+  bussign: { w: 1, rows: 1, tall: 3 },
+  letterbox: { w: 1, rows: 1, tall: 2 },
+  gatepost: { w: 1, rows: 1, tall: 2 },
+  chimney: { w: 1, rows: 1, tall: 3 },
+  ruinwall: { w: 1, rows: 1, tall: 2 },
+  steps: { w: 1, rows: 1, tall: 1 },
+  bed: { w: 2, rows: 1, tall: 2 },
+  fence: { w: 1, rows: 1, tall: 1 },
+  pole: { w: 1, rows: 1, tall: 5 },
+  roadsign: { w: 1, rows: 1, tall: 2 },
+  swings: { w: 3, rows: 1, tall: 3 },
+  table: { w: 2, rows: 1, tall: 2 },
+  bin: { w: 1, rows: 1, tall: 1 },
+  car: { w: 3, rows: 1, tall: 2 },
+  truck: { w: 3, rows: 1, tall: 2 },
+  bunk: { w: 5, rows: 2, tall: 4 },
+  office: { w: 4, rows: 2, tall: 4 },
+  flagpole: { w: 1, rows: 1, tall: 5 },
+  campsign: { w: 6, rows: 1, cols: [0, 5], tall: 3 },
+  rail: { w: 1, rows: 0, flat: true, tall: 1 },
+  waymark: { w: 1, rows: 1, tall: 2 },
+  leanto: { w: 2, rows: 1, tall: 2 },
+}
+
+export interface PlacedProp extends Prop {
+  /** Every tile it makes solid. */
+  solid: [number, number][]
+}
+
+const W = BOUNDS.x1 - BOUNDS.x0 + 1
+const H = BOUNDS.y1 - BOUNDS.y0 + 1
+const GROUND_CODE: Record<MapGround, number> = {
+  road: 1,
+  path: 2,
+  water: 3,
+  plank: 4,
+  stone: 5,
+  wild: 6,
+  yard: 7,
+}
+export const GROUND_NAMES = Object.keys(GROUND_CODE) as MapGround[]
+
+export interface Layout {
+  /** The map's ground at a tile (null: just forest floor). */
+  ground(x: number, y: number): MapGround | null
+  /** No trees here (paths, clearings, round props). */
+  clear(x: number, y: number): boolean
+  solid(x: number, y: number): boolean
+  /** Tiles from the nearest path, road or clearing (0 on one; large off the map). */
+  off(x: number, y: number): number
+  /** Props whose anchor tile is in the rectangle (inclusive). */
+  propsIn(x0: number, y0: number, x1: number, y1: number): PlacedProp[]
+  spotAt(x: number, y: number): Spot | undefined
+  /** The prop standing on a tile (its base), or whose picture covers it (`picture`: for clicks). */
+  propAt(x: number, y: number, picture?: boolean): PlacedProp | undefined
+  /** The spot on a prop nearest a tile of it, if the prop has any. */
+  spotOn(p: PlacedProp, x: number, y: number): Spot | undefined
+  /** Every spot holding a clue, with where it is. */
+  clueSpots: Spot[]
+  landmarks: Landmark[]
+  /** Open forest-floor tiles a step or two off a path (where small finds can lie). */
+  findSpots: [number, number][]
+}
+
+function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const dx = bx - ax
+  const dy = by - ay
+  const l = dx * dx + dy * dy
+  const t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
+
+let built: Layout | null = null
+
+export function layout(): Layout {
+  return (built ??= build())
+}
+
+function build(): Layout {
+  const ground = new Uint8Array(W * H)
+  const clear = new Uint8Array(W * H)
+  const solid = new Uint8Array(W * H)
+  const off = new Float32Array(W * H).fill(999)
+  const idx = (x: number, y: number) => (y - BOUNDS.y0) * W + (x - BOUNDS.x0)
+  const inside = (x: number, y: number) =>
+    x >= BOUNDS.x0 && x <= BOUNDS.x1 && y >= BOUNDS.y0 && y <= BOUNDS.y1
+
+  for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++)
+    for (let x = BOUNDS.x0; x <= BOUNDS.x1; x++) {
+      const i = idx(x, y)
+      const cx = x + 0.5
+      const cy = y + 0.5
+      // Water first, so a road over it becomes a bridge.
+      for (const line of [...LINES].sort((a, b) => Number(a.walk) - Number(b.walk))) {
+        let d = Infinity
+        for (let k = 1; k < line.pts.length; k++) {
+          const [ax, ay] = line.pts[k - 1]
+          const [bx, by] = line.pts[k]
+          d = Math.min(d, segDist(cx, cy, ax, ay, bx, by))
+        }
+        const edge = d - line.width / 2
+        if (line.walk) off[i] = Math.min(off[i], Math.max(0, edge))
+        if (edge <= 0) {
+          const was = ground[i]
+          ground[i] =
+            line.walk && was === GROUND_CODE.water ? GROUND_CODE.plank : GROUND_CODE[line.ground]
+          clear[i] = 1
+          solid[i] = ground[i] === GROUND_CODE.water ? 1 : 0
+        } else if (edge < 1.2) clear[i] = 1
+      }
+    }
+
+  for (const lm of LANDMARKS)
+    for (const a of lm.areas)
+      for (let y = a.y0 - 1; y <= a.y1 + 1; y++)
+        for (let x = a.x0 - 1; x <= a.x1 + 1; x++) {
+          if (!inside(x, y)) continue
+          const i = idx(x, y)
+          const within = x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1
+          clear[i] = 1
+          if (!within) continue
+          if (a.ground && ground[i] !== GROUND_CODE.water) ground[i] = GROUND_CODE[a.ground]
+          if (a.walk) off[i] = 0
+        }
+
+  // How far from the paths, out across the open forest: a two-pass distance sweep (top-left to
+  // bottom-right, then back), so it grows evenly away from every path and clearing in every
+  // direction. (A one-way sweep only reached a couple of tiles upwards: behind the camp you were
+  // measured from the road, and got lost exploring it.)
+  const D = Math.SQRT2
+  const relax = (x: number, y: number, dirs: readonly (readonly [number, number, number])[]) => {
+    const i = idx(x, y)
+    for (const [dx, dy, c] of dirs)
+      if (inside(x + dx, y + dy)) off[i] = Math.min(off[i], off[idx(x + dx, y + dy)] + c)
+  }
+  const FWD = [
+    [-1, 0, 1],
+    [0, -1, 1],
+    [-1, -1, D],
+    [1, -1, D],
+  ] as const
+  const BACK = [
+    [1, 0, 1],
+    [0, 1, 1],
+    [1, 1, D],
+    [-1, 1, D],
+  ] as const
+  for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++)
+    for (let x = BOUNDS.x0; x <= BOUNDS.x1; x++) relax(x, y, FWD)
+  for (let y = BOUNDS.y1; y >= BOUNDS.y0; y--)
+    for (let x = BOUNDS.x1; x >= BOUNDS.x0; x--) relax(x, y, BACK)
+
+  // Props: the landmarks', the road's poles, and rails along the bridge.
+  const props: PlacedProp[] = []
+  const place = (p: Prop) => {
+    const size = PROP_SIZE[p.id]
+    const tiles: [number, number][] = []
+    if (size)
+      for (let r = 0; r < size.rows; r++)
+        for (let c = 0; c < size.w; c++)
+          if (!size.cols || size.cols.includes(c)) tiles.push([p.x + c, p.y - r])
+    for (const [tx, ty] of tiles) if (inside(tx, ty)) solid[idx(tx, ty)] = 1
+    // Keep trees off it and the ground round it.
+    const w = size?.w ?? 1
+    for (let y = p.y - (size?.rows ?? 1) - 2; y <= p.y + 1; y++)
+      for (let x = p.x - 1; x <= p.x + w; x++) if (inside(x, y)) clear[idx(x, y)] = 1
+    props.push({ ...p, solid: tiles })
+  }
+  for (const lm of LANDMARKS) for (const p of lm.props) place(p)
+  for (const [x, y] of ROAD_POLES) place({ id: 'pole', x, y })
+  for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++)
+    for (let x = BOUNDS.x0; x <= BOUNDS.x1; x++)
+      if (ground[idx(x, y)] === GROUND_CODE.plank)
+        for (const dx of [-1, 1])
+          if (inside(x + dx, y) && ground[idx(x + dx, y)] === GROUND_CODE.water)
+            props.push({ id: 'rail', x: x + dx, y, v: dx < 0 ? 0 : 1, solid: [] })
+
+  const spots = new Map<string, Spot>()
+  for (const lm of LANDMARKS) for (const s of lm.spots) spots.set(`${s.x},${s.y}`, s)
+
+  // Small finds lie on the forest floor a step or two off a path, never on one or in a clearing.
+  const findSpots: [number, number][] = []
+  for (let y = BOUNDS.y0 + 2; y <= -4; y++)
+    for (let x = BOUNDS.x0 + 2; x <= BOUNDS.x1 - 2; x++) {
+      const i = idx(x, y)
+      if (!ground[i] && !solid[i] && off[i] >= 1 && off[i] <= 2.2 && (x + y * 3) % 5 === 0)
+        findSpots.push([x, y])
+    }
+
+  return {
+    ground: (x, y) => {
+      if (!inside(x, y)) return null
+      const g = ground[idx(x, y)]
+      return g ? GROUND_NAMES[g - 1] : null
+    },
+    clear: (x, y) => inside(x, y) && clear[idx(x, y)] === 1,
+    solid: (x, y) => inside(x, y) && solid[idx(x, y)] === 1,
+    // Past the map's edge, the real distance: to the nearest edge tile, plus that tile's own.
+    // (It used to be 999, so stepping past the edge, behind the camp say, lost you at once.)
+    off: (x, y) => {
+      if (inside(x, y)) return off[idx(x, y)]
+      const cx = Math.max(BOUNDS.x0, Math.min(BOUNDS.x1, x))
+      const cy = Math.max(BOUNDS.y0, Math.min(BOUNDS.y1, y))
+      return off[idx(cx, cy)] + Math.hypot(x - cx, y - cy)
+    },
+    propsIn: (x0, y0, x1, y1) =>
+      props.filter((p) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1),
+    spotAt: (x, y) => spots.get(`${x},${y}`),
+    propAt: (x, y, picture) =>
+      props.find((p) => {
+        const size = PROP_SIZE[p.id]
+        const w = size?.w ?? 1
+        const top = p.y - (picture ? (size?.tall ?? 1) : Math.max(1, size?.rows ?? 1)) + 1
+        return x >= p.x && x < p.x + w && y >= top && y <= p.y
+      }),
+    spotOn: (p, x, y) => {
+      const size = PROP_SIZE[p.id]
+      let best: Spot | undefined
+      let bd = Infinity
+      for (let r = 0; r < Math.max(1, size?.rows ?? 1); r++)
+        for (let c = 0; c < (size?.w ?? 1); c++) {
+          const s = spots.get(`${p.x + c},${p.y - r}`)
+          const d = Math.hypot(p.x + c - x, p.y - r - y)
+          if (s && d < bd) {
+            best = s
+            bd = d
+          }
+        }
+      return best
+    },
+    clueSpots: [...spots.values()].filter((s) => s.clue),
+    landmarks: LANDMARKS,
+    findSpots,
+  }
+}

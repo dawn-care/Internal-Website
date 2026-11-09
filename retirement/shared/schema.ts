@@ -36,6 +36,7 @@ import {
   type PocketItem,
   type Relation,
 } from './catalog.js'
+import { BOARD_LINKS_MAX, BOARD_SIZE, CLUE_IDS, NOTE_MAX, type ClueId } from './story.js'
 
 /*
  * The save format and its validation, shared by the game (to build saves) and the server (to
@@ -130,6 +131,12 @@ export interface Save {
   family?: Family
   /** What you're carrying in your pocket (POCKET_SLOTS at most, each item once). */
   pocket?: PocketItem[]
+  /**
+   * The corkboard in your room (STORY.md "Board, failure and persistence"): every clue you've
+   * brought home safely, where you pinned it, your note on it, and the strings between them.
+   * Absent until you bring the first one home.
+   */
+  board?: Board
   /** Garden plot and hallway door. Assigned by the server, never trusted from the client. */
   slot: number
   createdAt: number
@@ -154,6 +161,24 @@ export interface Family {
   lost?: true
   /** A free reprint from Nurse Ada is ready at this time (epoch ms). */
   reprintAt?: number
+}
+
+/** One clue pinned to your board. Its text is fixed by its id (src/forest/story/clues.ts). */
+export interface BoardClue {
+  id: ClueId
+  /** Your own note on it (NOTE_MAX characters at most). */
+  note?: string
+  /** Where it's pinned: percentages of the board (0–BOARD_SIZE). */
+  x: number
+  y: number
+  /** When you brought it home (epoch ms). */
+  at: number
+}
+
+export interface Board {
+  clues: BoardClue[]
+  /** Strings between two pinned clues (each pair once, either way round). */
+  links?: [ClueId, ClueId][]
 }
 
 export interface Profile {
@@ -521,10 +546,43 @@ export function validateSave(v: unknown): Save {
     ...(o.coop === undefined ? {} : { coop: validateCoop(o.coop) }),
     ...recipes(o.recipes),
     ...familyAndPocket(o.family, o.pocket),
+    ...(o.board === undefined ? {} : { board: validateBoard(o.board) }),
     slot: int(o.slot ?? -1, 'slot', -1, MAX_SLOTS - 1),
     createdAt: num(o.createdAt, 'createdAt', 0, MAX_TIME),
     updatedAt: num(o.updatedAt, 'updatedAt', 0, MAX_TIME),
   }
+}
+
+function validateBoard(v: unknown): Board {
+  const o = obj(v, 'board')
+  const clues = arr(o.clues, 'board.clues', CLUE_IDS.length).map((raw, i): BoardClue => {
+    const c = obj(raw, `board.clues[${i}]`)
+    const note = cleanText(c.note, NOTE_MAX)
+    return {
+      id: oneOf(c.id, CLUE_IDS, `board.clues[${i}].id`),
+      ...(note ? { note } : {}),
+      x: num(c.x, `board.clues[${i}].x`, 0, BOARD_SIZE),
+      y: num(c.y, `board.clues[${i}].y`, 0, BOARD_SIZE),
+      at: num(c.at, `board.clues[${i}].at`, 0, MAX_TIME),
+    }
+  })
+  const ids = new Set(clues.map((c) => c.id))
+  if (ids.size !== clues.length) throw new SaveError('board has a clue twice.')
+  const links: [ClueId, ClueId][] = []
+  const seen = new Set<string>()
+  if (o.links !== undefined)
+    arr(o.links, 'board.links', BOARD_LINKS_MAX).forEach((raw, i) => {
+      const l = arr(raw, `board.links[${i}]`, 2)
+      const a = oneOf(l[0], CLUE_IDS, `board.links[${i}]`)
+      const b = oneOf(l[1], CLUE_IDS, `board.links[${i}]`)
+      if (a === b || !ids.has(a) || !ids.has(b))
+        throw new SaveError(`board.links[${i}] must join two different pinned clues.`)
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`
+      if (seen.has(key)) throw new SaveError('board has the same string twice.')
+      seen.add(key)
+      links.push([a, b])
+    })
+  return { clues, ...(links.length ? { links } : {}) }
 }
 
 function validateRelative(v: unknown, i: number): Relative {

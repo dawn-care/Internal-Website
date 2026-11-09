@@ -106,6 +106,8 @@ export class Darkness {
     radiusPx: number,
     dark: number,
     others: { x: number; y: number; r: number; a: number }[],
+    /** More cut out of the dark, faintly (the paths, so you can see where they go). */
+    cut?: (c: Ctx) => void,
   ) {
     if (this.cv.width !== w || this.cv.height !== h) {
       this.cv.width = w
@@ -120,6 +122,11 @@ export class Darkness {
     // Quantized, so a handful of sprite sizes covers every depth.
     const r = Math.max(8, Math.round(radiusPx / 4) * 4)
     c.drawImage(glow(r), Math.round(lx - r), Math.round(ly - r))
+    if (cut) {
+      c.save()
+      cut(c)
+      c.restore()
+    }
     for (const o of others) {
       const or = Math.max(8, Math.round(o.r / 4) * 4)
       c.globalAlpha = o.a

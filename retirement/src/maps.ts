@@ -1,4 +1,12 @@
-import { FURNITURE, MAX_SLOTS, PLOT_MAX, ROOM_DOOR_X, ROOM_H, ROOM_W } from '../shared/catalog'
+import {
+  CLOSET,
+  FURNITURE,
+  MAX_SLOTS,
+  PLOT_MAX,
+  ROOM_DOOR_X,
+  ROOM_H,
+  ROOM_W,
+} from '../shared/catalog'
 import { EST, EST_H, EST_W, GROUNDS_H, GROUNDS_W, OUTSKIRTS, TREELINE } from '../shared/grounds'
 import { seatId, type Dir, type MapId, type Room } from '../shared/schema'
 import { TABLES, tableSeat, type Side } from '../shared/tables'
@@ -63,6 +71,8 @@ export type ObjKind =
   | 'edgebush'
   | 'screen'
   | 'infirmaryDoor'
+  /** The locked closet door in every room (STORY.md "Act I"). */
+  | 'closet'
 
 export interface Obj {
   k: ObjKind
@@ -80,6 +90,7 @@ export type Interact =
   | { kind: 'kitchen'; x: number; y: number }
   | { kind: 'nurse'; x: number; y: number }
   | { kind: 'sign'; x: number; y: number; text: string }
+  | { kind: 'closet'; x: number; y: number }
   | { kind: 'nest'; x: number; y: number }
   | { kind: 'noticeboard'; x: number; y: number }
 
@@ -930,6 +941,9 @@ export function buildRoom(login: string, room: Pick<Room, 'items'>): GameMap {
     dir: 0,
   })
   m.objects.push({ k: 'exitMat', x: ROOM_DOOR_X, y: ROOM_H - 1, w: 1 })
+  // The closet: an ordinary door, always locked. Faced from the floor in front of it.
+  m.objects.push({ k: 'closet', x: CLOSET.x, y: CLOSET.y })
+  m.interacts.push({ kind: 'closet', x: CLOSET.x, y: CLOSET.y + CLOSET.h - 1 })
   for (const it of room.items) {
     const def = FURNITURE[it.k]
     if (!def || it.x < 0 || def.wall || def.flat) continue

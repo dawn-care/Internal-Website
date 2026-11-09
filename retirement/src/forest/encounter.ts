@@ -30,7 +30,21 @@ import {
   CHASE_PAUSE_MS,
   CHASE_SPEED,
   ENCOUNTER_EVERY,
+  STARE_MS,
   ENCOUNTER_FIRST,
+  CALL_COME,
+  CALL_EVERY,
+  CALL_EVERY_FAKE,
+  CALL_NEAREST,
+  CALL_WAIT,
+  CALL_WRONG_SIDE,
+  FAKE_LEAVE_MS,
+  FOLLOW_MS,
+  FOLLOW_NEAR,
+  LUNGE_SPEED,
+  TURN_MS,
+  ENCOUNTER_LOST_EVERY,
+  ENCOUNTER_LOST_FIRST,
   ENCOUNTER_SPAWN,
   ENCOUNTER_TALK,
   FAKE_ASKS,
@@ -85,7 +99,21 @@ export interface Person {
   y: number
   dir: Dir
   anim: number
-  phase: 'approach' | 'talk' | 'compare' | 'leave' | 'lead' | 'pause' | 'chase'
+  phase:
+    /** Lost: a searcher off in the dark with a torch, calling, waiting for you to come. */
+    | 'call'
+    | 'approach'
+    | 'talk'
+    | 'compare'
+    | 'leave'
+    | 'lead'
+    | 'stare'
+    | 'pause'
+    | 'chase'
+    /** You followed a grinning one: it stops, grows and turns... */
+    | 'turn'
+    /** ...and lunges. */
+    | 'lunge'
   /** How far a fake has given up pretending (0–3), and how often you've said no. */
   stage: number
   asks: number
@@ -99,6 +127,14 @@ export interface Person {
   far: number
   /** Where it has walked while leading you (you follow it). */
   trail: { x: number; y: number }[]
+  /** A searcher's next call (ms). */
+  callIn?: number
+  /** A fake you turned away: it backs off into the dark facing you, grinning. */
+  grin?: boolean
+  /** How long (ms) you've been following it as it goes, and where you were last frame. */
+  followed?: number
+  lx?: number
+  ly?: number
 }
 
 /** What the encounters need from the game. */
@@ -118,6 +154,14 @@ export interface Host {
   end(kind: 'home' | 'caught', line: string, who?: Person): void
   /** Straight-line distance from where you came in (deeper means more fakes). */
   depth(): number
+  /** You're lost: people come looking far more often (there's nothing else to do but wait). */
+  lost(): boolean
+  /** You're sitting down, waiting (searchers come to you sooner). */
+  waiting(): boolean
+  /** How far you can see on screen (half the view's shorter side, tiles). */
+  viewR(): number
+  /** A searcher calls out: Ada whistles, family call your name; a fake's may come from the wrong side. */
+  call(p: Person, wrongSide: boolean): void
   /** Whether people may turn up now (not mid-collapse, not leaving). */
   quiet(): boolean
   /** Whether a dialogue or panel is open (someone is talking to you). */
@@ -127,6 +171,11 @@ export interface Host {
   /** A recorded sound from (x, y): flesh as it changes, bones as it stretches, the rise as it
    * comes for you, a moan as it loses you. */
   play(name: 'flesh' | 'bones' | 'rise' | 'moan', x: number, y: number, volume?: number): void
+  /** Whether this trip can still have a real danger (one at most: story/plan.ts), and using it. */
+  danger(): boolean
+  spendDanger(): void
+  /** Something goes through your head. */
+  thought(text: string): void
 }
 
 const between = ([a, b]: [number, number]) => a + Math.random() * (b - a)
@@ -135,6 +184,7 @@ const pick = <T>(list: readonly T[]): T => list[Math.floor(Math.random() * list.
 export class Encounters {
   person: Person | null = null
   private next = between(ENCOUNTER_FIRST)
+  private wasLost = false
   /** A chaser you lost may come back: ms until it does (0: it won't). */
   private comeBack = 0
   private comeBackAs: Person | null = null
@@ -162,6 +212,7 @@ export class Encounters {
     const p = this.person
     if (!p) return 0
     if (p.phase === 'pause') return PAUSE_DREAD
+    if (p.phase === 'turn' || p.phase === 'lunge') return 1
     if (p.phase === 'lead') return 0
     if (p.phase !== 'chase') return STAGE_DREAD[Math.min(3, p.stage)] ?? 0
     const d = Math.hypot(p.x - this.host.me.x, p.y - this.host.me.y)
@@ -208,6 +259,11 @@ export class Encounters {
         }
         return
       }
+      // Once you're lost they start looking for you in earnest: the next is soon.
+      if (this.host.lost() && !this.wasLost) {
+        this.wasLost = true
+        this.next = Math.min(this.next, between(ENCOUNTER_LOST_FIRST))
+      }
       this.next -= ms
       if (this.next <= 0 && this.host.quiet()) this.spawn()
       return
@@ -216,6 +272,22 @@ export class Encounters {
     const me = this.host.me
     const dist = Math.hypot(p.x - me.x, p.y - me.y)
     switch (p.phase) {
+      case 'call': {
+        this.face(p)
+        p.callIn = (p.callIn ?? 0) - ms
+        if (p.callIn <= 0) {
+          // A real one calls steadily; a fake at odd intervals, and now and then from where it
+          // isn't.
+          this.host.call(p, !p.real && Math.random() < CALL_WRONG_SIDE)
+          p.callIn = p.real ? CALL_EVERY : between(CALL_EVERY_FAKE)
+        }
+        const wait = this.host.waiting() ? CALL_WAIT / 2 : CALL_WAIT
+        if (dist < CALL_COME || p.t > wait) {
+          p.phase = 'approach'
+          p.t = 0
+        }
+        break
+      }
       case 'approach':
         if (dist <= ENCOUNTER_TALK) {
           p.phase = 'talk'
@@ -247,10 +319,51 @@ export class Encounters {
         // Walking away into the dark, the way they came.
         const ax = p.x + (p.x - me.x)
         const ay = p.y + (p.y - me.y)
-        this.walk(p, ax, ay, PERSON_SPEED, dt)
-        if (dist > CHASE_LOSE || p.t > 9000) this.done()
+        if (!p.grin) {
+          this.walk(p, ax, ay, PERSON_SPEED, dt)
+          if (dist > CHASE_LOSE || p.t > 9000) this.done()
+          break
+        }
+        // A fake you turned away backs off slowly, still facing you, grinning. Follow it, and
+        // it stops.
+        this.walk(p, ax, ay, PERSON_SPEED * 0.7, dt)
+        this.face(p)
+        const toward =
+          p.lx === undefined
+            ? 0
+            : ((me.x - p.lx) * (p.x - me.x) + (me.y - (p.ly ?? me.y)) * (p.y - me.y)) /
+              Math.max(0.01, dist)
+        p.lx = me.x
+        p.ly = me.y
+        p.followed =
+          dist < FOLLOW_NEAR && toward > 0.005
+            ? (p.followed ?? 0) + ms
+            : Math.max(0, (p.followed ?? 0) - ms * 0.5)
+        if ((p.followed ?? 0) > FOLLOW_MS) {
+          // It grows, all at once, and turns its whole self to you.
+          p.phase = 'turn'
+          p.t = 0
+          p.stage = 3
+          this.host.swell(3)
+          this.host.play('bones', p.x, p.y)
+          this.host.play('rise', p.x, p.y)
+        } else if (dist > CHASE_LOSE * 1.4 || p.t > FAKE_LEAVE_MS) this.done()
         break
       }
+      case 'turn':
+        this.face(p)
+        if (p.t > TURN_MS) {
+          p.phase = 'lunge'
+          p.t = 0
+        }
+        break
+      case 'lunge':
+        this.walk(p, me.x, me.y, LUNGE_SPEED, dt, true)
+        if (dist < CHASE_CATCH) {
+          this.person = null
+          this.host.end('caught', 'You shouldn’t have followed it.', p)
+        } else if (p.t > 3000) this.done()
+        break
       case 'lead': {
         // Away from where you came in, deeper in, a little ahead of you (it waits if you fall
         // behind). You follow the trail it leaves.
@@ -269,6 +382,14 @@ export class Encounters {
         }
         break
       }
+      case 'stare':
+        // It just looks at you. Then it turns and goes, and you hear it a long way off.
+        if (p.t > STARE_MS) {
+          p.phase = 'leave'
+          p.t = 0
+          p.grin = true
+        }
+        break
       case 'pause':
         if (p.t > CHASE_PAUSE_MS) {
           p.phase = 'chase'
@@ -343,7 +464,12 @@ export class Encounters {
     // The look the player sees is the person's name in the dialogue (portraits take eye colour
     // from it), so a fake's face keeps the real one's name.
     p.look.name = base.name
-    this.placeOutOfSight(p)
+    if (this.host.lost()) {
+      // Lost: they don't just walk up. Off in the dark, a torch and a voice: go to them.
+      p.phase = 'call'
+      p.callIn = 600
+      this.placeOutOfSight(p, Math.max(CALL_NEAREST, this.host.viewR() - 1.5))
+    } else this.placeOutOfSight(p)
     this.person = p
   }
 
@@ -442,6 +568,18 @@ export class Encounters {
   }
 
   private refuse(p: Person) {
+    // A fake, turned away, stops pretending: it stands and stares, then backs off into the dark
+    // grinning. It never chases you for saying no (play-testing: the chase felt random); it only
+    // comes for you if you follow it (case 'leave').
+    if (!p.real) {
+      p.stage = 1
+      p.phase = 'stare'
+      p.t = 0
+      this.host.closeDialogue()
+      this.host.swell(1)
+      this.face(p)
+      return
+    }
     if (p.real) {
       // Sad, but safe: they're hurt and leave, and that's one way home gone.
       return this.say(
@@ -455,27 +593,6 @@ export class Encounters {
         'hurt',
       )
     }
-    this.pushFurther(p)
-  }
-
-  /** A fake asks again, a stage further gone; after the last refusal it comes for you. */
-  private pushFurther(p: Person) {
-    p.asks++
-    p.stage = Math.min(3, p.stage + 1)
-    this.host.swell(p.stage)
-    // Its flesh shifts as the colour drains (stage 2); at 3 it stretches, and you hear the bones.
-    if (p.stage >= 2) this.host.play('flesh', p.x, p.y, p.stage === 2 ? 0.7 : 1)
-    if (p.stage >= 3) window.setTimeout(() => this.host.play('bones', p.x, p.y), 700)
-    const again = this.script(p).again
-    const line = again[Math.min(again.length - 1, p.asks - 1)]
-    if (p.asks >= FAKE_ASKS) {
-      this.say(p, [line], false, () => {
-        p.phase = 'pause'
-        p.t = 0
-        // A rise that peaks just as it starts towards you.
-        this.host.play('rise', p.x, p.y)
-      })
-    } else this.say(p, [line], true)
   }
 
   private lookAtPhoto(p: Person) {
@@ -542,7 +659,7 @@ export class Encounters {
 
   private done() {
     this.person = null
-    this.next = between(ENCOUNTER_EVERY)
+    this.next = between(this.host.lost() ? ENCOUNTER_LOST_EVERY : ENCOUNTER_EVERY)
   }
 }
 

@@ -1,20 +1,31 @@
 # The Forest: design decisions
 
-Status: **being built. Stages 1 (the forest itself), 2 (family) and 3 (encounters) are done**; see "Build status" at the end for
-what's built and the judgement calls made along the way. This records what we've decided for the
-forest beyond the Sunset Acres grounds and why. Numbers marked _(tune)_ are starting points to adjust after
-play-testing. The story is in [STORY.md](STORY.md), a **draft** for the team to react to.
+Status: **forest survival, family/photo and encounter systems built (stages 1–3)**; the fixed
+road network, authored story, examination, inventory puzzle gates, memory board, cutscenes,
+Nora, locked room and false Sunset Acres are **planned**. The Build status section at the end
+preserves an implementation snapshot, including behavior the planned map system must change.
+
+Documentation responsibilities:
+
+- [STORY.md](STORY.md): canonical history, characters, supernatural rules, clue IDs, acts, memory scenes, ending.
+- [MAP.md](MAP.md): **fixed** roads, structures, gates, location IDs, adjacency, safe corridor/lost-forest rule.
+- [PUZZLES.md](PUZZLES.md): puzzle solutions, NPC scenes, item/evidence lifecycle, gating, save/retry rules.
+- [COMMUNITY.md](COMMUNITY.md): ordinary multiplayer Sunset Acres. Its economy and features stay intact.
+
+Tune numbers are initial suggestions, not verified balance values.
 
 ## The idea in one line
 
-Sunset Acres is warm, social and safe. The forest around it is the opposite: you're alone, you're
-helpless, and the people who come to take you home aren't always who they say they are. You go
-in to piece together a story, and you only keep what you learned if you make it back.
+Sunset Acres is warm, social and safe. In the forest, you explore unfamiliar places, examine
+clues, and discover instructions in **your own handwriting** that you cannot remember writing.
+Some people who offer to lead you home are impostors. You can save what you learned only by
+returning alive and putting the evidence on your room's board.
 
 ## Core principles
 
-- **Community inside, alone outside.** On the grounds you can see and talk to everyone. In the
-  forest you can't see anyone and nobody can see you.
+- **Community inside, isolated outside.** On the grounds you can see and talk to everyone.
+  Other players cannot see or contact you in the forest. Once the companion system is built,
+  your **own pet may sometimes be with you**, but it can become separated, leaving you alone.
 - **Helplessness, not combat.** There are **no weapons, no armour and no fighting** of any kind.
   You can't fight confusion; you can only hold on to what you know and hope someone brings you
   home. What you have is light, your notes, your judgement, and your legs.
@@ -28,8 +39,14 @@ in to piece together a story, and you only keep what you learned if you make it 
   hissing at the treeline, below, is an in-world hint, not a sign: it never stops you.)
 - **The horror is the experience of confusion, not people with dementia.** It's told from the
   frightened resident's point of view and never mocks them.
-- **Fair, not random.** Every risky choice has a clue an observant player can learn to read. The
-  forest teaches its rules over time, and those rules end up on your wall.
+- **Fair, not random.** Every risky choice has an observable clue an attentive player can
+  learn to read. Rules are mechanically consistent; an old handwritten *interpretation* of a
+  rule may be mistaken or incomplete. Evidence reaches the wall only after a safe return.
+- **Exploration over combat.** Distinct places and examinable objects advance the mystery.
+  Each discovery can provoke a brief inner thought, add an unbanked clue, or challenge an
+  earlier note. The core loop is examine → decide how much to risk → return → connect evidence.
+- **Your past self as investigator.** Discovering notes in your own handwriting gradually
+  reveals that you have investigated this forest before, although you cannot remember why.
 
 ## Getting there
 
@@ -62,8 +79,9 @@ in to piece together a story, and you only keep what you learned if you make it 
   ordinary undergrowth** let you push through into the forest. Nothing marks them.
 - Crossing over: the music fades out (`setMusicLevel` in src/music.ts), the light closes in, the
   bird/cricket ambience fades and creepy forest ambience fades up.
-- **Each visit is a different forest**, generated fresh (seeded per visit), so nobody can memorize
-  the way.
+- **The established roads, trail forks, buildings, entrances, clue sites and key locations are fixed**
+  between visits. Only the wilderness **between/away from** their authored corridors changes
+  procedurally. See [MAP.md](MAP.md). Players are meant to learn landmark locations and backtrack.
 - **Your pet knows.** When you've crossed the outskirts and get really close to the treeline
   with your pet out with you, **a dog growls and a cat hisses** at the trees (see "Your pet"
   below). After the slow fade of the walk out, it's the clearest hint that the forest is
@@ -71,15 +89,24 @@ in to piece together a story, and you only keep what you learned if you make it 
 
 ## Getting lost for real
 
-- **Near the property you can still walk back on your own.** The home's lights glow faintly through
-  the trees and the music is barely audible.
-- **Past a certain distance, the way home stops existing** _(tune: ~40 tiles from the entry)_.
-  Turning around just leads to more forest. Nothing announces it; the last trace of the music
-  disappearing is the only sign.
-- **After that, the only ways home are a real person (nurse or family member) or your pet.**
-- **Safety net:** encounters keep coming while you're lost _(tune: every 1.5–4 minutes)_. If you
-  wander long enough without being brought home _(tune: ~12 minutes lost)_, you **collapse** and
-  wake up in the infirmary, losing that trip's notes. Nobody is ever stuck forever.
+- **Staying on a known path preserves your bearings, regardless of depth.** The path network and
+  buildings have authored, per-player coordinates. You may always walk back toward Sunset Acres
+  along connected paths unless a visible authored gate blocks passage.
+- **Leaving the path is the danger.** Give authored roads/clearings a forgiving walkable corridor.
+  When the player strays far enough past it, environmental cues fade, the connected road is no
+  longer available, and the client transitions to the **procedural lost forest**. The earlier
+  implementation uses a straight-line ~40-tile point of no return; replace that with
+  corridor-based disorientation when implementing the fixed map. Do not leave both loss rules
+  active.
+- **Once lost, you need a genuine rescuer**: real family member, Nurse Ada, or the real pet.
+  The forest can offer convincing impostors; only genuine escorts bank notes safely.
+- **Safety net:** while lost, keep rescuer/threat opportunities coming _(tune: every 1.5–4 min)_.
+  If the player remains lost too long _(tune: ~12 min)_ they collapse, awaken in the infirmary,
+  lose the expedition's unbanked evidence and unsecured items, and lose the family photo
+  **only when it was carried on that failed trip**. A photo left at home, banked board,
+  stored keys, room furniture, coins and garden progress remain intact.
+- **Barriers matter:** camp fences extend beyond the safe navigation margin; walking around
+  them transitions to lost forest instead of bypassing the office, service gate or final shelter.
 
 ## Alone in the forest
 
@@ -98,9 +125,14 @@ in to piece together a story, and you only keep what you learned if you make it 
   found light source makes bigger.
 - Fog, sounds you can't place, movement at the edge of the light, and forest footsteps (dry leaves,
   the occasional twig snap).
-- **Disorientation touches, used sparingly:** your name in the HUD flickers, item labels in your
-  basket briefly turn into nonsense, the clock jumps backwards, a path you just walked down isn't
-  there when you turn around.
+- **Disorientation touches, used sparingly:** your name in the HUD flickers, item labels in
+  your basket briefly turn into nonsense, the clock jumps backwards, a path you just walked
+  down isn't there when you turn around.
+- **Inner voice (planned):** brief first-person unease and observations triggered by movement,
+  examining objects, hearing cues, returning to familiar landmarks and connecting banked
+  evidence. Start mundane ("It's too quiet.") and gradually become personal ("I don't
+  remember writing this."). Don't have it constantly spoil hidden threats or assert facts
+  that an examination hasn't established. See STORY.md for tone and progression.
 
 ## What you carry (no combat)
 
@@ -128,29 +160,35 @@ in to piece together a story, and you only keep what you learned if you make it 
   their faces are the ones in the photo.
 - The photo is the **answer key** for the forest: real relatives look exactly like it.
 - Each relative also has **what they call you** ("Mum", "Gran", your name), shown on the photo:
-  a fake can get it wrong (see the tells, and Maggie's _"If they call you something your family
-  never called you, run."_).
+  a fake can get it wrong. Handwritten observations from the protagonist's earlier expeditions
+  can teach players to notice this tell.
 - Existing characters without a family get the step **the first time they go into the forest**
   (decided): it opens at the gap, before the forest.
 
 ### Carrying the family photo
 
-- The photo lives on your room wall. **Taking it with you is optional:** pick it up from the wall
-  before a trip and it goes in your pocket, using a slot.
-- **Why bring it:** during an encounter you can choose **"Look at the photo"** and compare it side
-  by side with the person in front of you.
-- **What it costs:** looking takes time. You hold it up to your light while they keep talking and
-  your light flickers. And it takes a pocket slot another item could use.
-- **Leaving it at home** is safe, but then you only have what you remember from the wall.
-- **You can lose it.** If you're caught while carrying it, it's lost in the forest and the frame on
-  your wall is empty. Two ways to get it back:
-  - **Find it on a later trip**, as an event: your photo, face-down in the leaves. Sometimes it has
-    been **subtly changed** (a face that's a little wrong), which you'll only notice if you
-    remember the original.
-  - **Ask Nurse Ada for a reprint** from your file, after a short wait or for some coins, so the
-    loss is never permanent.
-- Rationale: choosing whether to carry a memory aid or trust your memory is exactly the kind of
-  decision the forest is about.
+- The photo normally hangs on the wall in your room. **Taking it along is optional:** before an
+  expedition, remove it from the wall and place it in your pocket, using one slot.
+- **Why bring it:** during a family encounter, choose **"Look at the photo"** to compare the
+  relative's face and identifying details side by side.
+- **What it costs:** looking takes time, your light flickers as you inspect the photo, and the
+  photo occupies a pocket slot that could hold a meal or another useful item.
+- **Leaving it home:** the photo remains on the wall, safely available for later expeditions.
+  You must assess encounters from memory without in-forest access to the picture.
+- **Losing it:** if you are caught or collapse **while carrying the photo**, it is lost along
+  with that trip's unbanked notes. If the photo stayed at home, **it is not lost**, even when
+  the expedition ends in the infirmary. If the photo is already missing, failure does not
+  remove anything else from the wall.
+- **Replacing it:** ask Nurse Ada for a replacement print. **40 coins** is the existing instant
+  reprint price _(tune)_. Coins are easy to earn at Sunset Acres by growing crops on your own
+  community garden plot and selling the harvest to **Chef Rosa**. Photo replacement should be
+  an affordable setback, not a progression blocker. **Design rule: replacements are purchased.**
+  The implementation currently also offers a free reprint after one game day; remove that
+  option when implementing the planned photo-loss and replacement rules.
+- **Trustworthiness:** a genuine reprint is an accurate reference. Do not secretly alter a
+  replacement photo while impostor identification relies on it as an answer key.
+- **Meaningful choice:** carry a reliable visual memory aid and risk losing it, or leave it
+  safe in the room and rely on your memory when evaluating a rescuer.
 
 ## Encounters: the nurse and the family
 
@@ -169,8 +207,9 @@ your family members**, by the names you entered. They offer to take you home.
   - no shadow
   - no footstep sounds
   - a nickname or detail that isn't on the photo
-  - for the nurse: wrong name, the old **Hollow Pines** badge instead of a Sunset Acres one (see the
-    story), or not quite Ada's look
+  - for the nurse: wrong name, an unfamiliar **Hollow Pines** badge rather than her Sunset
+    Acres badge, or not quite Ada's look (the alternate badge is implemented as a visual tell;
+    the camp employed its own staff, but the badge does not mean Nurse Ada worked there)
 
   Each fake shows one or two of these, never all of them.
 
@@ -225,41 +264,46 @@ Each refusal (they ask again) pushes it a stage further:
   **"That was not your daughter."** / **"That was not a nurse."** (using the real relationship).
 - You **wake up in the home's infirmary** with the real Nurse Ada: _"They found you wandering by
   the fence again, dear."_
-- You **lose that trip's notes** (_"…you can't remember what you found."_), any light you found
-  on that trip, and the family photo if you were carrying it. Your room, garden and saved notes
-  are never touched.
+- **Failure rule:** lose **all notes, collected clues and other unbanked progress from this
+  outing**. The family photo is also lost **only when it was in your pocket during the trip**;
+  a photo left on the room wall is safe. Previously banked board notes and links, room
+  decorations, coins, and garden progress remain intact. Nurse Ada can provide a replacement
+  photo; community garden harvests sold to Chef Rosa make the cost manageable. The code already
+  removes a carried photo when caught; apply the same conditional rule to collapse when the
+  unbanked-notes system is added.
 
 ## Your pet
 
-### At the edge of the grounds: growling and hissing
+### At the edge of the grounds (built behavior)
 
-- When you come **really close to the community's bounds** (the treeline beyond the outskirts,
-  not the edge of the established area) with your pet following you, it stops, faces the trees, and **a dog growls / a cat hisses**,
-  with a short animation (hackles up, ears back, tail puffed). This tells you, in the world, that
-  the forest is dangerous, before you ever find a way in.
-- It's a **warning, never a wall**: it doesn't block you, take you back or show any text box. If
-  you keep going, the pet hangs back at the edge (it won't follow you into the forest; that's
-  what makes it finding you in there later, below, special) and is waiting for you when you come
-  back.
-- It reacts most strongly near the hidden gaps in the treeline, so it's also a fair clue to
-  where they are _(decide: only near gaps, or anywhere along the edge, stronger near gaps)_.
-- Only when your pet is out with you: at night it's asleep at home, so you get no warning then.
-  That's deliberate.
-- Distance and cooldown _(tune: within ~2 tiles of the edge; at most once every ~20 s, so it
-  doesn't nag)_. Neighbours' pets near you react too, so a group at the treeline hears it.
-- **Sound:** needs recordings of **a dog growl and a cat hiss**, processed like the other pet
-  sounds (`scripts/cut-sfx.sh`, into `sfx/pet-growl.mp3` and `sfx/pet-hiss.mp3`; see CLAUDE.md
-  "Music and sound").
-- Build it with stage 1 (the forest itself) or earlier: pets and the treeline already exist, so
-  it can go in before the forest does.
+- With your pet following you, approaching the treeline makes a dog **growl** or a cat **hiss**;
+  it faces the trees, trembles and stops near the gap. This is a diegetic warning, not a barrier.
+- **As implemented in stage 1**, the pet stays behind at the treeline and waits while you enter.
+  It sleeps at home at night. The sound effects are `sfx/pet-growl.mp3` and
+  `sfx/pet-hiss.mp3`; current distances, cooldowns and animations remain recorded under
+  "Build status" below. Keep them until the new companion behavior is implemented.
 
-### In the forest
+### In the forest (planned)
 
-- **Rarely, your dog or cat finds you in the forest** _(tune: ~10% of rescues once lost)_.
-- It's **always real and 100% safe**: follow it and it leads you home with your notes kept.
-- **The pet is never faked.** It's the one thing in the forest you can always trust.
-- Pets are built (COMMUNITY.md): `save.pet` has the kind, coat, name and **hearts** (0–10,
-  from daily petting and treats), so the rescue chance can grow with hearts if we want.
+- **Allow intermittent companionship.** Sometimes the player's dog or cat follows into the
+  shallower forest; sometimes it refuses at the edge, and it can become separated deeper in.
+  Its absence after familiar footsteps and small animations should increase unease. It always
+  reappears safely at home after a failed trip and is **never permanently hurt or killed**.
+- **Behavioral clues, not an answer key.** It may growl at an impostor, a harmless place, or
+  something the player can't see; it may also stay quiet near a fake. Do not couple its growl
+  deterministically to the `isFake` flag. It should not make the photo-comparison encounter
+  pointless.
+- **A reunion can be a safe exit.** Occasionally the pet comes to find you while you're lost.
+  It is **always your actual pet, never a mimic**, and choosing to follow it home **always
+  succeeds**, banking that trip's notes. Hearing its collar or paws first can signal the rescue.
+- **Chance:** an initial idea was roughly **1 in 8 eligible rescue opportunities** _(tune)_,
+  **not** a 1-in-8 roll every second or action. Trigger through the scheduled encounter/rescue
+  system with an interval or cooldown, never through idling as a farming exploit. The existing
+  draft used ~10% of rescues; neither number has been play-tested.
+- **Pet hearts** already exist in `save.pet` (`kind`, `coat`, `name`, `hearts` 0–10). More hearts
+  could influence reunion frequency, but **never reliability**; the pet is always a safe escort.
+- **Solo-player isolation remains.** Other residents never appear or chat in your forest session
+  even when your own pet is present; this doesn't change the client-only forest model.
 
 ## Things you avoid
 
@@ -267,9 +311,9 @@ Each refusal (they ask again) pushes it a stage further:
   hide, keep to the light, keep moving. For example _(draft)_:
   - **The Visitor:** a tall figure that only moves while you aren't looking at it (like the basement
     statue in `/game`). Touching it is being caught.
-  - **The Wanderers:** shapes of former residents walking slow loops between the trees. Harmless
-    unless they see you in the dark, and then they follow. (In the story bible, STORY.md, they're the people
-    who went with the wrong face.)
+  - **The Wanderers** (working threat name): ambiguous figures walking slow loops between
+    trees. Harmless unless they see you in the dark, then they follow. **Their origin is not
+    decided** and should stay unspecified until the story bible establishes one.
 - Being caught by one of these is the same as being caught by an impostor (fade to black, a line
   of text, the infirmary).
 
@@ -306,7 +350,7 @@ the synthesized wind, heartbeat and drone:
   light collapsing).
 - **Footsteps behind you:** once the arm reaches in, you hear it breathing, close behind you, until
   you turn or it has you.
-- **Not used yet:** the murmured prayer, kept for the chapel (stage 5).
+- **Not used in the main story:** the recorded murmured prayer. Keep as an unused sound asset unless a specific, authored site calls for it.
 
 ## Threats between encounters
 
@@ -349,61 +393,90 @@ carried photo lost; no face, just the line).
 Numbers: `THREAT_*`, `FALSE_ALARM`, `STALK_*`, `ARM_FROM`, `EYES_*`, `LIGHT_TAKEN`, `LIGHT_LEAST` in
 src/forest/tuning.ts; the code is src/forest/threats.ts.
 
-## Notes and the memory wall
+## Exploring, examining and documenting (planned)
 
-The point of going into the forest: finding pieces of a story and remembering them.
+**The core loop:** explore a **fixed** trail network; examine authored objects at known sites;
+collect clues, physical tools or warnings; survive the journey back; pin and connect evidence
+on the room board; return with the proper items to unlock obstacles. [MAP.md](MAP.md) specifies
+where, and [PUZZLES.md](PUZZLES.md) specifies how. **Do not randomize physical story-site
+locations or the source of any essential clue.** Only ambient wilderness between roads is random.
 
-- In the forest you find **story fragments**: writing on walls, letters, newspaper clippings,
-  timetables, things people tell you, things you realize after a decision.
-- Each one becomes a **sticky note in your pocket notepad.** The game writes a short note in shaky
-  handwriting, and **you can add your own words** to it (both, as decided).
-- **Notes are only kept if you get home safely**: walking back before you're lost, or being brought
-  home by a real person or your pet. If you're caught or collapse, that trip's notes are lost.
-- At home, your notes go up on a **memory board (corkboard) in your room**, a default wall piece
-  you start with. You can **arrange them and connect them with string.** It becomes your record of
-  what you've figured out, "so you don't forget."
-- Finding a fragment you already have: _"You already remember this."_
-- Notes are saved to your account (they're what persists of the story).
+- **Inspect before interpretation.** Text and object close-ups tell the player what is physically
+  there. The protagonist's short inner voice may express dread or recognize handwriting but must
+  not reveal objective facts not yet discovered.
+- **Evidence has canonical clue IDs.** Documents remain at their fixed sources and can be read
+  again. Some produce unbanked notepad entries; other inspections are environmental only.
+  Existing paper content never mutates secretly to confuse the player.
+- **Two kinds of pickups:** informational notes/clippings for the board, and **usable physical
+  items** such as `ITEM_ADMIN_KEY` and `ITEM_CLOSET_KEY`. A key stored or displayed at home
+  must be physically **taken back into the player's pocket** to open a remote lock on a later trip.
+- **Banking:** returning to real Sunset Acres by fixed roads or genuine escort commits that
+  expedition's evidence/items. Being caught, collapsing or quitting mid-expedition discards
+  unbanked findings. Previously saved board evidence remains. Opened routes are persisted as
+  described in PUZZLES.md; all critical items remain recoverable on failure.
+- **Board:** the default corkboard in the resident's room supports arranging, annotating,
+  linking notes and replaying memory vignettes. The final chronological deduction `P09` is a
+  controlled board interaction; arbitrary string geometry is not a hidden mandatory solution.
+- **Cutscenes:** major recollections play **only after the triggering clues are banked on a
+  successful return**. A failure/infirmary transition never plays a clue reward. See STORY.md.
 
-## Small decisions (events)
+### Failure and photo policy
 
-Along the way you run into small situations with a choice. Each one has:
+| Outcome | Trip evidence/items | Previously banked evidence | Family photo |
+| --- | --- | --- | --- |
+| Walk back on fixed path | Bank | Preserved | Preserved |
+| Real family/Nurse Ada escort | Bank | Preserved | Preserved |
+| Real pet rescue | Bank | Preserved | Preserved |
+| Caught, collapses or expedition abandoned | Lose unbanked findings; recover unique plot items from source | Preserved | **Only lost when carried into the failed expedition** |
 
-- **A temptation**, usually an easy way home or relief.
-- **A fair clue** that hints at whether it's safe.
-- **Two or three choices** with outcomes: home (notes kept), deeper, caught, a story note, an item,
-  stamina, or nothing.
-- Often **a note either way**, so the forest teaches you its rules.
-- Optional **conditions**: your pet is with you, a real relative is walking with you, you have a
-  light, it's night, how deep you are, which notes you already have.
+The family's reference photo is optional equipment; a genuine reprint remains accurate.
+A replacement is purchased from Nurse Ada _(current 40-coin price, tune)_. Coins come from
+ordinary community-garden produce sold to **Chef Rosa**, so this is an affordable setback.
 
-Draft events:
+### Authored locations and challenges
 
-| Event                    | What happens                                                                                                                                            | Clue / rule                                                                                                                                                                                                                                      |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **The bus stop**         | Over the outdated timetable, painted in red: **"DON'T GET ON THE BUS ALONE."** A few seconds later a bus pulls up; the driver says it'll take you home. | "Alone" is the clue. With your pet or a real relative beside you, it really takes you home. Alone, it drives off into the fog: _"There is no bus route here."_ Either way you can earn the note _"The bus only stops for people who are alone."_ |
-| **The payphone**         | A payphone rings in a clearing. It's your daughter (by name) with directions home.                                                                      | If she uses a nickname or detail that isn't on your photo, it's not her.                                                                                                                                                                         |
-| **Your own handwriting** | A note in your handwriting you don't remember writing: _"Don't trust the one in the yellow coat."_                                                      | Sometimes true (the next fake wears yellow), sometimes planted. Another note somewhere explains how to tell.                                                                                                                                     |
-| **Music from home**      | Faint music from Sunset Acres drifts through the trees.                                                                                                 | Before you're lost, it's real and leads home. After, home can't be found, so it can only lead somewhere else.                                                                                                                                    |
-| **The wheelchair**       | An empty wheelchair rolls slowly along a path on its own.                                                                                               | Following it leads to a story location, but it's a dark route.                                                                                                                                                                                   |
-| **The cabin**            | A lit window, a whistling kettle. Rest inside to recover stamina.                                                                                       | Then you hear the door lock. Whether you can get out depends on what you noticed coming in (e.g. a back door).                                                                                                                                   |
-| **The letter**           | A mailbox with a letter addressed to you, dated tomorrow.                                                                                               | A story fragment; reading it costs time in the dark.                                                                                                                                                                                             |
-| **Your footprints**      | Footprints exactly like your shoes go ahead of you down the path.                                                                                       | Following them leads in a loop, unless you notice where they stop.                                                                                                                                                                               |
-| **Your photo**           | Only if you lost your family photo on an earlier trip: it's lying face-down in the leaves.                                                              | Sometimes it's been subtly changed (a face that's a little wrong). Take it home or leave it; a changed photo on your wall makes the next trips harder until you get a reprint from Nurse Ada.                                                    |
+The locations are physically fixed and have stable IDs: Route 9 bus stop, foreman's cabin,
+Nora's creek campsite, the fenced Hollow Pines courtyard, workers' bunkhouse, maintenance
+shed, administrative office, service gate, watchman's shelter, logging fork, ravine,
+survey lookout, ruined first-aid shelter and the player's hidden room/false Sunset Acres.
+All roads and interiors are defined in MAP.md.
 
-**Implementation:** events are **plain data** (setting, text, choices, clues, conditions,
-outcomes) in one file, so writing a new event is mostly writing, not code. The forest places them
-randomly but never too often, rarer ones deeper.
+Required gates in PUZZLES.md:
 
-## Buildings
+- `P01` foreman's **physical key** → administration office.
+- `P05` **NIGHT CREW** code from admin registry → locked deep service-road gate.
+- `P06` room-number key from survey lookout → locked Sunset Acres room door.
+- `P07` recognize accurate personal details → escape private false Sunset Acres.
+- `P08` hidden-room drainage plan + working ravine sluice → final shelter.
+- `P09` arrange dated Evie evidence on board → story conclusion.
 
-Abandoned places hold the important story pieces and give a reason to go deeper. Each has a few
-**hand-designed rooms**, placed at a random spot in the generated forest:
+Optional challenges include Bell's locker (`P02`), an old manual storage-shutter mechanism
+(`P03`), and the Route 9 bus rule (`P04`). None blocks the required route.
 
-- **The bus stop** (shelter, timetable, a bench), near the edge.
-- **The old supply warehouse**, middle depth.
-- **The chapel**, middle to deep.
-- **The ruins of Hollow Pines**, the old care home, deepest and rarest.
+**Route 9 rule:** “DO NOT RIDE THE BUS ALONE.” With the **real pet physically aboard**, the
+bus reaches a **public stop at CAMP_GATE**, not behind any story lock. Alone, it deposits the
+player in lost forest with a fair, escapable threat. Never use the bus as a way home, nor a
+mandatory shortcut requiring a random pet spawn. Keep the existing pet's treeline refusal
+until planned intermittent companionship is implemented.
+
+**Character encounters:** Real Nora has two brief guaranteed conversations at `CAMP_YARD`.
+Later an **imitation** of Nora bangs on the watchman's shelter door, the player's own double
+appears at the logging fork, and Nora's real body is found at the ravine. The double killed
+her before the fake-door scene; opening the door does **not** make copying possible. These
+beats have stable event IDs and fair outcome branches in PUZZLES.md.
+
+### The room and false Sunset Acres (planned)
+
+The owner-only locked bedroom door exists from the beginning. A physical key at
+`SURVEY_LOOKOUT`, labeled with the player's current room number, unlocks it after being
+brought home alive. The interior is a cramped copy of an older home with documents and the
+**imitation's** blue raincoat. That coat is **evidence of duplication, not a magical anchor
+or finale object**. On the first exit, the player enters a private, distorted copy of
+Sunset Acres and solves a brief recognition puzzle to return to the real social world.
+The actual residents, garden, furniture and chat are never changed. Losing the scene is
+retryable without permanent item or board loss. The final forest objective is recovering
+proof of the **real Evie's death**, surviving a final false-Evie encounter, returning home,
+and solving the board chronology; the forest itself is not destroyed.
 
 ## Meals
 
@@ -419,7 +492,7 @@ Example meals _(recipes and numbers to tune)_:
 | Pumpkin pie             | pumpkin                       | A bigger stamina bar for the whole trip                                                       |
 | Roasted sunflower seeds | sunflower                     | A bigger circle of light for a while                                                          |
 | Mushroom broth          | vegetables + forest mushrooms | **Calm**: the darkness and disorientation build more slowly for a while                       |
-| Herbal tea              | forest herbs                  | **Clarity**: a fake's tells are slightly easier to notice for a while (it helps you remember) |
+| Herbal tea              | forest herbs                  | **Clarity**: visual tells are slightly easier to notice for a while; it does not restore memory |
 
 Rules: meals never make you faster than an impostor for good; effects wear off; you can only carry
 a few _(tune)_; clarity stays a subtle nudge, never a label; forest-only ingredients make the best
@@ -427,73 +500,106 @@ meals, so the forest and the garden feed each other.
 
 ## Story
 
-The story (Hollow Pines, Maggie, what players can learn, and the spoiler story bible) is in
-[STORY.md](STORY.md), so it can be edited on its own. Everything in the forest that carries story
-(fragments, events, what people say, the voice in your head) has to stay consistent with it.
+[STORY.md](STORY.md) defines the full **planned** mystery. Detective Evelyn “Evie” Mercer
+investigated disappearances at Hollow Pines in 1978; the forestry camp shut in 1979. In
+1987 Evie died in the forest after disappearing, but something wearing her face later
+returned to the protagonist's house. The protagonist investigated for decades, left
+notes to their future self, and now lives with dementia at Sunset Acres. A present-day
+historian, **Nora Vale**, becomes a brief ally; a copy of the player kills her and a copy
+of Nora later begs for entry to a shelter. A hidden closet opens onto a private distorted
+Sunset Acres. Ultimately the player finds Evie's remains and returns with evidence to
+solve the timeline on the board. The forest's **origin** remains unknown and the forest
+remains after the ending. **None of this plot is implemented in the current build.**
 
 ## Build stages
 
-Each stage is playable before the next:
+**Only stages 1–3 below are in the implementation snapshot.** These future milestones are
+specified by STORY.md, MAP.md and PUZZLES.md and must not be described as shipped:
 
-1. **The forest itself:** the bigger grounds with the outskirts (the gradual desaturation, music
-   fade and sparser, greyer grass as you walk out); treeline exits; a freshly generated, effectively endless forest each
-   visit; darkness, fog, forest ambience and footsteps, music fade; being alone (hidden presence,
-   quiet chat, "wandered off…"); walking back before you're lost; the point of no return; the
-   collapse safety net and the infirmary wake-up; your pet growling or hissing at the treeline and
-   staying behind at the edge (needs growl and hiss recordings).
-2. **Family:** the creation step with randomize, the wall photo, the Wardrobe editor, taking the
-   photo with you (pocket slot), and the reprint from Nurse Ada.
-3. **Encounters:** dialogue with beeps, real vs fake and the tells, "Look at the photo", the four
-   outcomes, the transformation, stamina and the chase, getting caught (losing a carried photo),
-   being walked home.
-4. **Notes and the memory wall:** fragments, the notepad (auto text plus your own words), keeping
-   notes only on a safe return, the corkboard (arrange, connect with string).
-5. **Events and buildings:** the event system as data, the draft events, the bus stop, warehouse,
-   chapel and Hollow Pines ruins, the story fragments placed in them.
-6. **Light and the things you avoid:** found light sources, the Visitor, the Wanderers.
-7. **Meals** (after cooking exists; see COMMUNITY.md).
-8. **Pet rescue** (after pets exist; see COMMUNITY.md).
+1. **Built — base forest:** outskirts, darkness, procedural woods, isolation, straight-line
+   point of no return, collapse/infirmary, treeline warning. The **planned fixed road network
+   and corridor-based lost rule are not yet built**.
+2. **Built — family/photo:** family editor, reference photo, Nurse Ada reprints. Preserve the
+   rule that death takes the photo **only when carried**; remove free reprint when enforcing
+   the intended paid replacement (40 coins starting price).
+3. **Built — rescue encounters:** genuine/fake family and nurse, tells, photo comparison,
+   transformation/chase/caught. Keep fair cues; reuse these systems for the final false Evie.
+4. **Next — map backbone:** authored fixed roads, forks, fences, buildings, entrance interiors,
+   corridor-based lost state, path backtracking and route persistence (MAP.md).
+5. **Next — examination and board:** object registry, notepad, physical keys/storage, bank-on-safe-
+   return, annotations, clue ID persistence, unresolved leads, save validation (PUZZLES.md).
+6. **Next — camp puzzles and evidence:** P01/P02/P03/P05 and the Hollow Pines work records,
+   Evie files, reliable return-to-site mapping, and first memory vignettes.
+7. **Next — Nora and deep forest:** real meetings, watch shelter fake knock, own-double sighting,
+   ravine body, fixed survey lookout, recoverable room key.
+8. **Next — room and final shelter:** P06/P07/P08/P09, private false-home scene, final Evie
+   evidence, escapable false-Evie encounter, cutscene queue and ending.
+9. **Optional/later — pet and rule bus:** intermittent pet companionship/rescue (always safe),
+   then P04; extra avoidance threats, found lights, forest ingredients and food effects.
+
+Build in slices with testable save migration paths; do not add all lore before navigation
+and retry behavior work.
 
 ## Technical notes
 
-- **The outskirts** are part of the grounds map (it grows), so presence, chat and other players
-  work there as normal. "How far out you are" is one number (distance from the established
-  area's outline, 0 inside it, 1 at the treeline) that drives the colour grade, the music level,
-  the ambience level and which grass tiles are drawn (sparse, grey variants baked into the ground
-  layer by distance). The server's presence bounds (x, y up to 200) already allow a much larger
-  map. Plot upgrades (COMMUNITY.md) will want room for a bigger garden; keep it inside the
-  established area.
-- The forest is a **client-only map**, generated in the browser from a per-visit seed (e.g. in
-  chunks around the player, so it can be effectively endless). Nothing about a particular forest is
-  stored on the server.
-- **What is saved** (new save fields, validated in `shared/schema.ts` like everything else, so the
-  server rejects malformed data): family, kept notes (fragment id, your own text, board position,
-  string links), found light sources, story progress. Saves stay client-authoritative. Trip state
-  (notes in your pocket, how lost you are) is never saved until you're home.
-- **Presence:** the server only accepts known map ids (`isMapId`). Add a `forest` map id; while in
-  the forest the client sends it without a real position, and other clients show "wandered off…".
-- **Story and events are data** (fragments, events, buildings) in their own files, so writing more
-  content doesn't need engine changes.
-- Art and sound stay procedural or processed like the existing ones (see CLAUDE.md, "Music and
-  sound"), including the transformation stages and distorted dialogue beeps. No new dependencies.
-- Still one serverless function (api/retirement.ts); the Hobby plan allows 12.
+- **The outskirts** remain part of the shared grounds. Color/music fade and pet warning
+  continue before the path enters private forest. Existing engine locations (`src/game.ts`,
+  `src/maps.ts`, `src/music.ts`) are the integration points for the transition.
+- **Forest architecture target:** fixed tile-level centerlines, authored site polygons and
+  interior maps layered into the client forest. The per-expedition seed generates only
+  surrounding trees/understory/ambient events. Off-corridor travel can trigger a *separate*
+  fully procedural lost state. Replace the currently built straight-line point of no return;
+  do not keep it active along fixed roads.
+- **Persistence:** validate per-player `bankedClues`, key storage, puzzle states, story-event
+  flags, cutscene flags and board annotations in `shared/schema.ts`. Temporary expedition
+  notes and physical finds remain client-side until a safe-return commit. `PUZZLES.md`
+  gives an illustrative model and acceptance tests; use current project conventions.
+- **Mandatory data IDs:** stable clue IDs from STORY.md, location IDs from MAP.md, and
+  item/puzzle/event IDs from PUZZLES.md. All authored sources stay fixed; unique quest items
+  are recoverable after failure. Story scene conditions depend on **banked** clues.
+- **Multiplayer privacy:** the forest and false Sunset Acres are per-player. Preserve shared
+  presence/chat in real Sunset Acres; render the echo in a separate scene/instance without
+  mutating shared map or account gardening/furniture data.
+- **Visual tells:** family photo is trustworthy; Evie scar and Nora mole have text/portrait
+  inspection. Copies can be wrong in appearance or behavior, but never impossible to detect.
+- **Sound/art:** prefer existing sprite, portrait, audio and dialogue systems. Use ambient
+  warmth versus drained woods; short in-engine recollections rather than external video files.
+- **Economy:** replacement family photo is paid and affordable via Chef Rosa's crop purchases;
+  no extra shop or resource grind needed.
+- **Engineering snapshot:** historical code/tune notes in Build status remain useful for
+  migration, not normative story/location requirements.
 
 ## Still open
 
-- Real/fake ratio, speeds, stamina, light radius, the point-of-no-return distance, encounter
-  cadence and collapse time.
-- Whether light can be bought on the property or only found.
-- The full story text: the story in STORY.md is a first version that will be revised as we go; more
-  fragments and events still need writing, consistent with the story bible.
-- Pocket size: 3 slots for now (only the photo exists yet); revisit when light and meals arrive.
-- Whether the camera or lighting changes too near the treeline (e.g. a slight vignette). (The
-  outskirts' width and fading, and the pet's warning, were settled in stage 1: see "Build
-  status".)
-- Who can reach the game. The site belongs to a dementia-care project. The forest's horror comes
-  from the resident's own point of view and doesn't mock anyone, but if the sponsor or anyone
-  from St. Ann's can sign in, they could stumble into it. Worth deciding whether that's fine.
+The **narrative truth, map topology, mandatory objects and puzzle solutions** are established
+in STORY.md, MAP.md and PUZZLES.md. These engineering/tuning details still require testing:
+
+- Authored corridor widths, lost transition threshold, fence collider dimensions and
+  pathfinding around branches. Preserve the safe walk home while the player stays on roads.
+- Timings/visuals for fake Nora's door choice, own-double sighting and final Evie encounter.
+- How physical keys and room storage fit existing inventory slots, and migration of existing
+  saves when adding puzzle/event flags. Ensure no duplicate keys or softlocks.
+- Exact cutscene queue/skip/replay UI, detailed portrait assets for Evie's eyebrow scar and
+  Nora's cheek mole, and accessible descriptions.
+- Final choice of audio, collision, window and lighting behavior in the false-home level;
+  it must never touch real shared-world state.
+- Pet companion separation, rescue cadence (~1/8 eligible rescue opportunities as a tuning
+  starting point), hearts effect and bus boarding once pet companionship exists.
+- Existing threat frequencies, stamina, light radius, chase speeds, photo cost and collapse
+  interval. The **current distance-based point of no return is replaced** by corridor loss.
+- Whether additional optional rule-horror sites belong on the map. They should only be added
+  with fixed site IDs and complete learnable rules, not random lore fragments.
+- Consent/accessibility and tone review for a dementia-care themed community; ensure the
+  hidden horror and depictions of dementia are appropriate for intended users.
 
 ## Build status
+
+**Implementation snapshot:** the details below record the forest, family, and encounter
+systems as built and play-tested. They are engineering records, not evidence that the
+story, examination system, evidence board, fixed mapped paths, or intermittent pet companionship
+is already implemented. **In particular, the straight-line point of no return and per-visit
+randomized forest map are current code behaviors that must be replaced when building MAP.md.**
+Any planned behavior described elsewhere must be implemented explicitly.
 
 Tuning numbers live in `src/forest/tuning.ts` (and the grounds' size in `shared/grounds.ts`).
 `?forestfast` (dev builds only) shortens the point of no return to 12 tiles and the collapse to 25
@@ -603,11 +709,16 @@ Decisions (yours) and judgement calls (mine, change freely):
   the photo on your wall. Who's in it?"). You're stepped back just inside the treeline first, so
   closing it leaves you on the grounds; "Go on" carries you into the forest. Their room gets the
   photo on the first free bit of wall (or in storage if the wall is full).
-- **Reprints** (decided: coins or a wait): Nurse Ada offers "Tomorrow is fine" (free, on your wall
-  after a game day, 24 real minutes) or "Right away (40 coins)". She hangs it herself; a toast says
-  so. `REPRINT_WAIT_MS` and `REPRINT_COST` are in src/forest/tuning.ts.
-- **Collapsing never loses the photo** (decided). Only being caught does (stage 3). Until then,
-  `window.game.losePhoto()` (dev) loses it for testing.
+- **Reprints in the code:** Nurse Ada offers "Tomorrow is fine" (free after one game day,
+  24 real minutes) or "Right away (40 coins)"; she hangs it herself. `REPRINT_WAIT_MS` and
+  `REPRINT_COST` live in `src/forest/tuning.ts`. The purchase can be funded by selling
+  community-garden crops to Chef Rosa. **Planned purchase-only rule:** remove the free
+  delayed option when the replacement flow is implemented.
+- **Photo loss in the code:** capture removes the photo only when it was in the pocket.
+  Collapsing does not currently remove it. The intended collapse behavior is **conditional**:
+  remove a carried photo, but never remove a photo left at home. `window.game.losePhoto()`
+  (dev) can test loss. The paid replacement rule also requires removing the current free
+  delayed reprint option.
 - **"Calls you"** (my addition): every relative has what they call you, filled in from the
   relationship (children: Mum or Dad; grandchildren: Gran or Grandad; nieces and nephews: Auntie
   or Uncle and your name; partners and siblings: your name), editable. Mum/Dad and the rest are
@@ -651,20 +762,19 @@ Judgement calls (change freely):
   face), no blinking, no shadow, no footsteps, or the wrong name for you. The nurse can have the
   wrong hair colour or eyes, no blinking, no shadow, no footsteps, the wrong name ("Nurse Ida",
   "Edna", "Ava", "Ada-May", "Agnes") or the **Hollow Pines badge** (grey with a pine) instead of her
-  Sunset Acres one (cream with a sun). To make the badge learnable, **Nurse Ada now always wears
-  her Sunset Acres badge** in her portrait, at home too. Eye colour was added as a tell from the
-  resident's diary in the story ("Her eyes were the wrong colour").
+  Sunset Acres one (cream with a sun). To make the badge learnable, **Nurse Ada always wears
+  her Sunset Acres badge** in her portrait, at home too. Eye colour is an implemented visual
+  tell, but its associated clue text has not yet been written.
 - **A wrong colour is always obvious** (decided): a fake's wrong hair, cardigan or eye colour can be
   in the same family as the real one (light against dark brown, cornflower against navy) but never a
   near miss: it's at least `TELL_COLOR_MIN` apart (80 on a perceptual scale; eyes, being a few pixels,
   `TELL_EYE_MIN` 90). This rules out pale grey against the lavender and blue rinses, and the two brown
   eye colours.
-- **Being caught never says what you missed** (decided). Only "That was not your son." Every tell must
-  instead be learnable in the world: stage 4/5's fragments need a clue for each one. Maggie's
-  warnings already cover blinking ("They never blink."), shadows ("Count the shadows."), the wrong
-  name for you ("If they call you something your family never called you, run.") and the face
-  ("Look at the photo, not the face."); the diary covers eye colour, and the Hollow Pines story
-  the badge. **Still to write: a clue for silent footsteps and for the nurse's wrong name.**
+- **Being caught never says what you missed** (decided). Only "That was not your son."
+  Every tell should be learnable through examination and story fragments in stages 4–5.
+  The protagonist's own forgotten investigation can leave observations about blinking,
+  shadows, familiar forms of address, the photo, eye colour, Nurse Ada's badge and name, and
+  silent footsteps. **These explanatory fragments are not implemented yet.**
 - **Real and fake say exactly the same words** (until a fake starts to change). Only the tells give
   them away, so it's never a guessing game about the script.
 - **What a fake calls you:** a near miss: "Mum" becomes "Mother", "Mummy" or "Ma"; "Gran" becomes
@@ -738,11 +848,11 @@ Judgement calls (change freely):
 - **Caught** (led deeper or reached in the chase): that line, then the infirmary, Nurse Ada ("There
   you are, dear. They found you wandering by the fence again."), and if you had the photo with you,
   it's gone: "Your pocket is empty. The photo is gone." (The frame on your wall stays empty until
-  a reprint or, from stage 5, finding it.)
+  a replacement is obtained.)
 - **If the conversation is closed without an answer** (Escape), they ask again. Someone you keep
   walking away from loses you after 25 seconds.
 
-**Lines I wrote** (all in src/forest/encounters.ts, none in the draft): the family's greeting ("{calls}!
+**Encounter dialogue in the code** (all in `src/forest/encounters.ts`): the family's greeting ("{calls}!
 Oh, thank goodness. It's me, {name}. We've been looking everywhere for you." / "You're freezing.
 Come on, {calls}, let's get you home before it's properly dark."), "This way. Hold on to my arm,
 {calls}.", the hurt lines' second half ("I'll come back for you. I promise I'll come back."), the
@@ -750,5 +860,5 @@ three stages of asking again ("{calls}, please. It's me. Come home with me." / "
 at me, {calls}? Don't you remember me?" / "Remember me. Please. Please remember me."), the nurse's
 versions of all of those (her last: "Don't forget me. Everyone forgets me. Don't you forget me."),
 "What is it, {calls}? It's getting dark. Come on." after you look at the photo, the walking-home
-lines, and "Your pocket is empty. The photo is gone." The asking-again lines follow the story
-bible: they want to be remembered.
+lines, and "Your pocket is empty. The photo is gone." The impostors' motives are not
+established; confirm that their pleading language fits once the story bible is written.

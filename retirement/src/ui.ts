@@ -43,6 +43,10 @@ import {
   type Relative,
 } from '../shared/schema'
 import { REL, looksOld, randomFamily, randomRelative } from './family'
+import { BOARD_SIZE, NOTE_MAX, type ClueId } from '../shared/story'
+import { CLUES, type Clue, type PaperLine } from './forest/story/clues'
+import { KEEPSAKES } from './forest/story/finds'
+import { THOUGHT_GAP_MS, THOUGHT_MS, THOUGHT_PER_CHAR } from './forest/tuning'
 import type { Person } from './forest/encounter'
 import {
   C4_COLS,
@@ -133,6 +137,8 @@ export interface DialogueOptions {
 }
 
 const TYPE_MS = 24
+/** The forest's descriptions and thoughts type out a little slower than speech. */
+const NARR_TYPE_MS = 32
 /** The chat box in the forest. */
 const QUIET = "…you can't hear anyone from here."
 
@@ -225,6 +231,7 @@ export class UI {
       el('div', { class: 'hud-right' }, this.buttons, this.online),
       this.boardcard,
       this.toasts,
+      this.narration,
       this.prompt,
       this.hotbar,
       this.chatlog,
@@ -1026,6 +1033,9 @@ export class UI {
           ]
         : []),
       ...(this.stamina.hidden ? [] : [this.staminaBox]),
+      ...(g.trip?.story
+        ? [this.notepadButton(g.trip.story.found.size + g.trip.story.kept.size)]
+        : []),
       el(
         'div',
         { class: 'bag' },
@@ -1034,6 +1044,19 @@ export class UI {
       ),
       ...(water ? [water] : []),
     )
+  }
+
+  /** The notepad in the hotbar (in the forest): how many things you've found this trip. */
+  private notepadButton(n: number): HTMLElement {
+    const b = button('', () => this.openNotepad(), 'slot notepad-slot')
+    b.title = 'Your notepad (N): what you’ve found this trip'
+    b.setAttribute('aria-label', `Notepad: ${n} thing${n === 1 ? '' : 's'} found this trip`)
+    b.append(
+      el('span', { class: 'key', text: 'N' }),
+      el('span', { class: 'pad' }),
+      el('span', { class: 'count', text: String(n) }),
+    )
+    return el('div', { class: 'notepad-box' }, el('span', { class: 'label', text: 'Notepad' }), b)
   }
 
   private lastNear = false
@@ -1118,6 +1141,385 @@ export class UI {
             text: this.connected ? 'Just you right now.' : 'Reconnecting…',
           }),
     )
+  }
+
+  // --- the story: thoughts, papers, the notepad and the board (STORY.md) ----------------------
+
+  /** Lines under you: what you see (plain) and what you think (italic), one at a time. */
+  private narration = (() => {
+    const n = el('div', { class: 'narration' })
+    n.setAttribute('aria-live', 'polite')
+    return n
+  })()
+  private narrQueue: { text: string; kind: 'look' | 'thought' }[] = []
+  private narrBusy = false
+  /** Bumped whenever what's shown is cut short, so the old line's timers stand down. */
+  private narrToken = 0
+
+  /** Something goes through your head (the inner voice). */
+  thought(text: string | null) {
+    if (text) this.narrate([{ text, kind: 'thought' }])
+  }
+
+  /**
+   * A line of what you see, then maybe a thought about it. You asked to look, so it's shown at
+   * once, in place of whatever was being thought.
+   */
+  look(text: string, thought?: string | null) {
+    this.hushNarration()
+    this.narrate([
+      { text, kind: 'look' },
+      ...(thought ? [{ text: thought, kind: 'thought' as const }] : []),
+    ])
+  }
+
+  private narrate(lines: { text: string; kind: 'look' | 'thought' }[]) {
+    // Only in the forest, and never once a trip is ending (the black screen and its line): a
+    // thought queued a moment earlier (after a panel closes, a beat after a moment) is dropped.
+    if (!this.game?.forest || this.game.trip?.end) return
+    // A thought already waiting isn't said twice.
+    for (const l of lines)
+      if (!this.narrQueue.some((q) => q.text === l.text)) this.narrQueue.push(l)
+    if (!this.narrBusy) this.nextNarration()
+  }
+
+  /** Clears what's being said (leaving the forest, a trip ending, looking at something). */
+  hushNarration() {
+    this.narrToken++
+    this.narrQueue = []
+    this.narration.replaceChildren()
+    this.narrBusy = false
+  }
+
+  private nextNarration() {
+    if (!this.game?.forest || this.game.trip?.end) return this.hushNarration()
+    const l = this.narrQueue.shift()
+    if (!l) {
+      this.narrBusy = false
+      return
+    }
+    this.narrBusy = true
+    const token = this.narrToken
+    const line = el('div', { class: `narr ${l.kind}` })
+    line.setAttribute('aria-label', l.text)
+    this.narration.replaceChildren(line)
+    // Typed out with a soft blip, like dialogue: what you see in a plain voice, what you think in
+    // a lower, quieter one. (Shown at once, silently, with reduced motion.)
+    const typed = el('span', {})
+    const rest = el('span', { class: 'narr-rest', text: l.text })
+    line.append(typed, rest)
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      let n = 0
+      const timer = window.setInterval(() => {
+        if (token !== this.narrToken || !line.isConnected || n >= l.text.length)
+          return window.clearInterval(timer)
+        n++
+        typed.textContent = l.text.slice(0, n)
+        rest.textContent = l.text.slice(n)
+        const ch = l.text[n - 1]
+        if (/[a-z0-9]/i.test(ch) && n % 2 === 1) {
+          if (l.kind === 'look') voice(360, 'triangle', 1, 0.04)
+          else voice(250, 'sine', 0.8, 0.05)
+        }
+      }, NARR_TYPE_MS)
+      typed.textContent = ''
+    } else typed.textContent = l.text
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) rest.textContent = ''
+    const hold =
+      l.text.length * NARR_TYPE_MS +
+      THOUGHT_MS +
+      l.text.length * THOUGHT_PER_CHAR * (l.kind === 'look' ? 1.3 : 1)
+    window.setTimeout(() => line.classList.add('out'), hold)
+    window.setTimeout(() => {
+      if (token !== this.narrToken) return
+      line.remove()
+      window.setTimeout(
+        () => {
+          if (token === this.narrToken) this.nextNarration()
+        },
+        this.narrQueue.length ? THOUGHT_GAP_MS * 0.4 : 0,
+      )
+    }, hold + 700)
+  }
+
+  /** A clue's paper, the way it's physically written or printed. */
+  private paperEl(c: Clue): HTMLElement {
+    const lines = c.paper.lines.map((l: PaperLine) => {
+      if (l.style === 'gap') return el('div', { class: 'gap' })
+      if (l.style === 'row') {
+        const row = el('div', { class: 'row' })
+        for (const cell of l.text.split('|')) row.append(el('span', { text: cell.trim() }))
+        return row
+      }
+      return el('p', { class: l.style ?? 'plain', text: l.text })
+    })
+    return el('div', { class: `paper ${c.paper.kind}` }, ...lines)
+  }
+
+  /**
+   * Reading a clue. `state`: new (you can take it), taken (it's in your notepad), known (already on
+   * your board at home). `onClose` runs once it's put away.
+   */
+  openClue(
+    id: ClueId,
+    state: 'new' | 'taken' | 'known',
+    opts: { onTake?: () => void; onClose?: () => void; note?: HTMLElement } = {},
+  ) {
+    const c = CLUES[id]
+    if (!c) return
+    let closed = false
+    const done = () => {
+      if (closed) return
+      closed = true
+      this.closePanel()
+      opts.onClose?.()
+    }
+    const actions: HTMLElement[] = []
+    if (state === 'new' && opts.onTake) {
+      actions.push(
+        button(
+          c.paper.kind === 'printed' ? 'Copy it into your notepad' : 'Take it',
+          () => {
+            opts.onTake!()
+            done()
+          },
+          'btn primary',
+        ),
+        button('Leave it', done),
+      )
+    } else actions.push(button('Put it away', done))
+    const status =
+      state === 'known'
+        ? el('p', { class: 'muted center', text: 'You already remember this.' })
+        : state === 'taken'
+          ? el('p', { class: 'muted center', text: 'It’s in your notepad.' })
+          : null
+    this.showPanel(
+      el(
+        'div',
+        { class: 'panel-body clue-view' },
+        el('p', { class: 'about', text: c.paper.about }),
+        this.paperEl(c),
+        status,
+        opts.note ?? null,
+        el('div', { class: 'row-buttons' }, ...actions),
+      ),
+    )
+    // Closed any other way (×, the backdrop, Esc): still put away.
+    const panel = this.panel
+    const watch = window.setInterval(() => {
+      if (this.panel !== panel) {
+        window.clearInterval(watch)
+        if (!closed) {
+          closed = true
+          opts.onClose?.()
+        }
+      }
+    }, 200)
+  }
+
+  /** A note field (your own words on a clue). */
+  private noteField(
+    value: string,
+    onChange: (v: string) => void,
+    label = 'Your note',
+  ): HTMLElement {
+    const t = el('textarea', { class: 'note-field' })
+    t.maxLength = NOTE_MAX
+    t.rows = 2
+    t.value = value
+    t.placeholder = 'Write something to remember it by…'
+    t.setAttribute('aria-label', label)
+    t.addEventListener('keydown', (e) => e.stopPropagation())
+    t.addEventListener('input', () => onChange(t.value))
+    return el('label', { class: 'note' }, el('span', { class: 'label', text: label }), t)
+  }
+
+  /** Your notepad in the forest: what you've found this trip, unbanked until you're home. */
+  openNotepad() {
+    const story = this.game.trip?.story
+    if (!story) return
+    const rows = [...story.found.entries()].map(([id, f]) => {
+      const c = CLUES[id]!
+      const read = button(
+        c.title,
+        () => {
+          this.openClue(id, 'taken', { onClose: () => this.openNotepad() })
+        },
+        'link',
+      )
+      return el(
+        'li',
+        {},
+        read,
+        this.noteField(f.note, (v) => this.game.setTripNote(id, v)),
+      )
+    })
+    this.showPanel(
+      el(
+        'div',
+        { class: 'panel-body notepad' },
+        el('h2', { text: 'Notepad' }),
+        el('p', {
+          class: 'muted',
+          text:
+            rows.length || story.kept.size
+              ? 'What you’ve found out here. It’s only safe once you’re home.'
+              : 'Nothing yet. Look closely at what you come across.',
+        }),
+        rows.length ? el('ul', { class: 'found' }, ...rows) : null,
+        story.kept.size
+          ? el(
+              'div',
+              { class: 'kept' },
+              el('h3', { text: 'Picked up' }),
+              el('p', {
+                class: 'muted',
+                text: [...story.kept].map((k) => KEEPSAKES[k]?.name ?? k).join(' · '),
+              }),
+            )
+          : null,
+        el(
+          'div',
+          { class: 'row-buttons' },
+          button('Close', () => this.closePanel()),
+        ),
+      ),
+    )
+  }
+
+  /**
+   * The corkboard in your room: everything you've brought home, pinned where you put it, with
+   * strings between them. Drag a card to move it; "String" joins two cards (or cuts the string).
+   */
+  openBoard() {
+    const g = this.game
+    const board = g.save.board
+    if (!board?.clues.length) return
+    const cork = el('div', { class: 'cork' })
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('class', 'strings')
+    svg.setAttribute('aria-hidden', 'true')
+    cork.append(svg)
+    let stringFrom: ClueId | null = null
+    const hint = el('p', { class: 'muted center' })
+    const setHint = () => {
+      hint.textContent = stringing
+        ? stringFrom
+          ? 'Now pick the card to tie it to (or the same one to stop).'
+          : 'Pick a card to tie a string from. Tying two that are joined cuts the string.'
+        : 'Drag a card to move it. Click one to read it and write on it.'
+    }
+    let stringing = false
+    const cards = new Map<ClueId, HTMLElement>()
+    // Strings run from pin to pin, over the cards (in the board's own pixels, once it's laid out).
+    const drawStrings = () => {
+      svg.replaceChildren()
+      const box = cork.getBoundingClientRect()
+      svg.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`)
+      const pinAt = (id: ClueId) => {
+        const r = cards.get(id)?.querySelector('.pin')?.getBoundingClientRect()
+        return r && { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top }
+      }
+      for (const [a, b] of g.save.board?.links ?? []) {
+        const pa = pinAt(a)
+        const pb = pinAt(b)
+        if (!pa || !pb) continue
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+        line.setAttribute('x1', String(pa.x))
+        line.setAttribute('y1', String(pa.y))
+        line.setAttribute('x2', String(pb.x))
+        line.setAttribute('y2', String(pb.y))
+        svg.append(line)
+      }
+    }
+    for (const bc of board.clues) {
+      const c = CLUES[bc.id]
+      const card = el(
+        'button',
+        { class: `pin-card ${c?.paper.kind ?? 'note'}`, type: 'button' },
+        el('span', { class: 'pin' }),
+        el('span', { class: 'title', text: c?.title ?? bc.id }),
+        bc.note ? el('span', { class: 'scrawl', text: bc.note }) : null,
+      )
+      card.style.left = `${bc.x}%`
+      card.style.top = `${bc.y}%`
+      cards.set(bc.id, card)
+      let drag: { x: number; y: number; moved: boolean } | null = null
+      card.addEventListener('pointerdown', (e) => {
+        if (stringing) return
+        drag = { x: e.clientX, y: e.clientY, moved: false }
+        card.setPointerCapture(e.pointerId)
+      })
+      card.addEventListener('pointermove', (e) => {
+        if (!drag) return
+        if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4) drag.moved = true
+        if (!drag.moved) return
+        const r = cork.getBoundingClientRect()
+        const x = Math.max(4, Math.min(96, ((e.clientX - r.left) / r.width) * BOARD_SIZE))
+        const y = Math.max(5, Math.min(95, ((e.clientY - r.top) / r.height) * BOARD_SIZE))
+        card.style.left = `${x}%`
+        card.style.top = `${y}%`
+        g.moveClue(bc.id, x, y)
+        drawStrings()
+      })
+      card.addEventListener('pointerup', () => {
+        const wasDrag = drag?.moved
+        drag = null
+        if (wasDrag) return
+        if (stringing) {
+          if (!stringFrom) {
+            stringFrom = bc.id
+            card.classList.add('picked')
+          } else {
+            if (stringFrom !== bc.id) g.toggleLink(stringFrom, bc.id)
+            cards.get(stringFrom)?.classList.remove('picked')
+            stringFrom = null
+            drawStrings()
+          }
+          setHint()
+          return
+        }
+        const cur = g.save.board?.clues.find((x) => x.id === bc.id)
+        this.openClue(bc.id, 'known', {
+          note: this.noteField(cur?.note ?? '', (v) => g.setBoardNote(bc.id, v)),
+          onClose: () => this.openBoard(),
+        })
+      })
+      // Keyboard: Enter/Space reads it (pointerup covers mouse and touch).
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          card.dispatchEvent(new PointerEvent('pointerup'))
+        }
+      })
+      cork.append(card)
+    }
+    const toggle = button('String', () => {
+      stringing = !stringing
+      toggle.classList.toggle('primary', stringing)
+      toggle.textContent = stringing ? 'Done with string' : 'String'
+      if (stringFrom) cards.get(stringFrom)?.classList.remove('picked')
+      stringFrom = null
+      setHint()
+    })
+    setHint()
+    this.showPanel(
+      el(
+        'div',
+        { class: 'panel-body wide board' },
+        el('h2', { text: 'Your corkboard' }),
+        cork,
+        hint,
+        el(
+          'div',
+          { class: 'row-buttons' },
+          toggle,
+          button('Close', () => this.closePanel()),
+        ),
+      ),
+    )
+    requestAnimationFrame(drawStrings)
   }
 
   // --- toasts & chat ------------------------------------------------------------------------

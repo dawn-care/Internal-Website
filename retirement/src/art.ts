@@ -1,3 +1,4 @@
+import { drawKeepsake } from './forest/story/art'
 import {
   CROPS,
   FLOORS,
@@ -1929,6 +1930,17 @@ export function drawObject(
     case 'screen':
       c.drawImage(screenSprite(), px, py - 14)
       break
+    case 'closet':
+      // A plain painted closet door, a little narrower than the room's real door, with a keyhole.
+      f('#5b4030', px + 2, py + 2, 12, 30)
+      f('#d8cdb8', px + 3, py + 3, 10, 29)
+      f('#c7bba4', px + 4, py + 5, 8, 10)
+      f('#c7bba4', px + 4, py + 18, 8, 11)
+      f('#a89a80', px + 4, py + 15, 8, 1)
+      f('#8a7a60', px + 10, py + 17, 2, 2)
+      f('#2a211b', px + 11, py + 20, 1, 2)
+      f('rgba(0,0,0,0.25)', px + 3, py + 31, 10, 1)
+      break
     case 'hallDoor':
       f('#5b4030', px + 1, py + 1, 14, 31)
       f('#9a6a40', px + 2, py + 2, 12, 30)
@@ -2398,6 +2410,28 @@ export function drawFurniture(c: Ctx, k: string, px: number, py: number, time: n
       f('#5b4030', px + 7, py - 2, 2, 4)
       f('#f3d38a', px + 4, py - 8, 8, 6)
       f('#e3bd6a', px + 4, py - 3, 8, 1)
+      break
+    case 'keep_nametag':
+    case 'keep_glasses':
+    case 'keep_teacup':
+    case 'keep_ticket':
+    case 'keep_mitten':
+      drawKeepsake(c, k.slice(5), px, py)
+      break
+    case 'corkboard':
+      // A cork board in a thin wooden frame, a few pinned scraps and a length of red string.
+      f('#6b4526', px + 1, py + 2, 30, 13)
+      f('#b98a5a', px + 2, py + 3, 28, 11)
+      for (let i = 0; i < 14; i++)
+        f('#a77a4c', px + 3 + ((i * 7) % 26), py + 4 + ((i * 5) % 9), 1, 1)
+      f('#efe6d2', px + 4, py + 5, 6, 5)
+      f('#e6d9a8', px + 13, py + 4, 5, 6)
+      f('#d9d2c2', px + 22, py + 6, 6, 5)
+      f('#b33a32', px + 7, py + 5, 1, 1)
+      f('#b33a32', px + 15, py + 4, 1, 1)
+      f('#b33a32', px + 25, py + 6, 1, 1)
+      f('#a8322c', px + 8, py + 6, 7, 1)
+      f('#a8322c', px + 16, py + 6, 9, 1)
       break
     case 'familyphoto':
       // In storage and the decorating views (the room draws it with your family in it).

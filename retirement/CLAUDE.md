@@ -45,8 +45,19 @@ marks which are built.
   dialogue, the transformation, being led, the chase) and encounters.ts (their words, tells and
   voices, as data), threats.ts (footsteps behind you with the reaching arm, and the face in the dark: cues that are
   sometimes real), scare.ts (the jumpscare when you're caught).
-  Game holds `forest` and `trip` (with the encounters and stamina) while you're
-  in it.
+  src/forest/story/: the story, as data plus the little that runs it (STORY.md; FOREST.md "Act I"):
+  map.ts (the fixed Hollow Pines map: road, paths, creek, landmarks with their props and the spots
+  you examine, some holding clues), layout.ts (the map tile by tile: ground, solid, clear of
+  trees, distance from the paths), clues.ts (each clue's paper, thoughts and gates), finds.ts
+  (small things scattered each trip; KEEPSAKES you can take home, which become framed `keep_<id>`
+  furniture), voice.ts (the inner voice by moment), events.ts
+  (uncanny moments), plan.ts (this trip: notepad, landmarks reached, where the finds lie),
+  director.ts (when the voice speaks and the uncanny moments happen), art.ts (their sprites).
+  gen.ts draws the map until you're lost (off the paths), then the random forest. Clue ids and the board's
+  limits are in shared/story.ts; the board is `save.board` (validated in shared/schema.ts).
+  Game holds `forest` and `trip` (with the encounters, stamina, the story plan, the notepad and
+  the danger left) while you're in it. Every room has a locked closet (`CLOSET`, a map object,
+  not furniture) and, once you've brought a clue home, a corkboard (furniture, price 0).
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an
   auto outline), src/game.ts (loop, movement, interaction, decorating, sync, rendering),
   src/ui.ts (HUD, hotbar, chat, Kitchen / Catalog / Wardrobe / Help panels),
