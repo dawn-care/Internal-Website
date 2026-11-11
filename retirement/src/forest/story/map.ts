@@ -1,10 +1,11 @@
-import type { ClueId, ItemId, LeadId, PuzzleId } from '../../../shared/story'
+import type { ClueId, EventId, ItemId, LeadId, PuzzleId } from '../../../shared/story'
 import type { DocId } from './docs'
 
 /*
  * Hollow Pines: the forest's fixed map (MAP.md). The same every trip, so it's a place you learn. A
  * footpath runs north from the gap in the treeline to a signed fork. West, a path joins the old
- * Route 9 road at the bus stop, and the road runs north past the foreman's cabin and over the creek.
+ * Route 9 road, which runs north over the creek and past the foreman's cabin, then east past the
+ * bus stop.
  * East, the creek trail passes Nora's camp and crosses the creek on a footbridge. Both come to the
  * camp gate, in a wire perimeter fence that runs far out into the woods on either side, so the only
  * way in is the gate. Inside is the courtyard (bunkhouse, maintenance shed, administrative office)
@@ -96,6 +97,11 @@ export interface Spot {
   combo?: ComboId
   /** The shutter's winch (PUZZLES.md P03). */
   winch?: true
+  /**
+   * What it looks like once these things have happened (the last that has wins): Nora's camp, once
+   * you've met her (MAP.md 06: the description recognizes her things) and once she's gone.
+   */
+  met?: { event: EventId; look: string }[]
   /** Until this puzzle is solved, looking here only says `look` (what's behind is shut away). */
   shut?: { puzzle: PuzzleId; look: string }
 }
@@ -175,7 +181,7 @@ export const LINES: Line[] = [
       [1, -26],
     ],
   },
-  // From the fork, west to Route 9 at the bus stop.
+  // From the fork, west to Route 9.
   {
     ground: 'path',
     width: 1.6,
@@ -187,8 +193,8 @@ export const LINES: Line[] = [
       [-32, -43],
     ],
   },
-  // Route 9: from where it's closed off in the west, past the bus stop, north past the foreman's
-  // cabin and over the creek, to the camp gate.
+  // Route 9: from where it's closed off in the west, north over the creek and past the foreman's
+  // cabin, then east along a straight stretch past the bus stop, to the camp gate.
   {
     ground: 'road',
     width: 2.4,
@@ -201,8 +207,9 @@ export const LINES: Line[] = [
       [-40, -70],
       [-41, -86],
       [-38, -100],
-      [-30, -112],
-      [-16, -121],
+      [-33, -106],
+      [-14, -106],
+      [-5, -116],
       [0.5, -124],
       [0.5, -131],
     ],
@@ -291,9 +298,9 @@ export const LANDMARKS: Landmark[] = [
       {
         x: 2,
         y: -11,
-        prompt: 'Read the trail marker',
-        // (`own_warning` will be here: MAP.md 02.)
-        look: 'A trail marker, its white band nearly gone. Low on the post, words have been scratched into the wood, too worn to make out in this light.',
+        prompt: 'Read the note on the marker',
+        // The bus warning, long before there's a bus (`own_warning` goes elsewhere: MAP.md 02).
+        clue: 'bus_warning',
       },
     ],
   },
@@ -318,35 +325,34 @@ export const LANDMARKS: Landmark[] = [
   {
     id: 'BUS_STOP',
     name: 'The Route 9 bus stop',
-    x: -36,
-    y: -45,
+    x: -24,
+    y: -107,
     r: 7,
     seen: [],
-    areas: [{ x0: -40, y0: -47, x1: -32, y1: -45, walk: true }],
+    areas: [{ x0: -28, y0: -109, x1: -20, y1: -107, walk: true }],
     props: [
-      { id: 'busstop', x: -38, y: -46 },
-      { id: 'bussign', x: -39, y: -46 },
-      { id: 'bin', x: -34, y: -46 },
+      { id: 'busstop', x: -26, y: -108 },
+      { id: 'bussign', x: -27, y: -108 },
+      { id: 'bin', x: -22, y: -108 },
     ],
     spots: [
       {
-        x: -39,
-        y: -46,
+        x: -27,
+        y: -108,
         prompt: 'Look at the sign',
         look: 'A bus stop sign, the paint flaking off it: ROUTE 9 · HOLLOW PINES CAMP.',
         voice: 'Hollow Pines. I’ve heard that name somewhere.',
       },
-      { x: -38, y: -46, prompt: 'Read the timetable', clue: 'route9_timetable' },
+      { x: -26, y: -108, prompt: 'Read the timetable', clue: 'route9_timetable' },
       {
-        x: -37,
-        y: -46,
+        x: -25,
+        y: -108,
         prompt: 'Look at the bench',
         look: 'A wooden bench under the shelter. Someone has swept the needles off one end of it.',
       },
-      { x: -36, y: -46, prompt: 'Read the note on the post', clue: 'bus_warning' },
       {
-        x: -34,
-        y: -46,
+        x: -22,
+        y: -108,
         prompt: 'Look in the bin',
         look: 'A rusted litter bin. Inside, a child’s red mitten, quite dry.',
         keep: 'mitten',
@@ -392,18 +398,48 @@ export const LANDMARKS: Landmark[] = [
         prompt: 'Look at the fire',
         look: 'A ring of stones, the ashes still faintly warm. Someone put this fire out not long ago, and carefully. A tin mug of tea stands on one of the stones.',
         voice: 'Someone’s been here recently.',
+        met: [
+          {
+            event: 'E_NORA_MEET_1',
+            look: 'Nora’s fire, put out carefully, the ashes still faintly warm. Her tin mug of tea on a stone.',
+          },
+          {
+            event: 'E_NORA_MEET_2',
+            look: 'Nora’s fire, cold now, the ashes rained flat. No mug. She hasn’t been back.',
+          },
+        ],
       },
       {
         x: 42,
         y: -55,
         prompt: 'Look at the kettle',
         look: 'A tea kettle, dented on one side and blackened underneath. Well used, and looked after.',
+        met: [
+          {
+            event: 'E_NORA_MEET_1',
+            look: 'Nora’s kettle, the dent on one side. Of course it’s hers.',
+          },
+          {
+            event: 'E_NORA_MEET_2',
+            look: 'A ring of soot on the stone where Nora’s kettle stood. She took it with her, up the deep road.',
+          },
+        ],
       },
       {
         x: 42,
         y: -59,
         prompt: 'Look at the bedroll',
         look: 'A bedroll, rolled up tight and tied with string, ready to go. A notebook is tucked under the string, its cover too damp to open.',
+        met: [
+          {
+            event: 'E_NORA_MEET_1',
+            look: 'Nora’s bedroll, tied up tight, her notebook under the string. Ready to go.',
+          },
+          {
+            event: 'E_NORA_MEET_2',
+            look: 'Flattened grass where Nora’s bedroll lay. She’s packed up and gone.',
+          },
+        ],
       },
     ],
   },
@@ -428,7 +464,6 @@ export const LANDMARKS: Landmark[] = [
         y: CAMP.south,
         prompt: 'Read the sign',
         look: 'A board over the gate: HOLLOW PINES FORESTRY CAMP · EST. 1952. Below it, smaller: ALL VISITORS REPORT TO THE OFFICE.',
-        voice: 'This is where the bus went.',
       },
       {
         x: 3,
@@ -675,6 +710,9 @@ export const INTERIORS: Landmark[] = [
       { id: 'cabinet', x: 158, y: -53, v: 1 },
       { id: 'desk', x: 154, y: -51 },
       { id: 'chair', x: 156, y: -52 },
+      // Evie's case box, and your own archive (MAP.md 11: the post-1987 cache), in an old suitcase.
+      { id: 'casebox', x: 151, y: -50 },
+      { id: 'suitcase', x: 157, y: -50 },
     ],
     [
       { x: 151, y: -54, prompt: 'Read the noticeboard', doc: 'shift_register' },
@@ -707,6 +745,39 @@ export const INTERIORS: Landmark[] = [
         y: -51,
         prompt: 'Look at the desk',
         look: 'A desk under a skin of dust, except for one clean square where something stood until not long ago.',
+      },
+      // Evie's papers (STORY.md "Major evidence"; the wording of every one is invented). Each spot
+      // holds two: the second turns up once you have the first (`also`). Some can't turn up until
+      // other evidence is on your board (clues.ts `needs`); till then the spot's look is shown.
+      {
+        x: 151,
+        y: -50,
+        prompt: 'Look in the box',
+        clue: 'evie_case_1978',
+        also: 'evie_last_lead',
+      },
+      {
+        x: 157,
+        y: -50,
+        prompt: 'Look in the suitcase',
+        clue: 'evie_missing',
+        also: 'search_roster',
+      },
+      {
+        x: 158,
+        y: -50,
+        prompt: 'Look in the suitcase',
+        clue: 'neighbor_statement',
+        also: 'returned_evie_photo',
+        look: 'More folders, in your own careful order: names, dates, a neighbour’s address. None of it means anything to you yet.',
+      },
+      {
+        x: 155,
+        y: -51,
+        prompt: 'Open the desk drawer',
+        clue: 'returned_evie_journal',
+        also: 'player_missing',
+        look: 'A cloth-covered diary in your own handwriting, swollen shut with damp, and a clipping in a sandwich bag. You’d need to know what you were looking for.',
       },
     ],
   ),
@@ -1000,8 +1071,8 @@ export const ROAD_POLES: Pt[] = [
   [-50, -42],
   [-44, -60],
   [-45, -80],
-  [-42, -104],
-  [-22, -114],
+  [-43, -102],
+  [-12, -103],
 ]
 
 /**

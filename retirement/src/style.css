@@ -1561,6 +1561,45 @@ button.bc-sq {
   color: #5a5246;
 }
 
+/* A paper that is a picture of itself (the missing poster): just the image, no paper behind it
+   (doubled class: it has to beat .paper.printed, which comes later). */
+.paper.paper.whole {
+  background: none;
+  box-shadow: none;
+  border: none;
+  padding: 0;
+}
+
+.paper.whole .photo img {
+  max-height: 70vh;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* An illustrated photo on a paper (retirement/photos): shown as the print itself. */
+.paper .photo {
+  margin: 4px 0 10px;
+}
+
+.paper .photo img {
+  display: block;
+  width: 100%;
+  max-height: 52vh;
+  object-fit: contain;
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(40, 28, 20, 0.35);
+}
+
 .paper .row {
   display: grid;
   grid-template-columns: 2.2fr repeat(4, 1fr);

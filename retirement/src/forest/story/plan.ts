@@ -144,6 +144,18 @@ export class StoryPlan {
     return null
   }
 
+  /**
+   * The clue to show when you look at a spot: one still to find, or one you already have (to read
+   * again). Null when neither can turn up yet (STORY.md's reveal gates): the spot's own look then.
+   */
+  clueToShow(s: Spot): ClueId | null {
+    const fresh = this.clueAt(s)
+    if (fresh) return fresh
+    for (const id of [s.clue, s.also])
+      if (id && (this.found.has(id) || this.banked.has(id))) return id
+    return null
+  }
+
   *clueSpots(): Generator<{ x: number; y: number }> {
     if (
       this.shelter &&

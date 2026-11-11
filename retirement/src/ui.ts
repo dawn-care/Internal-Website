@@ -75,7 +75,7 @@ import { INTRO_TASKS, isActive as introActive } from './intro'
 import { eggIcon } from './animals'
 import { petSprite, treatIcon } from './pets'
 import { personSprite } from './people'
-import { PORTRAIT, fakePortrait, portrait, type FakeFace } from './portraits'
+import { PORTRAIT, fakePortrait, portrait, type FakeFace, type Mood } from './portraits'
 
 /* The DOM side of the game: HUD, hotbar, chat, toasts and the modal panels. */
 
@@ -111,6 +111,21 @@ export interface DialogueChoice {
   onPick: () => void
 }
 
+/**
+ * The illustrated photos papers can show (retirement/photos, by file name without the extension):
+ * the second exception to drawing everything in code (retirement/CLAUDE.md). Bundled as URLs, so
+ * each loads only when its paper is opened.
+ */
+const PHOTOS: Record<string, string> = Object.fromEntries(
+  Object.entries(
+    import.meta.glob<string>('../photos/*.{webp,png,jpg}', {
+      eager: true,
+      query: '?url',
+      import: 'default',
+    }),
+  ).map(([path, url]) => [path.replace(/^.*\/|\.[^.]+$/g, ''), url]),
+)
+
 export interface DialogueOptions {
   /** Base pitch of the speaker's voice blips (Hz). */
   pitch?: number
@@ -127,7 +142,12 @@ export interface DialogueOptions {
   /** A different eye colour (a fake's tell). */
   eye?: string
   /** A facial expression for the portrait (a real relative you've turned away is hurt). */
-  mood?: 'hurt'
+  mood?: Mood
+  /** An expression per line (falls back to `mood`): people's faces change as they talk. */
+  moods?: (Mood | undefined)[]
+  /** Marks that tell people apart (portraits.ts): Evie's scar, Nora's mole. */
+  scar?: boolean
+  mole?: boolean
   /** A fake from the forest: its transformation stage, and whether it never blinks. */
   fake?: FakeFace
   /** Letters type out this slowly (ms each); the forest's fakes slow down as they change. */
@@ -727,7 +747,16 @@ export class UI {
       c.clearRect(0, 0, PORTRAIT, PORTRAIT)
       // Nurse Ada always wears her Sunset Acres badge, so you know it when you see the other one.
       const badge = t.opts.badge ?? (t.who === 'Nurse Ada' ? 'sunset' : undefined)
-      const o = { old: t.opts.old, talk, blink, badge, eye: t.opts.eye, mood: t.opts.mood }
+      const o = {
+        old: t.opts.old,
+        talk,
+        blink,
+        badge,
+        eye: t.opts.eye,
+        mood: t.opts.moods?.[t.i] ?? t.opts.mood,
+        scar: t.opts.scar,
+        mole: t.opts.mole,
+      }
       c.drawImage(t.opts.fake ? fakePortrait(look, o, t.opts.fake) : portrait(look, o), 0, 0)
       tick++
     }
@@ -1393,15 +1422,41 @@ export class UI {
   }
 
   private paperEl(c: { paper: Paper }): HTMLElement {
+    // Papers that name you ("{name}": the search roster, the clipping) use your character's name.
+    const me = this.game.save.look.name || 'You'
+    const named = (t: string) => t.replaceAll('{name}', me)
     const lines = c.paper.lines.map((l: PaperLine) => {
       if (l.style === 'gap') return el('div', { class: 'gap' })
       if (l.style === 'row') {
         const row = el('div', { class: 'row' })
-        for (const cell of l.text.split('|')) row.append(el('span', { text: cell.trim() }))
+        for (const cell of l.text.split('|')) row.append(el('span', { text: named(cell.trim()) }))
         return row
       }
-      return el('p', { class: l.style ?? 'plain', text: l.text })
+      const src = l.style === 'art' && l.img ? PHOTOS[l.img] : undefined
+      if (src) {
+        const img = el('img')
+        img.src = src
+        img.alt = named(l.text)
+        img.decoding = 'async'
+        return el('figure', { class: 'photo' }, img)
+      }
+      return el('p', { class: l.style ?? 'plain', text: named(l.text) })
     })
+    // A paper that is a picture of itself (the missing poster): the image is the paper, and its
+    // lines, the same words, are there for screen readers only.
+    const whole = c.paper.img ? PHOTOS[c.paper.img] : undefined
+    if (whole) {
+      const img = el('img')
+      img.src = whole
+      img.alt = ''
+      img.decoding = 'async'
+      return el(
+        'div',
+        { class: `paper whole ${c.paper.kind}` },
+        el('figure', { class: 'photo' }, img),
+        el('div', { class: 'sr-only' }, ...lines),
+      )
+    }
     return el('div', { class: `paper ${c.paper.kind}` }, ...lines)
   }
 
@@ -1490,22 +1545,31 @@ export class UI {
     if (!story) return
     // Locks you've found and can't open yet: kept ones and this trip's.
     const leads = this.game.openLeads()
-    const rows = [...story.found.entries()].map(([id, f]) => {
-      const c = CLUES[id]!
-      const read = button(
-        c.title,
-        () => {
-          this.openClue(id, 'taken', { onClose: () => this.openNotepad() })
-        },
-        'link',
-      )
-      return el(
-        'li',
-        {},
-        read,
-        this.noteField(f.note, (v) => this.game.setTripNote(id, v)),
-      )
-    })
+    // People you've written down (STORY.md "Memory"): this trip's and the ones on your board.
+    const people = [
+      ...new Set([
+        ...[...story.found.keys()].filter((id) => CLUES[id]?.person),
+        ...(this.game.save.board?.clues ?? []).map((c) => c.id).filter((id) => CLUES[id]?.person),
+      ]),
+    ]
+    const rows = [...story.found.entries()]
+      .filter(([id]) => !CLUES[id]?.person)
+      .map(([id, f]) => {
+        const c = CLUES[id]!
+        const read = button(
+          c.title,
+          () => {
+            this.openClue(id, 'taken', { onClose: () => this.openNotepad() })
+          },
+          'link',
+        )
+        return el(
+          'li',
+          {},
+          read,
+          this.noteField(f.note, (v) => this.game.setTripNote(id, v)),
+        )
+      })
     this.showPanel(
       el(
         'div',
@@ -1514,11 +1578,36 @@ export class UI {
         el('p', {
           class: 'muted',
           text:
-            rows.length || story.kept.size || story.carried.size || leads.length
+            rows.length || people.length || story.kept.size || story.carried.size || leads.length
               ? 'What you’ve found out here. It’s only safe once you’re home.'
               : 'Nothing yet. Look closely at what you come across.',
         }),
         rows.length ? el('ul', { class: 'found' }, ...rows) : null,
+        people.length
+          ? el(
+              'div',
+              { class: 'people' },
+              el('h3', { text: 'People' }),
+              el(
+                'ul',
+                {},
+                ...people.map((id) =>
+                  el(
+                    'li',
+                    {},
+                    button(
+                      CLUES[id]!.title,
+                      () =>
+                        this.openClue(id, story.found.has(id) ? 'taken' : 'known', {
+                          onClose: () => this.openNotepad(),
+                        }),
+                      'link',
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : null,
         story.kept.size
           ? el(
               'div',

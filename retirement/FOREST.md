@@ -201,6 +201,9 @@ your family members**, by the names you entered. They offer to take you home.
 
 ### Real or fake
 
+- **Everyone is real until the service gate's padlock is open** (P05: solved this trip or kept
+  from an earlier one). Play-testing: copies turning up before the camp's papers gave away what
+  happened to Bell (and Evie) before the player had found any of it. Once it's open:
 - About **60–65% are real** _(tune)_. Most lean real, but not overwhelmingly, so going with
   someone is always tempting and never safe.
 - Fakes get **slightly more common the deeper you go and the longer you stay out.**
@@ -958,8 +961,9 @@ notepad, keeping clues on a safe return, the corkboard). The map is data in
 
 - A footpath north from the treeline to **the fork** (about 26 tiles in), with a signpost: ROUTE 9
   west, CREEK TRAIL east, CAMP under both.
-- **West:** a path to the old Route 9 road at **the bus stop** (about 45 tiles in). The road runs
-  north past **the foreman's cabin** (about 90) and over the creek on a bridge.
+- **West:** a path to the old Route 9 road (about 45 tiles in). The road runs north over the creek
+  on a bridge, past **the foreman's cabin** (about 90), then east along a straight stretch past
+  **the bus stop** (about 108) to the camp gate.
 - **East:** the creek trail passes **Nora's campsite** (about 57) and crosses the creek on a
   footbridge.
 - Both reach **the camp gate** (125 tiles in): an open gate in a wire perimeter fence. Inside is
@@ -976,7 +980,7 @@ Landmark ids are MAP.md's location ids.
   are rectangles, so only the fenced courtyard gets its own ground (gravel); the fork, the cabin
   and Nora's camp are just cleared of trees. The footpath runs right into the fork, so the three
   paths meet in a Y.
-- **Route 9 dead-ends** a little west of the bus stop, at a ROAD CLOSED sign. Past it the road is
+- **Route 9 dead-ends** a little west of where the path from the fork joins it, at a ROAD CLOSED sign. Past it the road is
   just trees, so walking on means getting lost.
 - **Gone from the earlier map**, since they had no place in MAP.md:
   - the ruined house plot (gatepost 14, the windmill floor tiles, the chimney)
@@ -1047,7 +1051,7 @@ Landmark ids are MAP.md's location ids.
   safely, by walking back or with a real escort; being caught or collapsing loses them.
 - Your first kept clue puts a corkboard (furniture, price 0) in your room's storage. On it you can
   drag cards, write notes and run strings (`save.board`, validated in `shared/schema.ts`).
-- Not built yet: the P09 chronology and the cutscenes. Keys, leads and the site map are below
+- Not built yet: the P09 chronology and the cutscenes (memory scenes). Keys, leads and the site map are below
   ("Keys, leads and the site map").
 - Every room has a locked closet (`CLOSET`): P06's door.
 - **Clue ids** are now STORY.md's list, plus the optional `lost_journal`. No save can hold a
@@ -1077,7 +1081,8 @@ rescuer"):
 - You collapse after 5 minutes lost (`COLLAPSE_MS`).
 - **Your old lean-to:** red arrow marks on the trees lead to it, and a tin box under it holds
   `lost_journal` (October 1987).
-- **A copy of the bus stop** turns up off to one side once you've been lost a minute, but only
+- **A copy of the bus stop** turns up off to one side once you've been lost a minute (only once
+  you've found the real one, this trip or before), but only
   when a crew run is 70–170 s away and you'd still be on your feet for it (`BUS_COPY_SOON`). So a
   safe ride is always possible from it. See "The Route 9 bus" below.
 
@@ -1278,28 +1283,24 @@ drawn door and doormat.
 **The clues** (`story/clues.ts`; wording invented around STORY.md's facts):
 - `jonah_journal`: ordinary entries (March), the shed fire (9 May 1978: Danny got them all out and
   signed for it), Bell missing (2 June) and back (5 June), then the contradictions (no sugar; "there
-  was never a fire"; sleeping with his eyes open; the office said leave it). The thought is
-  STORY.md's "He came home. But was it him?" and, five seconds later, once, the memory echo
-  (STORY.md "Memory: how the dementia shows"): "I forget things too. That doesn't make me..."
-  (a clue's `then`).
+  said what fire; sleeping with his eyes open; the office said leave it). No thought (play-testing:
+  STORY.md's "He came home. But was it him?" and a follow-up memory echo were too on the nose).
 - `bell_fire_record`: an incident report for that fire, signed Daniel Bell, employee no. 0416.
   Opening it notes the `bell_number` lead (a clue's `lead`), so the number is never left to memory.
-  The thought is PUZZLES.md's own ("How could he have forgotten the fire?"), but only if you've
-  read Jonah's journal, which is where he forgets it (a clue's `voiceIf`; play-testing caught it
-  referring to something not yet seen). Read first, it's "He got them all out. And signed for it
-  in the morning."
+  The thought is just "He got them all out." (PUZZLES.md's "How could he have forgotten the
+  fire?" was dropped as too on the nose: the journal and the report are left for the player to
+  compare).
 - `evie_photo_before`: in the cabin's envelope under the card (a spot's `also`: the envelope shows
   the card first, then, once that's yours, the photo). Evie on a porch step in a blue raincoat; the
-  scar through her right eyebrow is written out in the description, and on the back, in the
-  protagonist's later hand, "THE SCAR. RIGHT EYEBROW." (the earlier self writing it down, STORY.md
-  "Memory").
+  scar through her right eyebrow is in the description, plainly, among everything else. (An
+  underlined "THE SCAR" note on the back was dropped as too on the nose.)
 
 **P02, Bell's locker:**
 - The same four dials as the service gate (`COMBOS`), with "Lift the latch". 0416 opens it (kept as
   a string, so the zero stays); a wrong code rattles.
 - Open, the locker is drawn swung back on a shirt, and looking in reads `bell_locker`: the two hand
-  photographs (a scar across the knuckles in March, none in July) and the unsigned note ("He is
-  learning us."). Wording invented; it doesn't claim to know what every copy wants.
+  photographs (a scar across the knuckles in March, none in July) and an unsigned note listing
+  small wrong habits, with no conclusion drawn. Wording invented.
 - Kept like P05: open for the rest of the trip, for good once you're home safe.
 
 **P03, the shutter:**
@@ -1322,3 +1323,150 @@ drawn door and doormat.
   remember this", the wrong idea for someone who doesn't).
 - STORY.md now has "Memory: how the dementia shows", and PUZZLES.md's Nora scenes use it: the
   People page and notes about Nora are planned (M4), not built.
+
+### Evie's papers (built: IMPLEMENTATION.md M4, part 1)
+
+M4 is being built in parts: this first part is the office's Evie evidence (the memory scenes
+that came with it have been taken out again: see below). Nora's meetings and the People page (part 2), and the deep road with the
+watchman's shelter, your double and the ravine (part 3), are **not built**.
+
+**Evie's papers in the office** (`story/clues.ts`; all wording invented around STORY.md's facts):
+- **Evie's case box** on the floor (a file box, SHERIFF on the end): `evie_case_1978` (her 1978
+  file: three people back from the woods, Bell among them, one whose chin scar was gone; the
+  other two names are invented), then `evie_last_lead` (Jonah's letter of 2 Sept 1987 and the
+  survey sketch with STORES BELOW under the first-aid shelter).
+- **Your archive**, an old suitcase open on the floor (MAP.md: the post-1987 cache):
+  - `evie_missing` (the poster: 14 Sept 1987, blue raincoat, the scar), then `search_roster` (the
+    volunteers' sign-in, with your own name on it four days running)
+  - `neighbor_statement` (a neighbour, Margaret Hale, saw her at your door on the 20th), then
+    `returned_evie_photo` (an instant photo dated Sept 21; her eyebrows described as smooth
+    and even, never pointed out)
+- **The desk drawer:** `returned_evie_journal` (your diary, 20–23 Sept: she doesn't eat, asks to
+  walk at Hollow Pines, then she's gone, her raincoat on your hook and a door that was never there),
+  then `player_missing` (the clipping: found after eleven days).
+- **Reveal gates** (judgement call; STORY.md puts the returned Evie in Act III): the three
+  returned-Evie papers can only turn up once `evie_missing` is on your board, and the clipping once
+  `search_roster` is. Until then the spot just describes the folders or the damp diary, with a line
+  about it meaning nothing to you yet. Act II's four need nothing.
+- Each spot holds two papers (`also`); a spot with neither readable yet shows its own `look`
+  (`StoryPlan.clueToShow`).
+- **Your name:** papers that name you write `{name}`, replaced with your character's name.
+
+**The memory scenes: not built.** A first version of `CS_GARDEN`, `CS_SEARCH` and
+`CS_HOMECOMING` (still shots on a small canvas, queued on a safe return, a Memories button on the
+board) was built and then taken out in play-testing, to come back later. Nothing plays them now;
+STORY.md's table is still the plan. `save.story.queued` and `seen` stay in the save's schema (old
+saves that have them still load), and nothing sets them. Evie's portrait can still carry the scar
+(`PortraitOptions.scar`), and Nora's the mole (`mole`).
+
+### Nora's real meetings (built: IMPLEMENTATION.md M4, part 2)
+
+`story/nora.ts` has her look, her lines and the little state machine; `src/game.ts` (`updateNora`,
+`noraTalks`) runs the scenes. Her copy at the shelter door, your double and the ravine are part 3,
+**not built**.
+
+- **Nora** has a fixed look: long dark hair, a green jacket, a scarf, a lantern (a warm glow that
+  moves with her). Her dialogue portrait has the mole on her left cheek (`PortraitOptions.mole`),
+  and her People note says so in words. She casts a shadow and is drawn like any real person.
+- **Scripted events are kept the moment they happen** (`save.story.events`), even if you don't get
+  home (PUZZLES.md: NPC flags persist apart from unbanked notes). While she's on screen, encounters
+  and threats don't start.
+- **E_NORA_SIGHTING** (optional): once a trip you might see her, a way past the fork on either
+  path (about 13 tiles along it: `SIGHTINGS` in story/nora.ts; play-testing: on the footpath in
+  she was there the moment you arrived), before you've met her, half the time
+  (`NORA_SIGHT_CHANCE`): a figure with a lantern about seven tiles further on stops, looks at you,
+  and runs on ahead and off into the trees, fading. West, towards Route 9; east, up the creek
+  trail towards her camp. No thought (play-testing: "Someone was there." said the obvious). Only
+  before she's first startled in the courtyard.
+- **She warms up slowly** (play-testing: going from "stay back" to an apology and her name in
+  one conversation was too quick and too on the nose). One beat per trip, each kept the moment it
+  happens:
+  - **E_NORA_STARTLED** (new id): in the courtyard, once you've looked at anything there or been
+    there `NORA_MEET_AFTER` (10) seconds. She's at one of a few fixed spots six to twelve tiles off.
+    Within about six tiles she's frightened and hostile ("Stay back! I'm warning you!") and runs
+    off east. The dialogue calls her "The woman"; she doesn't give her name.
+  - **E_NORA_AGAIN** (new id): a later trip, in the courtyard or at her camp by the creek: "You
+    again. Stop following me. I mean it." She leaves quickly, not quite running.
+  - **E_NORA_MEET_1**: the trip after, courtyard or camp. She's too tired to keep running, sees
+    your Sunset Acres badge and takes you for someone from the home who keeps wandering up here,
+    asks if they know you're out, and gives her name: Nora Vale, up here for the camp's history.
+    She walks off. A moment later the protagonist repeats her name to themselves ("Nora Vale...
+    Nora Vale... Nora Vale...") and her note goes in your notepad.
+  - Saves that already had E_NORA_MEET_1 skip the first two.
+- **E_NORA_MEET_2** (guaranteed): on a later trip (never the same one), in the courtyard, once
+  `evie_case_1978` is on your board. An ordinary moment (play-testing: an excited greeting, a
+  research briefing and "don't follow me" was unrealistic): she's sitting at the courtyard's east
+  table with her kettle and doesn't come to you. Close enough, she says "Oh. Hello again." Then,
+  STORY.md "Memory":
+  - **Her note on your board:** the thought is just "Nora.", and she says "Still wandering up
+    here, then?"
+  - **Not on your board** (never banked, or lost when you were caught): "Have we met?", and she
+    tells you again, kindly ("It's Nora. We met up here, the other week. ...It's all right."). You
+    write her down again afterwards.
+  - Then tea, and in passing what she's reading (someone from the sheriff's, a woman, Mercer,
+    asking questions here in 1978; nobody will talk about it), and as small talk her plan to go up
+    the deep road tomorrow to see the old first-aid shelter before the snow. Last: "If you see a
+    lantern up that way, that's only me." (set up for her copy, which carries one too).
+  - She stays at the table when you go, and is gone once you're about 13 tiles away. Her camp by
+    the creek is packed up from then on.
+  - **Judgement call:** how she gets past the locked gate isn't said.
+- **Her People note** (`note_nora`, a clue id with `person: true`): your own words about her,
+  ending with the mole on her left cheek, written plainly. It's in the notepad's new
+  **People** section (this trip's, and anyone already on your board), banked like any clue, and
+  pinned on the board. It's what part 3's door scene will let you check her face against.
+- **Her camp by the creek** (MAP.md 06): after the first meeting, its descriptions recognize her
+  things ("Nora's kettle..."). From the second meeting on she has packed up: the fire is cold, and
+  the kettle and bedroll are gone (drawn as a soot ring and flattened grass; the spots say so).
+  Nothing changes while you could be watching: it happens while you're in the courtyard.
+- All her lines and the note's wording are invented around PUZZLES.md's beats.
+- **Her face follows the scene** (play-testing: she smiled while telling you to stay back).
+  Portraits now have moods besides the default smile (`Mood` in src/portraits.ts): `neutral` (a
+  straight mouth, no blush), `angry` (brows drawn down to the middle, eyes narrowed, the mouth
+  pulled down, teeth as she speaks), `scared` (brows up, eyes wide, mouth open) and the older
+  `hurt`. Dialogue takes a mood per line (`DialogueOptions.moods`). Nora: scared when startled,
+  angry the second time, neutral (tired, guarded) through the first meeting, neutral greeting at
+  the second, then a small smile over the tea and the lantern line, plain for the rest (the
+  `*_MOODS` arrays in story/nora.ts). Everyone else is unchanged for now.
+
+**Quieter thoughts and papers** (play-testing: "He came home. But was it him?" and other lines were
+far too on the nose). The rule is now in STORY.md "The inner voice": a thought reacts, it never
+concludes. Most papers now have no thought; the rest say something small and personal ("Her
+handwriting before. Somewhere." (not "I'd know it anywhere": they wouldn't), "Margaret. From across the road.", "That's my kitchen."). The papers
+no longer underline the answer (the capitals pointing at the scar and the eyebrow are gone, Bell's
+locker note draws no conclusion, Nora doesn't warn that people aren't who they look like). Scars
+and the mole are still described in words wherever they show. The clue
+mechanisms for a delayed second thought (`then`) and a thought that depends on another clue
+(`voiceIf`) are gone with the lines that used them.
+
+**Pictures never show you** (STORY.md, after the story rules): your character is whatever you
+made, so the photos, posters and drawings still to be drawn (the nine `art` lines in
+story/clues.ts and story/docs.ts) show other people, places and things, never the protagonist.
+None of them does today. The removed memory scenes did draw you, with your current look.
+
+**Illustrated photos** (the second exception to drawing everything in code; retirement/CLAUDE.md):
+an `art` line on a paper can name a picture in retirement/photos (`img`), shown as the print
+itself, with the line's text as its alt text. So far only `evie_photo_before`
+(`photos/evie_photo_before.webp`: Evie on a porch step in the blue raincoat; the scar was painted
+in more clearly and the colours warmed, see docs/art-reference/edit_evie_photo.py). The other
+seven `art` lines are still text. A paper can also be a picture of itself (`Paper.img`): the
+missing poster (`photos/evie_missing.webp`) is shown whole, with no paper behind it, and its lines
+are the same words, kept for screen readers only (so they have to match the image). Writing it
+changed the poster's details to match the image: "MISSING PERSON", age 46, 5′6″, auburn hair,
+green eyes, the scar as an identifying mark, last seen Monday 14 September 1987 near the old Hollow
+Pines camp road, the blue raincoat, and the County Sheriff's Department. The returned-Evie photo should be made from the same picture
+(same face and hair, smooth brows) so the two compare cleanly.
+
+**Pacing changes** (play-testing: things came too early):
+- **Nora's sighting** is a way past the fork now, with no thought (above).
+- **The bus stop is later:** it's moved up Route 9, past the foreman's cabin, on a new straight
+  stretch of road before the camp gate (MAP.md 04; the bus needs a straight run of road). The bus
+  is still a choice, just not the first thing you find. Its lost copy only turns up once you've
+  found the real stop.
+- **The warning comes first:** `bus_warning` ("DO NOT RIDE THE BUS ALONE.") is nailed to the
+  trail marker at the trailhead, long before there's a bus to make sense of it. MAP.md's
+  `own_warning` (not built) was planned for that marker; it will need another place.
+- **The camp gate's sign** no longer thinks "This is where the bus went." (you may not have seen
+  the bus stop by then; it also said too much).
+- **No copies before the padlock** (Real or fake, above).
+- **Evie's 1978 file** lost its summing-up line ("Each came back unhurt... not quite right"); a
+  margin note about a phone call is there instead (invented). The three rows are unchanged.

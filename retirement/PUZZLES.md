@@ -44,6 +44,7 @@ Every object has `siteId`, `objectId`, descriptive text, optional `clueId`, opti
 
 - Fixed paths and landmarks do not regenerate between expeditions. Trees/off-road areas do. Losing the route is **not** a function of distance along a road; leaving its authored navigation corridor is the risk. A player can walk home from any fixed connected path if they never become lost.
 - Once lost, replace the authored map with procedural lost forest. Real Nurse Ada, real family, and the real pet can rescue. Wrong-looking copies may offer the same help.
+- **No copies before `P05`:** until the service gate's padlock is open, every Nurse Ada or family member who finds the player is real. Copies start only after it (so they don't give away what happened to Bell and Evie before the camp's papers do).
 - A real pet reunion, when eligible, is **always** safe. Starting tune is about **1 in 8 rescue opportunities**, not a roll per second. Pet companionship is intermittent and cannot provide a guaranteed fake detector.
 - The family photo is optional equipment. If left on the room wall it is safe; when carried into a failed trip it is lost. Nurse Ada provides an affordable **paid** replacement (existing 40 coins is a reasonable starting point). Money is readily earned by selling community-garden produce to Chef Rosa; don't invent a second grind.
 - Dying/caught is shown as a jumpscare/blackout and awakening in the infirmary. In-world the player is recovered unconscious; Nora's death is a genuinely fatal event. The player's pre-existing banked notes and the real community are never lost.
@@ -62,7 +63,7 @@ Every object has `siteId`, `objectId`, descriptive text, optional `clueId`, opti
 | `P01` | Administration office key | `ADMIN_OFFICE` | `ITEM_ADMIN_KEY` at `FOREMAN_CABIN` | **Yes** |
 | `P02` | Daniel Bell's locker | `BUNKHOUSE` | Fire record/employee number at `MAINTENANCE` | Optional |
 | `P03` | Jammed storage shutter | `MAINTENANCE` | Local pulley/safety mechanism | Optional |
-| `P04` | Route 9 bus rule | `BUS_STOP` (or its copy while lost) | Warning and timetable at the same stop; or the real pet aboard | Optional |
+| `P04` | Route 9 bus rule | `BUS_STOP` (or its copy while lost, once the real stop is found) | Warning at the trailhead, timetable at the stop; or the real pet aboard | Optional |
 | `P05` | Night-crew service gate | `SERVICE_GATE` | Code registry at `ADMIN_OFFICE` | **Yes** |
 | `P06` | Sunset Acres closet | `SA_ROOM` | `ITEM_CLOSET_KEY` at `SURVEY_LOOKOUT` | **Yes** |
 | `P07` | Escape false Sunset Acres | `FALSE_SUNSET` | Compare fixed personal anchor details | **Yes** |
@@ -90,7 +91,7 @@ Every object has `siteId`, `objectId`, descriptive text, optional `clueId`, opti
 - **Solution:** `0416`. Preserve the leading zero in UI and saved puzzle data.
 - **Success:** opens Bell's locker; reveal paired pre/post-return hand photographs and an unsigned note suggesting a returned person is struggling to imitate ordinary family habits. The note **does not prove** what all copies want.
 - **Failure:** wrong code only produces a lock rattle; no forced damage. Player can retry or skip entirely. Locker state persists after successful safe return.
-- **Voice:** *“He signed the report. How could he have forgotten the fire?”*
+- **Voice:** none on the report beyond *“He got them all out.”* (Play-testing: spelling out the contradiction was too on the nose; the journal and the report sit side by side for the player to compare.)
 
 ### `P03` — Jammed maintenance shutter (optional; environmental)
 
@@ -101,7 +102,7 @@ Every object has `siteId`, `objectId`, descriptive text, optional `clueId`, opti
 
 ### `P04` — The Route 9 bus (optional; rule horror)
 
-- **Observed at:** `BUS_STOP`, and at the copy of the stop that turns up while the player is lost. Timetable (`route9_timetable`): service ended **1979**, and the crew runs to the camp were **DAY CREW 06:00, SWING 14:00, NIGHT CREW 22:00** on the shared game clock. Warning in the player's handwriting (`bus_warning`): **“DO NOT RIDE THE BUS ALONE.”**
+- **Observed at:** `BUS_STOP`, and at the copy of the stop that turns up while the player is lost. Timetable (`route9_timetable`): service ended **1979**, and the crew runs to the camp were **DAY CREW 06:00, SWING 14:00, NIGHT CREW 22:00** on the shared game clock. Warning in the player's handwriting (`bus_warning`), found earlier on the trailhead marker: **“DO NOT RIDE THE BUS ALONE.”** The stop is on Route 9 past the foreman's cabin, so the warning comes long before the bus does.
 - **What comes** (the story's rule: STORY.md, “The forest replays what it watched for years”):
   - **On the timetable** (it pulls up at a crew time, waiting with its doors open long enough to choose), the bus is **full**: the faint shapes of people standing inside show through its windows before you board. Its passengers are the replayed crew, copies who take no notice of you. Ride it and it drives you to the public `CAMP_GATE` stop, where the crew get off and walk in through the gate and are gone.
   - **Off the timetable**, an **empty** bus comes: dark, empty windows, no one driving, the destination board reading **SUNSET ACRES**. It's a lure.
@@ -162,16 +163,19 @@ Every object has `siteId`, `objectId`, descriptive text, optional `clueId`, opti
 
 ### `E_NORA_SIGHTING` — an actual person at the edge of the frame
 
-- **Site:** `TRAILHEAD` (one optional early appearance), with physical tea/campsite signs at `CREEK_CAMP`.
+- **Site:** a short way past `SOUTH_FORK` on either path (one optional early appearance; not at the trailhead, which was too soon), with physical tea/campsite signs at `CREEK_CAMP`. No thought afterwards.
 - **Beat:** a distant figure notices the player, becomes frightened and flees. No chase or catch-up minigame; this is **real Nora**.
 - **Evidence:** the warm tea and extinguished fire are mundane, recent activity from her camp. They foreshadow the person rather than introducing an orphan mystery.
 
 ### `E_NORA_MEET_1` and `E_NORA_MEET_2` — two real conversations
 
 - **Site:** `CAMP_YARD` (guaranteed; do not require discovering `CREEK_CAMP`).
-- **Meet 1 trigger:** first visit or shortly after a brief camp examination. Nora initially asks the player to stay back, then introduces herself as a local historian. She mentions researching the abandoned camp, not a private family tragedy.
-- **Meet 2 trigger:** a later visit after **banked** `evie_case_1978`; she recognizes the protagonist and discusses a finding. This exchange makes it plausible she would later trust someone wearing the protagonist's face. Nora's left-cheek mole is shown in her **genuine** dialogue portrait and noted on an interactable sketch/description.
-- **Memory (STORY.md “Memory: how the dementia shows”):** at Meet 2 the protagonist doesn't recognize her (*“Have we met?”*) unless the player has a banked People note about her, in which case the thought is *“Nora. I wrote her down.”* Either way she greets them warmly; when they don't know her she gently introduces herself again and isn't hurt. After Meet 1 (and again after Meet 2) the protagonist writes her into the notepad's **People** page in their own words, including the mole. Banked, it becomes a board card. That note, not the protagonist's memory, is what the player has to go on at `E_NORA_DOOR`.
+- **Before Meet 1 (play-testing: she warms up slowly), one beat per expedition:**
+  - `E_NORA_STARTLED`: first camp visit, shortly after a brief examination. She's frightened and hostile (*“Stay back! I'm warning you!”*) and runs. No name.
+  - `E_NORA_AGAIN`: a later visit, at `CAMP_YARD` or `CREEK_CAMP`. Still wary (*“You again. Stop following me.”*); she leaves.
+- **Meet 1 trigger:** the visit after that, at `CAMP_YARD` or `CREEK_CAMP`. She's too tired to keep running, notices the player's Sunset Acres badge and takes them for a resident who keeps wandering up here, then introduces herself as a local historian. She mentions researching the abandoned camp, not a private family tragedy.
+- **Meet 2 trigger:** a later visit after **banked** `evie_case_1978`; she recognizes the protagonist and mentions a finding. Played as an ordinary moment, not a briefing (play-testing): she's sitting at a courtyard table with her kettle, offers tea, mentions Mercer in passing, and her trip up the deep road comes up as small talk. No instructions to the player. This exchange makes it plausible she would later trust someone wearing the protagonist's face. Nora's left-cheek mole is shown in her **genuine** dialogue portrait and noted on an interactable sketch/description.
+- **Memory (STORY.md “Memory: how the dementia shows”):** at Meet 2 the protagonist doesn't recognize her (*“Have we met?”*) unless the player has a banked People note about her, in which case the thought is just her name Either way she greets them warmly; when they don't know her she gently introduces herself again and isn't hurt. After Meet 1 (and again after Meet 2) the protagonist writes her into the notepad's **People** page in their own words, including the mole. Banked, it becomes a board card. That note, not the protagonist's memory, is what the player has to go on at `E_NORA_DOOR`.
 - **Timeline:** Nora leaves for the deeper road after Meet 2. Her offscreen death is committed on a subsequent expedition as the player enters the deep region. Reaching the deep road before Meet 2 must be possible and not suddenly present fake Nora.
 - **Continuity/failure:** NPC encounter flags can persist independently of unbanked notes. Don't resurrect her after the offscreen death or make a random chance necessary to find her.
 

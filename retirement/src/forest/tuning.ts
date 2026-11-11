@@ -501,3 +501,10 @@ export const BUS_DEEP = 0.92
  * drones play at once, and the wind drops to this much of itself: the forest is holding its breath.
  */
 export const BUS_DEEP_WIND = 0.3
+
+// --- Nora (story/nora.ts; PUZZLES.md E_NORA_SIGHTING, E_NORA_MEET_1/2) ---------------------------
+
+/** How often (per trip, until it's happened) she's on the trail ahead and runs. */
+export const NORA_SIGHT_CHANCE = 0.5
+/** Seconds in the courtyard before she turns up for the first meeting (sooner if you look at things). */
+export const NORA_MEET_AFTER = 10

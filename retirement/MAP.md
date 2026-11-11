@@ -18,9 +18,9 @@
 flowchart TB
   SA[Real Sunset Acres] --> TH[TRAILHEAD]
   TH --> FK[SOUTH_FORK]
-  FK --> B[BUS_STOP]
-  B --> FC[FOREMAN_CABIN]
-  FC --> CG[CAMP_GATE]
+  FK --> FC[FOREMAN_CABIN]
+  FC --> B[BUS_STOP]
+  B --> CG[CAMP_GATE]
   FK --> CR[CREEK_CAMP]
   CR --> CG
   CG --> CY[CAMP_YARD]
@@ -72,28 +72,28 @@ Names and IDs here are stable content keys. Layout coordinates should be authore
 
 - **Connections:** Real property ↔ `SOUTH_FORK`.
 - **Visuals:** desaturated fringe, thinning sound, first fixed dirt trail; branches close in gradually. Pet growls/hisses near entry.
-- **Interact:** old scratched trail marker with `own_warning` in the protagonist's handwriting; first brief distant Nora silhouette can flee across the edge of the screen. No need to chase her.
+- **Interact:** old trail marker with `bus_warning` (“DO NOT RIDE THE BUS ALONE.”) nailed to it in the protagonist's handwriting, found long before the bus stop. (`own_warning` was planned here and needs another place.) Nora's brief sighting is a little further on, past `SOUTH_FORK`. No need to chase her.
 - **Story:** sets mood and reveals an unsettling familiar handwriting before naming Evie.
 - **Puzzle:** none. Players should have time to acclimate; no forced dialogue immediately upon crossing.
 
 ### 03 — `SOUTH_FORK`: signed two-way junction
 
-- **Connections:** `TRAILHEAD`, west to `BUS_STOP`, east to `CREEK_CAMP`.
+- **Connections:** `TRAILHEAD`, west to Route 9 (`FOREMAN_CABIN`, then `BUS_STOP`), east to `CREEK_CAMP`. Nora's optional sighting is on either path a short way past the fork.
 - **Visuals:** weathered sign, road vs narrow creek trail; both ultimately converge at camp entrance.
 - **Interact:** examine sign, get a simple trail-map sketch after visiting a branch.
 - **Story:** the player can choose investigation order. This is navigation, not a puzzle.
 
 ### 04 — `BUS_STOP`: Route 9 shelter
 
-- **Connections:** `SOUTH_FORK` ↔ `FOREMAN_CABIN`.
+- **Connections:** `FOREMAN_CABIN` ↔ `CAMP_GATE`, on Route 9 past the cabin (moved later in play-testing, so the bus isn't the first thing found).
 - **Visuals:** weathered timetable, unmaintained bench, old bus route; the forest occasionally produces a bus even though the last real service was 1979.
-- **Fixed clues:** `route9_timetable`, `bus_warning`.
+- **Fixed clues:** `route9_timetable` (`bus_warning` is at `TRAILHEAD`).
 - **Optional mechanic `P04`:** the forest still runs the bus on its old crew timetable. A **scheduled** bus comes full (faint shapes of people in its windows) and takes you safely to the fixed **camp gate stop** (no gate bypass); so does any bus with your real pet aboard. An **empty** off-schedule bus is a lure: ride it alone and it lets you off deep in the lost forest. Never a way home.
 - **Story:** first clear rule-horror site. The warning's literal author is the protagonist's earlier self.
 
 ### 05 — `FOREMAN_CABIN`: western road cabin
 
-- **Connections:** `BUS_STOP` ↔ `CAMP_GATE`.
+- **Connections:** `SOUTH_FORK` (by the path to Route 9) ↔ `BUS_STOP`.
 - **Visuals:** small office/overnight cabin, desk, coat hook, rotted paperwork, one usable key hook.
 - **Fixed items:** `ITEM_ADMIN_KEY` and an old field envelope with `evie_card` and `evie_photo_before`; these personal objects were stashed by the protagonist during previous investigations.
 - **Story:** first hint the protagonist was close to someone tied to these woods; introduces a found key before the locked office appears.

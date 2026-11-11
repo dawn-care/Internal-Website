@@ -2,8 +2,12 @@
 
 A shared, Stardew-style pixel game about life in a nursing home, unrelated to D.A.W.N.
 Plain TypeScript + canvas, no React, no new dependencies, no image files (all art is drawn in
-code), with one exception: the forest's jumpscare images in retirement/scares (copies of
-jumpscare/media, with jumpscare/sounds as scare-1..7.mp3; src/forest/scare.ts). Built by vite.retirement.config.ts into dist/retirement; `npm run dev:retirement`
+code), with two exceptions: the forest's jumpscare images in retirement/scares (copies of
+jumpscare/media, with jumpscare/sounds as scare-1..7.mp3; src/forest/scare.ts), and illustrated
+photos on the story's papers in retirement/photos (a paper line `{ style: 'art', img: '<file name>' }`
+in story/clues.ts shows the file, its text becoming the alt text; a paper with `img` is shown as
+that picture whole, its lines kept for screen readers; src/ui.ts PHOTOS). Pictures never
+show the player's character (it's whatever they made). Built by vite.retirement.config.ts into dist/retirement; `npm run dev:retirement`
 serves it alone at localhost:5173/retirement/ in offline mode (localStorage save, two fake
 neighbours who wander and chat, see src/net.ts LocalNet).
 
@@ -69,6 +73,10 @@ marks which are built.
   through DOORS); puzzle documents (codes and names, not story clues) are story/docs.ts; the
   combination locks (P02, P05) are story/map.ts COMBOS; an opened gate, locker or shutter is
   `Forest.open` (only a fence-like prop becomes walkable).
+  The memory scenes (STORY.md's CS_*) are not implemented (`save.story.queued`/`seen` exist but
+  nothing sets them).
+  story/nora.ts is the real Nora (her look, lines and the sighting/meeting scenes; events kept in
+  `save.story.events` as they happen); people you've met are clues with `person` (`note_nora`).
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an
   auto outline), src/game.ts (loop, movement, interaction, decorating, sync, rendering),
   src/ui.ts (HUD, hotbar, chat, Kitchen / Catalog / Wardrobe / Help panels),

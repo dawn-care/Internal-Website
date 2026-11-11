@@ -61,6 +61,8 @@ export const PROP_SIZE: Record<
   burnt: { w: 2, rows: 1, tall: 1 },
   bay: { w: 3, rows: 1, tall: 2 },
   winch: { w: 1, rows: 1, tall: 2 },
+  casebox: { w: 1, rows: 1, tall: 1 },
+  suitcase: { w: 2, rows: 1, tall: 1 },
   // The way out: a door in the front wall, and the mat in front of it.
   exitdoor: { w: 1, rows: 0, tall: 2 },
   doormat: { w: 1, rows: 0, flat: true, tall: 1 },

@@ -119,6 +119,36 @@ import { Ride, crewLook, warmRide } from './forest/story/ride'
 import { drawBus } from './forest/story/art'
 import { Director } from './forest/story/director'
 import { CLUES } from './forest/story/clues'
+import {
+  AGAIN,
+  CAMP_SPOTS,
+  LEAVE_CREEK,
+  LEAVE_EAST,
+  LEAVE_NORTH,
+  MEET_1,
+  MEET_2_GREET,
+  MEET_2_KNOWN,
+  MEET_2_REMIND,
+  MEET_2_REST,
+  NORA_LOOK,
+  NORA_PITCH,
+  NORA_CAMP,
+  NORA_SEAT,
+  NORA_THOUGHTS,
+  SIGHTINGS,
+  NORA_UNNAMED,
+  Nora,
+  STARTLE,
+  STARTLE_MOODS,
+  AGAIN_MOODS,
+  MEET_1_MOODS,
+  MEET_2_GREET_MOODS,
+  MEET_2_KNOWN_MOODS,
+  MEET_2_REMIND_MOODS,
+  MEET_2_REST_MOODS,
+  YARD_SPOTS,
+  type NoraKind,
+} from './forest/story/nora'
 import { FIND_BY_ID, KEEPSAKES, type Find, type FindId } from './forest/story/finds'
 import {
   LANDMARKS,
@@ -142,6 +172,7 @@ import {
   NOTE_MAX,
   SITE_IDS,
   type ClueId,
+  type EventId,
   type ItemId,
   type LeadId,
   type PuzzleId,
@@ -218,6 +249,8 @@ import {
   WIND_FROM,
   DANGER_PER_TRIP,
   GLINT_NEAR,
+  NORA_MEET_AFTER,
+  NORA_SIGHT_CHANCE,
   GLINT_PERIOD,
 } from './forest/tuning'
 import * as garden from './garden'
@@ -370,6 +403,16 @@ export class Game {
     crewWalk: { x: number; y: number; look: Look; a: number; anim: number }[]
     /** What "Something feels... off." has been said for this trip. */
     offFelt: Set<string>
+    /** Nora, while she's here (story/nora.ts), and this trip's bookkeeping for her scenes. */
+    nora: Nora | null
+    noraSightTried: boolean
+    /** Time spent in the courtyard, and whether you've looked at anything there (Meet 1's cue). */
+    yardTime: number
+    yardLooked: boolean
+    /** Time spent at her camp by the creek (where you can run into her too). */
+    campTime: number
+    /** A meeting happened this trip (the second needs a later trip). */
+    noraMetNow: boolean
     /**
      * Where you got lost, and how long you've been heading back that way (ms), looking for the
      * path, with where you were last frame.
@@ -3511,6 +3554,11 @@ export class Game {
     const solvedBefore = this.save.story?.puzzles ?? []
     for (const [p, c] of Object.entries(COMBOS))
       if (solvedBefore.includes(p as ComboId)) f.open(c.prop)
+    // Nora's camp, once she's gone up the deep road (E_NORA_MEET_2): her kettle and bedroll gone.
+    if (this.save.story?.events?.includes('E_NORA_MEET_2')) {
+      f.open('kettle')
+      f.open('bedroll')
+    }
     if (solvedBefore.includes('P03')) {
       f.open('bay')
       f.open('shed')
@@ -3536,6 +3584,12 @@ export class Game {
       deeper: false,
       crewWalk: [],
       offFelt: new Set(),
+      nora: null,
+      noraSightTried: false,
+      yardTime: 0,
+      yardLooked: false,
+      campTime: 0,
+      noraMetNow: false,
     }
     this.ui.refresh()
     this.ui.renderChat()
@@ -3581,6 +3635,7 @@ export class Game {
     t.threats.update(t.threats.busy() ? dt : dt * wait)
     if (t.end) return
     this.updateStory(dt, wait)
+    this.updateNora(dt)
     // (Inside a building, as dark as it is at its door.)
     const room = roomAt(Math.floor(this.me.x), Math.floor(this.me.y))
     const depth = room ? f.depth(room.out.x, room.out.y) : f.depth(this.me.x, this.me.y)
@@ -3703,6 +3758,9 @@ export class Game {
     const now = this.gameNow()
     if (!t.bus) {
       if (!f.lost || t.lostFor < BUS_AFTER || t.waiting >= 0 || !t.story.shelter) return
+      // Only once you've found the real stop (it's a way up Route 9, past the cabin): the forest
+      // copies places you know.
+      if (!t.story.reached.has('BUS_STOP') && !this.save.story?.sites?.includes('BUS_STOP')) return
       const until = untilCrew(now)
       if (until < BUS_COPY_SOON[0] || until > BUS_COPY_SOON[1]) return
       if (COLLAPSE_MS - t.lostFor < until + 30_000) return
@@ -4516,6 +4574,168 @@ export class Game {
     this.ui.refresh()
   }
 
+  // --- Nora (PUZZLES.md E_NORA_SIGHTING, E_NORA_MEET_1, E_NORA_MEET_2; story/nora.ts) ----------
+
+  /** In the camp's courtyard, outdoors (inside the fence). */
+  private inYard(): boolean {
+    const { x, y } = this.me
+    return !!this.forest && x > -21 && x < 21 && y > -157 && y < -127 && !this.indoors()
+  }
+
+  private hasEvent(id: EventId): boolean {
+    return !!this.save.story?.events?.includes(id)
+  }
+
+  /**
+   * A scripted encounter has happened. Kept at once, even if you don't get home (PUZZLES.md: NPC
+   * encounter flags persist independently of unbanked notes).
+   */
+  private addEvent(id: EventId) {
+    if (this.hasEvent(id)) return
+    const s = (this.save.story ??= {})
+    s.events = [...(s.events ?? []), id]
+    this.markDirty()
+  }
+
+  /** Whether Nora's note is on your board (you wrote her down and got home with it). */
+  private knowsNora(): boolean {
+    return !!this.save.board?.clues.some((c) => c.id === 'note_nora')
+  }
+
+  private updateNora(dt: number) {
+    const t = this.trip!
+    const f = this.forest!
+    if (t.nora) {
+      if (t.nora.update(dt, this.me) === 'talk') this.noraTalks(t.nora)
+      if (!t.nora.busy()) t.nora = null
+      return
+    }
+    if (f.lost || t.enc.busy() || t.threats.busy() || this.ui.dialogueOpen()) return
+    // The sighting: once, a way past the fork, before you've met her (and only sometimes).
+    const sight =
+      !t.noraSightTried &&
+      !this.hasEvent('E_NORA_SIGHTING') &&
+      !this.hasEvent('E_NORA_STARTLED') &&
+      !this.hasEvent('E_NORA_MEET_1')
+        ? SIGHTINGS.find((s) => Math.hypot(this.me.x - s.at.x, this.me.y - s.at.y) < 2.5)
+        : undefined
+    if (sight) {
+      t.noraSightTried = true
+      if (Math.random() < NORA_SIGHT_CHANCE) {
+        this.addEvent('E_NORA_SIGHTING')
+        t.nora = new Nora('sighting', sight.stand.x, sight.stand.y, sight.to)
+      }
+      return
+    }
+    if (t.noraMetNow) return
+    // Which beat is next: she warms up slowly, one meeting a trip (startled, wary, then her name),
+    // and the second real meeting once Evie's 1978 file is on your board. (Saves from before the
+    // warming up, with E_NORA_MEET_1 already, skip straight on.)
+    const met1 = this.hasEvent('E_NORA_MEET_1')
+    const kind: NoraKind | null = met1
+      ? !this.hasEvent('E_NORA_MEET_2') && t.story.banked.has('evie_case_1978')
+        ? 'meet2'
+        : null
+      : !this.hasEvent('E_NORA_STARTLED')
+        ? 'startle'
+        : !this.hasEvent('E_NORA_AGAIN')
+          ? 'again'
+          : 'meet1'
+    if (!kind) return
+    // Where: the courtyard always; her camp by the creek too once she's run from you there.
+    const atCamp =
+      (kind === 'again' || kind === 'meet1') &&
+      Math.hypot(this.me.x - NORA_CAMP.x, this.me.y - NORA_CAMP.y) < 9
+    if (atCamp) t.campTime += dt
+    else if (this.inYard()) t.yardTime += dt
+    else return
+    const ready = atCamp
+      ? t.campTime > 1.5
+      : kind === 'startle'
+        ? t.yardLooked || t.yardTime > NORA_MEET_AFTER
+        : t.yardTime > 3
+    if (!ready) return
+    // Somewhere in sight but not on top of you.
+    const spots = atCamp ? CAMP_SPOTS : YARD_SPOTS
+    const by = [...spots].sort((a, b) => {
+      const da = Math.hypot(a.x - this.me.x, a.y - this.me.y)
+      const db = Math.hypot(b.x - this.me.x, b.y - this.me.y)
+      const score = (d: number) => (d >= 6 && d <= 12 ? 0 : 1) + Math.abs(d - 8) / 100
+      return score(da) - score(db)
+    })[0]
+    // The second meeting: she's sitting at a table with her kettle, not standing waiting for you.
+    if (kind === 'meet2') t.nora = new Nora(kind, NORA_SEAT.x, NORA_SEAT.y, LEAVE_NORTH, true)
+    else t.nora = new Nora(kind, by.x, by.y, atCamp ? LEAVE_CREEK : LEAVE_EAST)
+  }
+
+  /** You've come close: the conversation (her lines, your thoughts between). */
+  private noraTalks(n: Nora) {
+    const t = this.trip!
+    const opts = { look: NORA_LOOK, old: false, mole: true, pitch: NORA_PITCH }
+    this.me.dir = (n.x < this.me.x ? 1 : n.x > this.me.x ? 2 : 3) as Dir
+    if (Math.abs(n.y - this.me.y) > Math.abs(n.x - this.me.x)) this.me.dir = n.y < this.me.y ? 3 : 0
+    // Before she's told you her name: frightened, then wary. She goes as soon as she's said it.
+    if (n.kind === 'startle' || n.kind === 'again') {
+      this.addEvent(n.kind === 'startle' ? 'E_NORA_STARTLED' : 'E_NORA_AGAIN')
+      t.noraMetNow = true
+      this.ui.dialogue(NORA_UNNAMED, n.kind === 'startle' ? STARTLE : AGAIN, {
+        ...opts,
+        moods: n.kind === 'startle' ? STARTLE_MOODS : AGAIN_MOODS,
+        onDone: () => n.leave(),
+      })
+      return
+    }
+    if (n.kind === 'meet1') {
+      this.addEvent('E_NORA_MEET_1')
+      t.noraMetNow = true
+      this.ui.dialogue(NORA_UNNAMED, MEET_1, {
+        ...opts,
+        moods: MEET_1_MOODS,
+        onDone: () => {
+          n.leave()
+          window.setTimeout(() => {
+            if (this.trip !== t) return
+            this.ui.thought(NORA_THOUGHTS.afterMeet1)
+            this.writeDownNora()
+          }, 1600)
+        },
+      })
+      return
+    }
+    // The second meeting: she knows you. Whether you know her is what you wrote down. Her camp by
+    // the creek is packed up from now (out of sight of here).
+    this.addEvent('E_NORA_MEET_2')
+    this.forest?.open('kettle')
+    this.forest?.open('bedroll')
+    t.noraMetNow = true
+    const known = this.knowsNora()
+    this.ui.dialogue('Nora', MEET_2_GREET, {
+      ...opts,
+      moods: MEET_2_GREET_MOODS,
+      onDone: () => {
+        this.ui.thought(known ? NORA_THOUGHTS.meet2Known : NORA_THOUGHTS.meet2Unknown)
+        window.setTimeout(() => {
+          if (this.trip !== t) return
+          this.ui.dialogue('Nora', [...(known ? MEET_2_KNOWN : MEET_2_REMIND), ...MEET_2_REST], {
+            ...opts,
+            moods: [...(known ? MEET_2_KNOWN_MOODS : MEET_2_REMIND_MOODS), ...MEET_2_REST_MOODS],
+            onDone: () => {
+              n.linger()
+              if (!known) window.setTimeout(() => this.trip === t && this.writeDownNora(), 1600)
+            },
+          })
+        }, 2600)
+      },
+    })
+  }
+
+  /** The protagonist writes her down (STORY.md "Memory"): her note goes in your notepad. */
+  private writeDownNora() {
+    const t = this.trip
+    if (!t || t.story.found.has('note_nora') || t.story.banked.has('note_nora')) return
+    this.takeClue('note_nora')
+  }
+
   /**
    * Caught or collapsed: every key in your pocket is gone, and waits back where it was found
    * (PUZZLES.md: a unique item is recoverable from its source). Keys on your hook are safe.
@@ -4597,6 +4817,7 @@ export class Game {
       return
     }
     if (!t || !thing || t.end) return
+    if (this.inYard()) t.yardLooked = true
     const first = (key: string) => {
       if (t.story.looked.has(key)) return false
       t.story.looked.add(key)
@@ -4634,13 +4855,15 @@ export class Game {
       if (part.item) return this.takeItem(part, first(part.prompt))
       if (part.keep && !this.keepable(part.keep))
         return this.ui.look(part.lookAfter ?? part.look ?? '')
-      this.ui.look(part.look ?? '', first(part.prompt) ? part.voice : null)
+      const met = part.met?.filter((m) => this.hasEvent(m.event)).at(-1)
+      this.ui.look(met?.look ?? part.look ?? '', !met && first(part.prompt) ? part.voice : null)
       if (part.keep) this.keep(part.keep)
       return
     }
     // (A spot with a second clue, like the envelope with Evie's card and photo, shows the one still
     // to find; once both are yours, the first.)
-    const id = (part.also && t.story.clueAt(part)) || part.clue
+    const id = thing.kind === 'find' ? part.clue : t.story.clueToShow(part)
+    if (!id) return this.ui.look(part.look ?? '')
     const clue = CLUES[id]
     if (!clue) return
     if (clue.lead) this.noteLead(clue.lead)
@@ -4655,19 +4878,9 @@ export class Game {
       onClose: () => {
         if (!this.forest) return
         let line: string | null = null
-        if (took) {
-          const knows =
-            clue.voiceIf &&
-            (t.story.found.has(clue.voiceIf.clue) || t.story.banked.has(clue.voiceIf.clue))
-          const lines = knows ? clue.voiceIf!.voice : clue.voice
-          line = lines[Math.floor(Math.random() * lines.length)]
-          // A second thought, a while after (STORY.md "Memory": rare).
-          const then = clue.then
-          if (then)
-            window.setTimeout(() => {
-              if (this.trip === t) this.ui.thought(then)
-            }, 5000)
-        } else if (state === 'known' && first(`known:${id}`)) line = voiceFor('known')
+        // (Some papers have no thought at all: silence is often better.)
+        if (took) line = clue.voice[Math.floor(Math.random() * clue.voice.length)] ?? null
+        else if (state === 'known' && first(`known:${id}`)) line = voiceFor('known')
         if (line) {
           t.director.noteSaid(line)
           window.setTimeout(() => this.ui.thought(line), 500)
@@ -4733,6 +4946,7 @@ export class Game {
         !!this.trip &&
         !this.trip.end &&
         !this.trip.enc.busy() &&
+        !this.trip.nora?.busy() &&
         !this.ui.dialogueOpen() &&
         !this.ui.panelOpen() &&
         !this.indoors(),
@@ -4781,6 +4995,7 @@ export class Game {
       },
       end: (kind, line, who) => this.endTrip(kind, line, who),
       depth: () => this.forest?.depth(this.me.x, this.me.y) ?? 0,
+      copies: () => this.solved('P05'),
       lost: () => !!this.forest?.lost,
       waiting: () => (this.trip?.waiting ?? -1) >= 0,
       viewR: () => Math.min(this.vw, this.vh) / TS / 2,
@@ -4797,6 +5012,7 @@ export class Game {
         !this.trip.end &&
         !this.ui.panelOpen() &&
         !this.trip.threats.busy() &&
+        !this.trip.nora?.busy() &&
         !this.indoors(),
       talking: () => this.ui.dialogueOpen() || this.ui.panelOpen(),
       danger: () => (this.trip?.danger ?? 0) > 0,
@@ -4912,6 +5128,30 @@ export class Game {
           c.globalAlpha = 1
         },
       })
+    // Nora (story/nora.ts): a real person, with a shadow and her lantern.
+    const nora = t.nora
+    if (nora?.busy())
+      list.push({
+        y: nora.y * TS,
+        draw: () => {
+          const px = Math.round(nora.x * TS + ox)
+          const py = Math.round(nora.y * TS + oy)
+          c.globalAlpha = nora.a
+          if (nora.seated) {
+            const spr = seatedSprite(NORA_LOOK, false, 0)
+            c.drawImage(spr, px - SPR_W / 2, py - spr.height + 1)
+          } else {
+            c.fillStyle = 'rgba(0,0,0,0.2)'
+            c.fillRect(px - 5, py - 1, 10, 2)
+            c.drawImage(
+              personSprite(NORA_LOOK, nora.dir, nora.anim > 0 ? Math.floor(nora.anim) % 4 : 0),
+              px - SPR_W / 2,
+              py - SPR_H + 1,
+            )
+          }
+          c.globalAlpha = 1
+        },
+      })
     perf?.mark('draw')
     list.sort((a, b) => a.y - b.y)
     for (const d of list) d.draw()
@@ -4954,6 +5194,14 @@ export class Game {
         a,
       })
     }
+    // Nora's lantern, steady and warm.
+    if (t.nora?.busy())
+      glowsAt.push({
+        x: (t.nora.x + 0.3) * TS + ox,
+        y: (t.nora.y - 0.7) * TS + oy,
+        r: 2.4 * TS,
+        a: 0.75 * t.nora.a,
+      })
     // The bus's headlights, cutting through the trees ahead of it.
     if (t.bus?.visible())
       glowsAt.push({

@@ -514,6 +514,34 @@ const PROP_ART: Record<
       f('#3a3a36', 11, 10, 2, 1)
     },
   },
+  casebox: {
+    // A cardboard file box, its lid sagging, SHERIFF stencilled on the end and a string-tied
+    // folder showing over the top.
+    w: 16,
+    h: 16,
+    draw: (f) => {
+      f('#8a7450', 1, 4, 14, 11)
+      f('#9a8460', 1, 4, 14, 2)
+      f('#c8a868', 3, 2, 9, 3)
+      f('#6a5638', 4, 9, 8, 2)
+      f('#5a4a30', 1, 14, 14, 1)
+    },
+  },
+  suitcase: {
+    // An old brown suitcase lying open on the floor, stacked with folders and envelopes.
+    w: 32,
+    h: 16,
+    draw: (f) => {
+      f('#5a3a26', 1, 3, 30, 12)
+      f('#6a4a32', 1, 3, 30, 2)
+      f('#c8bea0', 3, 5, 12, 8)
+      f('#d8d0b8', 5, 4, 9, 6)
+      f('#b8a888', 17, 5, 12, 8)
+      f('#e0d8c0', 19, 6, 8, 3)
+      f('#a03028', 22, 9, 3, 2)
+      f('#b0a080', 15, 7, 2, 2)
+    },
+  },
   noticeboard: {
     // On a back wall: cork in a frame, a typed sheet pinned to it, a few scraps.
     w: 32,
@@ -687,11 +715,17 @@ const PROP_ART: Record<
     },
   },
   bedroll: {
-    // A bedroll tied with string, and a thermos beside it.
+    // A bedroll tied with string, and a thermos beside it (v 1: Nora has packed up and gone up the
+    // deep road, E_NORA_MEET_2: only the flattened patch where it lay).
     w: 32,
     h: 16,
     outline: false,
-    draw: (f) => {
+    draw: (f, v) => {
+      if (v) {
+        f('rgba(0,0,0,0.12)', 2, 5, 24, 9)
+        f('rgba(255,255,255,0.05)', 4, 6, 20, 2)
+        return
+      }
       f('rgba(0,0,0,0.25)', 2, 12, 26, 3)
       f('#3a4a5a', 2, 4, 22, 9)
       f('#4a5c6e', 2, 4, 22, 3)
@@ -726,11 +760,17 @@ const PROP_ART: Record<
     },
   },
   kettle: {
-    // Nora's tea kettle, dented on one side, blackened underneath.
+    // Nora's tea kettle, dented on one side, blackened underneath (v 1: taken with her: a ring of
+    // soot on the stone where it stood).
     w: 14,
     h: 16,
     dx: 1,
-    draw: (f) => {
+    draw: (f, v) => {
+      if (v) {
+        f('#2a2c2c', 3, 12, 8, 2)
+        f('#3a3c3a', 4, 11, 6, 1)
+        return
+      }
       f('#8a8f8a', 2, 6, 10, 8)
       f('#a8aca6', 3, 6, 8, 2)
       f('#6a706c', 9, 9, 2, 3)

@@ -16,6 +16,9 @@ import { lookKey } from './people'
 
 export const PORTRAIT = 48
 
+/** A portrait's expression (no mood: a warm closed smile). */
+export type Mood = 'neutral' | 'angry' | 'scared' | 'hurt'
+
 export interface PortraitOptions {
   /** Residents get smile lines and crow's feet; staff (Nurse Ada, Chef Rosa) don't. */
   old?: boolean
@@ -27,8 +30,16 @@ export interface PortraitOptions {
   badge?: 'sunset' | 'hollow'
   /** A different eye colour (a fake's tell). */
   eye?: string
-  /** Hurt: brows drawn up in the middle, the mouth turned down, eyes wet. */
-  mood?: 'hurt'
+  /**
+   * The expression (the default is a warm closed smile): neutral (a straight mouth), angry (brows
+   * down to the middle, eyes narrowed), scared (brows up, eyes wide, mouth open), or hurt (brows
+   * drawn up in the middle, the mouth turned down, eyes wet).
+   */
+  mood?: Mood
+  /** A small pale scar through the right eyebrow (the viewer's left): the real Evie (STORY.md). */
+  scar?: boolean
+  /** A mole on the left cheek (the viewer's right): the real Nora (STORY.md). */
+  mole?: boolean
 }
 
 /** Everything a portrait is drawn from. The forest can tamper with these. */
@@ -42,7 +53,9 @@ export interface Face {
   talk: boolean
   blink: boolean
   badge?: 'sunset' | 'hollow'
-  mood?: 'hurt'
+  mood?: Mood
+  scar?: boolean
+  mole?: boolean
 }
 
 export const EYE_COLORS = ['#5b3a22', '#3d6fb0', '#4b7d41', '#6e5434', '#46607a']
@@ -78,6 +91,8 @@ export function faceFor(look: Look, opts: PortraitOptions = {}): Face {
     blink: opts.blink ?? false,
     badge: opts.badge,
     mood: opts.mood,
+    scar: opts.scar,
+    mole: opts.mole,
   }
 }
 
@@ -85,7 +100,7 @@ const cache = new Map<string, HTMLCanvasElement>()
 
 export function portrait(look: Look, opts: PortraitOptions = {}): HTMLCanvasElement {
   const face = faceFor(look, opts)
-  const key = `${lookKey(look)}|${look.name}|${face.old}|${face.talk}|${face.blink}|${face.badge ?? ''}|${face.eye}|${face.mood ?? ''}`
+  const key = `${lookKey(look)}|${look.name}|${face.old}|${face.talk}|${face.blink}|${face.badge ?? ''}|${face.eye}|${face.mood ?? ''}|${face.scar ? 's' : ''}${face.mole ? 'm' : ''}`
   let cv = cache.get(key)
   if (cv) return cv
   cv = drawFace(face)
@@ -123,6 +138,7 @@ export function drawFace(face: Face): HTMLCanvasElement {
   drawNose(f, face)
   drawMouth(f, face)
   if (face.old) drawLines(f, face)
+  drawMarks(f, face)
   drawAccessory(f, fill, face)
   if (face.badge) drawBadge(f, face.badge)
   return cv
@@ -164,7 +180,7 @@ const fakeCache = new Map<string, HTMLCanvasElement>()
 export function fakePortrait(look: Look, opts: PortraitOptions, fake: FakeFace): HTMLCanvasElement {
   const stage = Math.max(0, Math.min(3, fake.stage))
   const blink = !!opts.blink && !fake.noBlink && stage < 2
-  const key = `${lookKey(look)}|${look.name}|${opts.old}|${opts.talk}|${blink}|${opts.badge ?? ''}|${opts.eye ?? ''}|${stage}`
+  const key = `${lookKey(look)}|${look.name}|${opts.old}|${opts.talk}|${blink}|${opts.badge ?? ''}|${opts.eye ?? ''}|${stage}|${opts.scar ? 's' : ''}${opts.mole ? 'm' : ''}`
   let cv = fakeCache.get(key)
   if (cv) return cv
   const base = drawFace(faceFor(look, { ...opts, blink }))
@@ -365,6 +381,16 @@ function drawEyes(f: Pen, face: Face) {
       f(lid, x + 1, 21, 3, 1)
       continue
     }
+    if (face.mood === 'scared') {
+      // Wide open: white all round a smaller iris, the lid raised.
+      f('#fff8ef', x, 20, 5, 4)
+      f(face.eye, x + 1, 21, 3, 2)
+      f('#1f1418', x + 2, 21, 1, 2)
+      f(OUTLINE, x, 19, 5, 1)
+      f(OUTLINE, x + (x < 24 ? -1 : 5), 20, 1, 1)
+      f(lid, x, 24, 5, 1)
+      continue
+    }
     f('#fff8ef', x, 21, 5, 3)
     f(face.eye, x + 1, 21, 3, 3)
     f('#1f1418', x + 2, 22, 1, 2)
@@ -373,6 +399,8 @@ function drawEyes(f: Pen, face: Face) {
     f(OUTLINE, x, 20, 5, 1)
     f(OUTLINE, x + (x < 24 ? -1 : 5), 21, 1, 1)
     f(lid, x, 24, 5, 1)
+    // Narrowed: the lid comes down over the top of the eye.
+    if (face.mood === 'angry') f(lid, x, 21, 5, 1)
   }
 }
 
@@ -381,6 +409,24 @@ function drawBrows(f: Pen, face: Face) {
   const n = parseInt(face.hair.slice(1), 16)
   const light = ((n >> 16) & 255) + ((n >> 8) & 255) + (n & 255) > 560
   const brow = light ? '#9b938a' : shade(face.hair, -0.25)
+  if (face.mood === 'angry') {
+    // Drawn down hard towards the middle.
+    f(brow, 16, 17, 3, 1)
+    f(brow, 19, 18, 3, 1)
+    f(brow, 20, 19, 2, 1)
+    f(brow, 26, 19, 2, 1)
+    f(brow, 26, 18, 3, 1)
+    f(brow, 29, 17, 3, 1)
+    return
+  }
+  if (face.mood === 'scared') {
+    // Raised high, and up in the middle.
+    f(brow, 16, 17, 3, 1)
+    f(brow, 19, 16, 3, 1)
+    f(brow, 26, 16, 3, 1)
+    f(brow, 29, 17, 3, 1)
+    return
+  }
   if (face.mood === 'hurt') {
     // Drawn up towards the middle: worried, wounded.
     f(brow, 16, 18, 3, 1)
@@ -393,6 +439,22 @@ function drawBrows(f: Pen, face: Face) {
   f(brow, 17, 17, 4, 1)
   f(brow, 26, 18, 6, 1)
   f(brow, 27, 17, 4, 1)
+}
+
+/** Marks that tell people apart (STORY.md: scars and moles get readable text too, not only pixels). */
+function drawMarks(f: Pen, face: Face) {
+  if (face.scar) {
+    // A thin pale line cutting down through the right eyebrow.
+    const pale = shade(face.skin, 0.2)
+    f(pale, 20, 16, 1, 1)
+    f(pale, 19, 17, 1, 1)
+    f(pale, 18, 18, 1, 1)
+    f(shade(face.skin, -0.06), 18, 19, 1, 1)
+  }
+  if (face.mole) {
+    f(shade(face.skin, -0.42), 31, 26, 2, 2)
+    f(shade(face.skin, -0.3), 31, 26, 1, 1)
+  }
 }
 
 function drawNose(f: Pen, face: Face) {
@@ -416,6 +478,34 @@ function drawMouth(f: Pen, face: Face) {
     f('#d8eef8', 18, 24, 3, 1)
     f('#d8eef8', 28, 24, 3, 1)
     f('#bfe2f4', 30, 25, 1, 2)
+    return
+  }
+  if (face.mood === 'scared') {
+    // Open: a small gasp, wider as they speak. No colour in the cheeks.
+    f('#5a2228', 22, 28, 4, face.talk ? 3 : 2)
+    f(lip, 21, 28, 1, face.talk ? 3 : 2)
+    f(lip, 26, 28, 1, face.talk ? 3 : 2)
+    f(lip, 22, face.talk ? 31 : 30, 4, 1)
+    return
+  }
+  if (face.mood === 'angry') {
+    // Pressed flat, the corners pulled down; teeth showing as they speak.
+    if (face.talk) {
+      f('#5a2228', 21, 28, 6, 2)
+      f('#fff8ef', 22, 28, 4, 1)
+    } else f(lip, 21, 29, 6, 1)
+    f(lip, 20, 30, 1, 1)
+    f(lip, 27, 30, 1, 1)
+    return
+  }
+  if (face.mood === 'neutral') {
+    // A straight mouth, a little open as they speak.
+    if (face.talk) {
+      f('#5a2228', 22, 28, 4, 2)
+      f(lip, 21, 28, 1, 2)
+      f(lip, 26, 28, 1, 2)
+    } else f(lip, 21, 29, 6, 1)
+    f(shade(face.skin, -0.1), 22, 30, 4, 1)
     return
   }
   if (face.talk) {

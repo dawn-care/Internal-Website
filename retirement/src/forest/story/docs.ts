@@ -88,10 +88,8 @@ export const DOCS = {
           text: 'He holds his fork in the other hand now. He asked his own mother how she takes her tea. He watches how we do things and the next day he does them right.',
           style: 'hand',
         },
-        { text: 'He is learning us.', style: 'hand' },
       ],
     },
-    voice: 'Someone took these to be sure.',
   },
   /** The pulley diagram on the shed wall (PUZZLES.md P03): the order the shutter is worked in. */
   pulley_diagram: {
@@ -135,7 +133,6 @@ export const DOCS = {
         { text: 'On the back of the last one: Danny, July.', style: 'small' },
       ],
     },
-    voice: 'He’s in two places.',
   },
 } satisfies Record<string, Doc>
 

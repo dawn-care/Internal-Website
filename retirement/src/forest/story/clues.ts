@@ -25,11 +25,22 @@ export interface PaperLine {
    * (cells split on "|") · gap: a blank line · art: a drawing, described.
    */
   style?: 'title' | 'hand' | 'small' | 'row' | 'gap' | 'art'
+  /**
+   * For an `art` line: the picture itself, a file in retirement/photos (its name without the
+   * extension). The line's text is then its description for screen readers, not shown. Pictures
+   * never show the protagonist (STORY.md).
+   */
+  img?: string
 }
 
 export interface Paper {
   /** How it's shown: a printed sheet, a scrap with handwriting, a folded card. */
   kind: 'printed' | 'note' | 'card'
+  /**
+   * The whole paper as a picture (a file in retirement/photos, without the extension): shown
+   * instead of the lines, which must say the same words (they're what screen readers get).
+   */
+  img?: string
   /** What you see before you read it: the object itself, plainly. */
   about: string
   lines: PaperLine[]
@@ -41,12 +52,10 @@ export interface Clue {
   paper: Paper
   voice: string[]
   needs: ClueId[]
-  /** A second thought, a few seconds after the first, the first time you take it (rare). */
-  then?: string
   /** What reading it notes in your notepad, if it holds something a lock needs (a lead). */
   lead?: LeadId
-  /** The thought instead, if you've already read this other clue (on this trip or on your board). */
-  voiceIf?: { clue: ClueId; voice: string[] }
+  /** Your own note about someone you've met (the notepad lists these under People). */
+  person?: true
 }
 
 export const CLUES: Partial<Record<ClueId, Clue>> = {
@@ -85,7 +94,7 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
     paper: {
       kind: 'note',
       about:
-        'A page torn from a notebook, nailed to the shelter post. Pencil, pressed so hard it tore the paper.',
+        'A page torn from a notebook, nailed to the trail marker. Pencil, pressed so hard it tore the paper.',
       lines: [{ text: 'DO NOT RIDE THE BUS ALONE.', style: 'hand' }],
     },
     voice: ["That's my handwriting.", "I don't remember writing this."],
@@ -113,11 +122,7 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
         { text: 'Pencilled on the back: June 1986', style: 'small' },
       ],
     },
-    voice: [
-      'Evie. I know that name. Don’t I?',
-      'Someone loved me very much once.',
-      'Tea on the porch... I can almost smell it.',
-    ],
+    voice: ['Evie. I know that name. Don’t I?', 'Tea on the porch... I can almost smell it.'],
   },
   // In the same envelope as the card (STORY.md: the real Evie's right-eyebrow scar). The photo's
   // scene is invented; the scar is the canon detail, described in words, not left to the pixels.
@@ -130,15 +135,15 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
       about: 'A photograph, its corners soft from handling. Kept flat between two pieces of card.',
       lines: [
         {
-          text: 'A woman on a porch step in a blue raincoat, laughing at whoever holds the camera, a mug in both hands. A small pale scar cuts through her right eyebrow.',
+          text: 'A woman on a porch step in a blue raincoat, laughing at whoever holds the camera, a mug in both hands. An old pale nick through her right eyebrow.',
           style: 'art',
+          img: 'evie_photo_before',
         },
         { text: '', style: 'gap' },
         { text: 'On the back, in pencil: Evie, after the rain. Sept 86.', style: 'small' },
-        { text: 'And under it, newer, pressed hard: THE SCAR. RIGHT EYEBROW.', style: 'hand' },
       ],
     },
-    voice: ['I knew this woman.', 'Evie. I wrote the scar down so I wouldn’t forget it.'],
+    voice: ['I knew this woman.'],
   },
   // The bunkhouse (MAP.md 09): Jonah Reed's journal, ordinary at first, then Daniel Bell. The
   // entries are invented around STORY.md's facts (Bell missing in 1978, back with memory gaps, a
@@ -173,7 +178,7 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
         { text: 'Danny doesn’t take sugar now. Twenty years he’s taken three.', style: 'hand' },
         { text: 'Jun 20.', style: 'small' },
         {
-          text: 'Asked him about the fire. He said there was never a fire. He was THERE. He got us out.',
+          text: 'Asked him about the fire. He said what fire.',
           style: 'hand',
         },
         { text: 'Jul 1.', style: 'small' },
@@ -185,9 +190,8 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
         },
       ],
     },
-    voice: ['He came home. But was it him?'],
+    voice: [],
     // STORY.md "Memory: how the dementia shows": the echo, once, and never an answer.
-    then: 'I forget things too. That doesn’t make me...',
   },
   // The maintenance shed (MAP.md 10, PUZZLES.md P02): the fire report Bell signed, with his
   // employee number. (The report's wording is invented; the date matches Jonah's journal.)
@@ -217,12 +221,247 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
     },
     // Only knowing what Jonah wrote (that Bell later said there was never a fire) does the report
     // mean anything more than a fire (STORY.md: the voice never uses what you haven't seen).
-    voice: ['He got them all out. And signed for it in the morning.'],
-    voiceIf: {
-      clue: 'jonah_journal',
-      voice: ['He signed the report. How could he have forgotten the fire?'],
-    },
+    voice: ['He got them all out.'],
   },
+}
+
+// --- the administrative office (MAP.md 11): Evie's case, and your own archive -----------------
+//
+// Two collections in the office: Evie's 1978 police file and Jonah's 1987 letter in a case box,
+// and the archive you left here yourself after 1987 (MAP.md: it's why papers from after the camp
+// closed are in a camp building). STORY.md gives the facts and dates; all the wording is invented.
+// "{name}" is your character's name. The returned-Evie papers need `evie_missing` on your board
+// first, and the clipping about you needs `search_roster` (Act III after Act II, STORY.md).
+
+CLUES.evie_case_1978 = {
+  id: 'evie_case_1978',
+  title: 'Evie’s case file, 1978',
+  needs: [],
+  paper: {
+    kind: 'printed',
+    about:
+      'A buff police folder, its string tie rotted through. Typed sheets inside, with a detective’s pencil notes in the margins.',
+    lines: [
+      { text: 'COUNTY SHERIFF’S DEPARTMENT · INVESTIGATION FILE', style: 'title' },
+      { text: 'Officer: Det. E. Mercer · Opened: June 1978', style: 'small' },
+      {
+        text: 'Re: persons reported missing near Hollow Pines Camp and since returned',
+        style: 'small',
+      },
+      { text: '', style: 'gap' },
+      {
+        text: 'R. Haskins | Oct 1977 | 2 days | Wife: “He calls the dog by the wrong name.”',
+        style: 'row',
+      },
+      {
+        text: 'D. Bell | Jun 1978 | 3 days | Co-worker: denies events he witnessed.',
+        style: 'row',
+      },
+      { text: 'A. Pruett | Aug 1978 | 4 days | Mother: scar on his chin gone.', style: 'row' },
+      { text: '', style: 'gap' },
+      { text: 'Mrs Pruett rang again. Tues.', style: 'hand' },
+      { text: '', style: 'gap' },
+      { text: 'Closed March 1979 by order. No finding.', style: 'small' },
+    ],
+  },
+  voice: ['I’ve seen this handwriting before. Somewhere.'],
+}
+
+CLUES.evie_last_lead = {
+  id: 'evie_last_lead',
+  title: 'Jonah’s letter to Evie',
+  needs: [],
+  paper: {
+    kind: 'note',
+    about:
+      'A letter in its envelope, addressed to Det. E. Mercer, with a folded photocopy tucked in behind it.',
+    lines: [
+      { text: 'Sept 2, 1987', style: 'small' },
+      { text: 'Detective Mercer,', style: 'hand' },
+      {
+        text: 'I kept a box of camp things all these years. I found this in it. Before they shut us, the first-aid records were moved down under the shelter on the deep road. If anybody wrote down what Danny was really like when he came back, it’s there.',
+        style: 'hand',
+      },
+      { text: 'I’m too old for that road. Please be careful.', style: 'hand' },
+      { text: 'Jonah Reed', style: 'hand' },
+      { text: '', style: 'gap' },
+      {
+        text: 'The photocopy: a 1978 survey sketch of the deep road. The first-aid shelter is circled, and under it, a square marked STORES BELOW.',
+        style: 'art',
+      },
+    ],
+  },
+  voice: [],
+}
+
+CLUES.evie_missing = {
+  id: 'evie_missing',
+  title: 'MISSING: Evie Mercer',
+  needs: [],
+  paper: {
+    kind: 'printed',
+    about: 'A missing-person poster, folded in half, the photo on it gone pale.',
+    // The poster itself is photos/evie_missing.webp; these lines are its words, kept the same.
+    img: 'evie_missing',
+    lines: [
+      { text: 'MISSING PERSON', style: 'title' },
+      {
+        text: 'A photocopied photo of a woman with short wavy hair in a hooded coat, laughing. It has gone too pale to see her face well.',
+        style: 'art',
+      },
+      { text: 'EVELYN “EVIE” MERCER', style: 'title' },
+      { text: 'Age: 46 · Height: 5′6″ · Weight: approx. 130 lbs' },
+      { text: 'Hair: Auburn, short and wavy · Eyes: Green' },
+      { text: 'Identifying marks: Small scar through her right eyebrow' },
+      { text: 'Last seen: Monday, September 14, 1987, near the old Hollow Pines camp road' },
+      { text: 'Clothing: Blue raincoat, light-coloured sweater, jeans, hiking boots' },
+      { text: '', style: 'gap' },
+      { text: 'ANY INFORMATION, PLEASE CALL THE COUNTY SHERIFF’S DEPARTMENT', style: 'small' },
+    ],
+  },
+  voice: ['September the fourteenth.'],
+}
+
+CLUES.search_roster = {
+  id: 'search_roster',
+  title: 'The search sign-in sheet',
+  needs: [],
+  paper: {
+    kind: 'printed',
+    about:
+      'A clipboard sheet, the kind handed round at the start of a search. Rain has run some of the ink.',
+    lines: [
+      { text: 'SEARCH FOR E. MERCER · VOLUNTEER SIGN-IN', style: 'title' },
+      { text: 'Date | Name | Area', style: 'row' },
+      { text: 'Sep 15 | D. Okafor | Creek trail', style: 'row' },
+      { text: 'Sep 15 | {name} | Camp road', style: 'row' },
+      { text: 'Sep 16 | {name} | Deep road, to the fence', style: 'row' },
+      { text: 'Sep 17 | {name} | Deep road', style: 'row' },
+      { text: 'Sep 18 | {name} | (crossed out)', style: 'row' },
+      { text: '', style: 'gap' },
+      { text: '{name}: again. Please don’t go out there alone. Sgt. P.', style: 'hand' },
+    ],
+  },
+  voice: ['That’s my name.', 'Every day.'],
+}
+
+CLUES.neighbor_statement = {
+  id: 'neighbor_statement',
+  title: 'A neighbour’s statement',
+  needs: ['evie_missing'],
+  paper: {
+    kind: 'printed',
+    about: 'A typed witness statement, two pages stapled, a coffee ring on the first.',
+    lines: [
+      { text: 'WITNESS STATEMENT', style: 'title' },
+      { text: 'Margaret Hale, neighbour · taken 2 October 1987', style: 'small' },
+      { text: '', style: 'gap' },
+      {
+        text: 'On Sunday the 20th of September, about nine at night, in the rain, I saw Evie Mercer at {name}’s front door. I have known her for years. It was her.',
+      },
+      {
+        text: 'She stood on the step a long while before she went in. I had heard she was missing, so I went across the next morning. {name} said she was resting and I should come back.',
+      },
+      { text: 'Signed, M. Hale', style: 'hand' },
+    ],
+  },
+  voice: ['Margaret. From across the road.'],
+}
+
+CLUES.returned_evie_photo = {
+  id: 'returned_evie_photo',
+  title: 'A photograph of Evie, Sept 1987',
+  needs: ['evie_missing'],
+  paper: {
+    kind: 'card',
+    about: 'An instant photo in a plastic sleeve, the colours gone orange.',
+    lines: [
+      {
+        text: 'Evie at a kitchen table, her hands round a mug, not drinking. She’s looking straight at the camera without smiling. Her eyebrows are smooth and even.',
+        style: 'art',
+      },
+      { text: 'On the white border: Sept 21, 87.', style: 'small' },
+    ],
+  },
+  voice: ['That’s my kitchen.'],
+}
+
+CLUES.returned_evie_journal = {
+  id: 'returned_evie_journal',
+  title: 'My journal, Sept 1987',
+  needs: ['evie_missing'],
+  paper: {
+    kind: 'note',
+    about:
+      'A diary with a cloth cover, the September pages held flat with an elastic band. Your own handwriting.',
+    lines: [
+      { text: 'Sept 20.', style: 'small' },
+      {
+        text: 'Evie is home!! At the door in the rain. She won’t say where she’s been.',
+        style: 'hand',
+      },
+      { text: 'Sept 21.', style: 'small' },
+      {
+        text: 'She doesn’t eat. She watches me eat. She asked if we could go walking at Hollow Pines.',
+        style: 'hand',
+      },
+      { text: 'Sept 22.', style: 'small' },
+      {
+        text: 'She doesn’t sleep. I heard her in the hall all night. Asked again about Hollow Pines. I said when she’s better.',
+        style: 'hand',
+      },
+      { text: 'Sept 23.', style: 'small' },
+      {
+        text: 'She’s gone. Her blue raincoat is on my hook. There is a door at the end of the hall that was never there.',
+        style: 'hand',
+      },
+    ],
+  },
+  voice: [],
+}
+
+CLUES.player_missing = {
+  id: 'player_missing',
+  title: 'A newspaper clipping, Oct 1987',
+  needs: ['search_roster'],
+  paper: {
+    kind: 'printed',
+    about: 'A clipping from a local paper, yellow and brittle, in a sandwich bag.',
+    lines: [
+      { text: 'SEARCHER FOUND AFTER ELEVEN DAYS', style: 'title' },
+      {
+        text: '{name}, who joined last month’s search for missing detective Evelyn Mercer, walked out of the woods by the old Route 9 road on Friday, eleven days after being reported missing.',
+      },
+      {
+        text: 'Confused but unhurt, {name} could not say where they had been. Sheriff’s deputies urge the public to stay out of the Hollow Pines woods.',
+      },
+    ],
+  },
+  voice: ['Eleven days.'],
+}
+
+// --- people you've met (STORY.md "Memory: how the dementia shows") -----------------------------
+//
+// Written by the protagonist straight after meeting someone, in their own words, so that next
+// time the note knows them even if they don't. Not found anywhere: the game writes it.
+
+CLUES.note_nora = {
+  id: 'note_nora',
+  title: 'Nora',
+  needs: [],
+  person: true,
+  paper: {
+    kind: 'note',
+    about: 'A page of your notepad, in your own handwriting.',
+    lines: [
+      { text: 'NORA VALE', style: 'hand' },
+      { text: 'Met her at the old camp. Local historian. Looking into the camp.', style: 'hand' },
+      { text: 'Careful of strangers. Asked me to stay back. Kind, though.', style: 'hand' },
+      { text: 'Long dark hair, green jacket, a scarf. Carries a lantern.', style: 'hand' },
+      { text: 'A mole on her left cheek.', style: 'hand' },
+    ],
+  },
+  voice: [],
 }
 
 /** Every clue that's written so far. */

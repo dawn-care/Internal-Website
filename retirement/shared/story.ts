@@ -35,6 +35,9 @@ export const CLUE_IDS = [
   // Optional: pages from your own notebook, from when you were lost out here in October 1987, in a
   // tin box under your old lean-to (found only when you're lost; STORY.md lists it as optional).
   'lost_journal',
+  // Not evidence: your own note about someone you've met, so you know them next time (STORY.md
+  // "Memory: how the dementia shows"; the notepad's People page, and a card on your board).
+  'note_nora',
 ] as const
 export type ClueId = (typeof CLUE_IDS)[number]
 
@@ -65,6 +68,10 @@ export type PuzzleId = (typeof PUZZLE_IDS)[number]
 /** PUZZLES.md's one-time scripted encounters, kept as history once they've happened. */
 export const EVENT_IDS = [
   'E_NORA_SIGHTING',
+  // Before she'll talk to you (play-testing: she warms up slowly): startled and hostile, then
+  // wary when you turn up again. Then E_NORA_MEET_1, where she gives her name.
+  'E_NORA_STARTLED',
+  'E_NORA_AGAIN',
   'E_NORA_MEET_1',
   'E_NORA_MEET_2',
   'E_NORA_DOOR',

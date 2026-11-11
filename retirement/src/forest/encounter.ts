@@ -154,6 +154,12 @@ export interface Host {
   end(kind: 'home' | 'caught', line: string, who?: Person): void
   /** Straight-line distance from where you came in (deeper means more fakes). */
   depth(): number
+  /**
+   * Whether the forest copies people yet: only once the service gate's padlock is open (P05). Before
+   * that, everyone who comes looking for you is real (so the copies don't give the story away before
+   * the camp's papers do).
+   */
+  copies(): boolean
   /** You're lost: people come looking far more often (there's nothing else to do but wait). */
   lost(): boolean
   /** You're sitting down, waiting (searchers come to you sooner). */
@@ -430,7 +436,7 @@ export class Encounters {
       REAL_CHANCE_MIN,
       REAL_CHANCE - this.host.depth() * FAKE_PER_TILE - this.out * FAKE_PER_MINUTE,
     )
-    const real = Math.random() < chance
+    const real = !this.host.copies() || Math.random() < chance
     const member = nurse ? null : pick(family)
     const tells = new Set<Tell>()
     if (!real) {

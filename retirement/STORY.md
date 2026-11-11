@@ -1,6 +1,6 @@
 # Hollow Pines — story bible
 
-**Status:** Authored narrative specification. **No main-story scenes or ending are implemented yet;** of the clues, only `route9_timetable`, `bus_warning`, `evie_card`, `evie_photo_before`, `jonah_journal`, `bell_fire_record` and the optional `lost_journal` are written and placed (FOREST.md, Build status, Stage 4). Existing forest survival and family encounters are documented in [FOREST.md](FOREST.md). The authoritative physical layout is [MAP.md](MAP.md); interactions, puzzle solutions and failure handling are in [PUZZLES.md](PUZZLES.md). [COMMUNITY.md](COMMUNITY.md) defines Sunset Acres and is not part of the horror-story implementation.
+**Status:** Authored narrative specification. **Nora's real sighting and meetings are implemented (with her People note); her death, the deep-road events and the ending are not.** The memory scenes (cutscenes) are **not implemented**: a first version was taken out in play-testing. Of the clues, the Act I and II ones (`route9_timetable`, `bus_warning`, `evie_card`, `evie_photo_before`, `jonah_journal`, `bell_fire_record`), the office's Evie papers (`evie_case_1978`, `evie_last_lead`, `evie_missing`, `search_roster`, `neighbor_statement`, `returned_evie_photo`, `returned_evie_journal`, `player_missing`) and the optional `lost_journal` are written and placed (FOREST.md, Build status, Stage 4). Existing forest survival and family encounters are documented in [FOREST.md](FOREST.md). The authoritative physical layout is [MAP.md](MAP.md); interactions, puzzle solutions and failure handling are in [PUZZLES.md](PUZZLES.md). [COMMUNITY.md](COMMUNITY.md) defines Sunset Acres and is not part of the horror-story implementation.
 
 ## Premise
 
@@ -37,6 +37,8 @@ These are **consistent story rules**, not necessarily statements any character c
 - **Forest rules are discoverable.** Past warnings can express incomplete interpretations, but the game cannot randomly change an underlying rule. The origin of the supernatural phenomena remains unknown.
 - **Dementia is real and independent of the forest.** It is never revealed to be imaginary, caused by the forest, or proof that the protagonist is an impostor.
 
+**Pictures never show the protagonist.** The player's character is whatever they made in the Wardrobe, so no photograph, poster, drawing or other picture in the game draws them. A picture can be taken *by* them (Evie laughing at whoever holds the camera) or be about them in words (the search roster, the clipping), but their face and body are never in it. The family photo shows only the relatives. (Open question for when the memory scenes are built: the `CS_*` plan below puts the protagonist in shot; they'd need to be from the protagonist's eyes instead.)
+
 ## Memory: how the dementia shows
 
 **(Planned; not built yet except where FOREST.md's Build status says so.)** The protagonist's dementia is a constant, quiet part of play, not a backstory fact and not a mechanic that punishes the player. The rule above holds: it is real, it is not the forest's doing, and it is never the reason anyone is fooled.
@@ -44,7 +46,7 @@ These are **consistent story rules**, not necessarily statements any character c
 - **Other people remember you better than you remember them.** Nora recognizes the protagonist at the second meeting; the protagonist doesn't recognize her. She notices, isn't hurt, and introduces herself again, patiently, as someone who has met people like that before (an elderly relative, an interview subject). Being the one face she keeps finding again is why she trusts it later, which is what the forest uses. The protagonist's forgetting does **not** make her easier to fool: she's fooled by a copy, as anyone would be.
 - **Your notes are how you know people.** After meeting someone, the protagonist writes them down: a **People** page in the notepad, and a card on the board once banked, in their own words (*“Nora. Historian. Dented kettle. A mole on her left cheek.”*). Evie is known the same way: the photograph with the scar is something the earlier self kept, not something the protagonist recalls. When a face comes to the door, the player checks it against what they **wrote**, the same idea as the family photo they carry: memory can't be trusted, so the proof is carried.
 - **The earlier self planned for this.** Notes in the woods are written to someone who won't remember writing them. The voice recognizes the handwriting before the content (*“I know that handwriting.”*).
-- **Bell's forgetting is not the protagonist's.** Jonah suspected Daniel Bell because Bell forgot things he could not have forgotten. That echo is meant to be uncomfortable: the protagonist forgets things too. The game lets the player feel it (one thought, never repeated: *“I forget things. That doesn't make me...”*) but **never** suggests the protagonist is a copy. The difference is in the evidence: a copy lacks a mark it should have; the protagonist forgets and writes it down.
+- **Bell's forgetting is not the protagonist's.** Jonah suspected Daniel Bell because Bell forgot things he could not have forgotten. That echo is meant to be uncomfortable: the protagonist forgets things too. The game lets the player feel it, unsaid (no thought points it out), but **never** suggests the protagonist is a copy. The difference is in the evidence: a copy lacks a mark it should have; the protagonist forgets and writes it down.
 - **Small touches, rarely.** Reaching a place for the first time on a trip, now and then: *“I've been here before. Haven't I?”* Nurse Ada at home after a trip: *“You went out walking again, didn't you, dear.”* Re-reading something already on the board: *“It's on my board. I remember putting it there... I think.”* Never more than one such line in a few minutes, never an on-screen effect that scrambles text or controls, and never anything that takes away progress the player has banked.
 
 ## Principal characters
@@ -129,8 +131,8 @@ After escaping, the player brings that information into the forest, locates the 
 | Clue ID | Fixed source | What it establishes | Required? |
 | --- | --- | --- | --- |
 | `route9_timetable` | Route 9 bus stop | Bus service ended with the camp in 1979; the crew runs to the camp were DAY CREW 06:00, SWING 14:00, NIGHT CREW 22:00 (the times the forest still keeps) | No |
-| `bus_warning` | Route 9 bus stop | Player's earlier handwritten rule: **“DO NOT RIDE THE BUS ALONE.”** True, but incomplete: it doesn't say that the timetable's buses come full | No |
-| `own_warning` | Trailhead marker | Earlier self knew how to survive a threat | No |
+| `bus_warning` | Trailhead marker (found before the bus stop) | Player's earlier handwritten rule: **“DO NOT RIDE THE BUS ALONE.”** True, but incomplete: it doesn't say that the timetable's buses come full | No |
+| `own_warning` | Not placed yet (the trailhead marker now holds `bus_warning`) | Earlier self knew how to survive a threat | No |
 | `evie_card` | Foreman's cabin, stored in old field envelope | Evie and player were friends | Yes, for memory scene |
 | `evie_photo_before` | Same envelope at foreman's cabin | Real Evie's right-eyebrow scar | Yes |
 | `jonah_journal` | Bunkhouse | Bell returned with memory gaps | Yes |
@@ -143,6 +145,7 @@ After escaping, the player brings that information into the forest, locates the 
 | `returned_evie_photo` | Administrative office, old personal case insert | Returned Evie lacked the right-eyebrow scar | Yes |
 | `player_missing` | Administrative office, archived clipping | Player vanished for 11 days in Oct 1987 | Optional |
 | `lost_journal` | Tin box under the protagonist's old lean-to, found only while lost | Their own notes from the eleven days lost in Oct 1987: real rules (a searcher's steady light, waiting) | Optional |
+| `note_nora` | Written by the protagonist after meeting Nora (the notepad's People page) | Who Nora is, in their own words, with the mole on her left cheek: how they know her next time | Not evidence; used at `E_NORA_DOOR` |
 | `returned_evie_journal` | Administrative office, old field insert | Imitation stayed through Sep 23; odd doorway/coat | Yes |
 | `nora_field_note` | Ravine, with Nora's belongings | Nora followed someone she trusted who looked like player | Yes for Nora resolution; not a final-story gate |
 | `nora_body_evidence` | Ravine | A real human died violently in forest territory | Yes for Nora resolution; not a final-story gate |
@@ -157,6 +160,8 @@ After escaping, the player brings that information into the forest, locates the 
 Puzzle documents such as the gate combination log and locker roster have **puzzle IDs** in [PUZZLES.md](PUZZLES.md); not every examinable object needs a separate primary-story clue ID.
 
 ## Cutscenes and memory vignettes
+
+**Not implemented.** Everything in this section is the plan; nothing in the game plays a cutscene yet (FOREST.md, Build status).
 
 Cutscenes are short, **in-engine, private**, with no combat and minimal camera movement. They are recollections or reconstructed impressions **from the protagonist's own perspective**, never unexplained omniscient footage. They can be incomplete. Their content must not contradict physical evidence. **Only a safe return commits clue IDs**, then eligible memories play during the return-home transition or the first board interaction. Death/infirmary never triggers a clue cutscene. Queued memories play one at a time and can be replayed from the board.
 
@@ -174,19 +179,21 @@ Cutscenes are short, **in-engine, private**, with no combat and minimal camera m
 
 ## The inner voice
 
-The voice is the protagonist's own subjective thought, **not a separate entity giving solutions**. Keep it short and contextual; silence is useful. Examples:
+The voice is the protagonist's own subjective thought, **not a separate entity giving solutions**. Keep it short and contextual; silence is useful, and most papers get no thought at all.
+
+**It reacts; it never concludes.** A thought notices something small and personal (a name, a date, a place it recognizes) and leaves the meaning to the player. It never says what a clue proves, never names the tell (no “there's no scar”), and never asks the question the player should be asking (no “was it him?”). The papers don't underline the answer either: no notes in capitals pointing at the eyebrow. Play-testing found the earlier examples here far too on the nose; these replace them. Examples:
 
 - Trailhead: *“It's quieter than it ought to be.”*
 - First earlier note: *“I know that handwriting.”*
 - Warm tea: *“Someone's been here recently.”* (Nora really has.)
-- Jonah's final entry: *“He came home. But was it him?”*
+- Jonah's journal: nothing.
 - Evie photograph: *“I knew this woman.”*
-- Fake Nora at door: *“There's something different about her face.”* (Only after inspection; never label her fake.)
-- Own double: *“That's me.”*
-- Nora's body: *“She thought she was following me.”*
-- Hidden room: *“I locked this. I was afraid of it.”*
+- Fake Nora at door: nothing, or her name. (Never label her fake; the player compares her face with their note.)
+- Own double: *“Oh.”*
+- Nora's body: *“Nora.”*
+- Hidden room: *“I know this hall.”*
 - False Sunset Acres: *“Where has everyone gone?”*
-- Real Evie's remains: *“She never came back.”*
+- Real Evie's remains: nothing.
 
 Never have the voice reveal evidence the player has not observed. Do not equate dementia with irrationality or villainy.
 
