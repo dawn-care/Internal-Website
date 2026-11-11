@@ -31,7 +31,15 @@ export interface PaperLine {
    * never show the protagonist (STORY.md).
    */
   img?: string
+  /** For a `hand` line: whose handwriting it is, if not the paper's own `hand`. */
+  by?: Hand
 }
+
+/**
+ * Whose handwriting a line is in (each has its own font, retirement/fonts/hands, set in
+ * src/style.css `.hand.by-<writer>`). A hand line with no writer is in an anonymous hand.
+ */
+export type Hand = 'you' | 'evie' | 'jonah' | 'bell' | 'sergeant' | 'hale'
 
 export interface Paper {
   /** How it's shown: a printed sheet, a scrap with handwriting, a folded card. */
@@ -41,6 +49,8 @@ export interface Paper {
    * instead of the lines, which must say the same words (they're what screen readers get).
    */
   img?: string
+  /** Whose handwriting its `hand` lines are in (a line's own `by` wins). */
+  hand?: Hand
   /** What you see before you read it: the object itself, plainly. */
   about: string
   lines: PaperLine[]
@@ -65,8 +75,7 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
     needs: [],
     paper: {
       kind: 'printed',
-      about:
-        'A timetable behind cracked plastic, screwed to the shelter. The print has faded to brown.',
+      about: 'A timetable screwed to the shelter. The print has faded to brown.',
       lines: [
         { text: 'ROUTE 9', style: 'title' },
         { text: 'Crew service: Millbrook Depot – Hollow Pines Forestry Camp', style: 'small' },
@@ -85,7 +94,7 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
         },
       ],
     },
-    voice: ['1979. That was a long time ago.', 'Nobody has waited here for years.'],
+    voice: ['1979...what year is it now?', 'Looks pretty empty.'],
   },
   bus_warning: {
     id: 'bus_warning',
@@ -93,11 +102,11 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
     needs: [],
     paper: {
       kind: 'note',
-      about:
-        'A page torn from a notebook, nailed to the trail marker. Pencil, pressed so hard it tore the paper.',
+      hand: 'you',
+      about: 'A page torn from a notebook, nailed to the trail marker.',
       lines: [{ text: 'DO NOT RIDE THE BUS ALONE.', style: 'hand' }],
     },
-    voice: ["That's my handwriting.", "I don't remember writing this."],
+    voice: ['Is that my handwriting?', "I don't remember writing this."],
   },
   evie_card: {
     id: 'evie_card',
@@ -105,24 +114,25 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
     needs: [],
     paper: {
       kind: 'card',
+      hand: 'evie',
       about:
-        'A birthday card, soft with damp. Pressed flowers on the front, gone brown. Inside, in round, careful handwriting:',
+        'A birthday card. Pressed flowers on the front, gone brown. Inside, in round, careful handwriting:',
       lines: [
         { text: 'Happy Birthday!', style: 'title' },
         { text: '', style: 'gap' },
-        { text: 'To my dearest neighbour,', style: 'hand' },
+        { text: 'To my dearest friend,', style: 'hand' },
         {
           text: 'Another year of tea on the porch and arguing about tomatoes. You were right about the netting. Don’t tell anyone I said so.',
           style: 'hand',
         },
-        { text: 'Don’t you dare forget our walk on Sunday.', style: 'hand' },
+        { text: 'Can’t wait for our walk on Sunday.', style: 'hand' },
         { text: 'All my love,', style: 'hand' },
         { text: 'Evie  x', style: 'hand' },
         { text: '', style: 'gap' },
         { text: 'Pencilled on the back: June 1986', style: 'small' },
       ],
     },
-    voice: ['Evie. I know that name. Don’t I?', 'Tea on the porch... I can almost smell it.'],
+    voice: ['Evie...I’ll never forget her.'],
   },
   // In the same envelope as the card (STORY.md: the real Evie's right-eyebrow scar). The photo's
   // scene is invented; the scar is the canon detail, described in words, not left to the pixels.
@@ -132,7 +142,7 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
     needs: [],
     paper: {
       kind: 'card',
-      about: 'A photograph, its corners soft from handling. Kept flat between two pieces of card.',
+      about: 'A photograph of a woman. Kept flat between two pieces of card.',
       lines: [
         {
           text: 'A woman on a porch step in a blue raincoat, laughing at whoever holds the camera, a mug in both hands. An old pale nick through her right eyebrow.',
@@ -143,7 +153,7 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
         { text: 'On the back, in pencil: Evie, after the rain. Sept 86.', style: 'small' },
       ],
     },
-    voice: ['I knew this woman.'],
+    voice: ['I wonder if she still tells people how she got that scar.'],
   },
   // The bunkhouse (MAP.md 09): Jonah Reed's journal, ordinary at first, then Daniel Bell. The
   // entries are invented around STORY.md's facts (Bell missing in 1978, back with memory gaps, a
@@ -154,6 +164,7 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
     needs: [],
     paper: {
       kind: 'note',
+      hand: 'jonah',
       about:
         'A pocket notebook pushed down behind a bunk, the cover marked J. REED. The early pages are in ink; the later ones in pencil, smaller and harder.',
       lines: [
@@ -185,7 +196,7 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
         { text: 'He sleeps with his eyes open. I moved my bunk.', style: 'hand' },
         { text: 'Jul 9.', style: 'small' },
         {
-          text: 'Told the office. They said leave it alone. I’m leaving it in here instead.',
+          text: 'Told the office. They said leave it alone. I won’t.',
           style: 'hand',
         },
       ],
@@ -215,7 +226,8 @@ export const CLUES: Partial<Record<ClueId, Clue>> = {
         { text: 'Injuries: None. Crew roused and evacuated by reporting employee.' },
         { text: 'Action taken: Fire put out with sand and water by 3:15 am.' },
         { text: '', style: 'gap' },
-        { text: 'Reported by: Daniel Bell', style: 'hand' },
+        { text: 'Reported by:' },
+        { text: 'Daniel Bell', style: 'hand', by: 'bell' },
         { text: 'Employee no. 0416', style: 'small' },
       ],
     },
@@ -259,12 +271,12 @@ CLUES.evie_case_1978 = {
       },
       { text: 'A. Pruett | Aug 1978 | 4 days | Mother: scar on his chin gone.', style: 'row' },
       { text: '', style: 'gap' },
-      { text: 'Mrs Pruett rang again. Tues.', style: 'hand' },
+      { text: 'Mrs Pruett rang again. Tues.', style: 'hand', by: 'evie' },
       { text: '', style: 'gap' },
       { text: 'Closed March 1979 by order. No finding.', style: 'small' },
     ],
   },
-  voice: ['I’ve seen this handwriting before. Somewhere.'],
+  voice: ['Evie’s writing. She always pressed so hard.'],
 }
 
 CLUES.evie_last_lead = {
@@ -273,6 +285,7 @@ CLUES.evie_last_lead = {
   needs: [],
   paper: {
     kind: 'note',
+    hand: 'jonah',
     about:
       'A letter in its envelope, addressed to Det. E. Mercer, with a folded photocopy tucked in behind it.',
     lines: [
@@ -339,7 +352,11 @@ CLUES.search_roster = {
       { text: 'Sep 17 | {name} | Deep road', style: 'row' },
       { text: 'Sep 18 | {name} | (crossed out)', style: 'row' },
       { text: '', style: 'gap' },
-      { text: '{name}: again. Please don’t go out there alone. Sgt. P.', style: 'hand' },
+      {
+        text: '{name}: again. Please don’t go out there alone. Sgt. P.',
+        style: 'hand',
+        by: 'sergeant',
+      },
     ],
   },
   voice: ['That’s my name.', 'Every day.'],
@@ -362,7 +379,7 @@ CLUES.neighbor_statement = {
       {
         text: 'She stood on the step a long while before she went in. I had heard she was missing, so I went across the next morning. {name} said she was resting and I should come back.',
       },
-      { text: 'Signed, M. Hale', style: 'hand' },
+      { text: 'Signed, M. Hale', style: 'hand', by: 'hale' },
     ],
   },
   voice: ['Margaret. From across the road.'],
@@ -392,6 +409,7 @@ CLUES.returned_evie_journal = {
   needs: ['evie_missing'],
   paper: {
     kind: 'note',
+    hand: 'you',
     about:
       'A diary with a cloth cover, the September pages held flat with an elastic band. Your own handwriting.',
     lines: [
@@ -452,6 +470,7 @@ CLUES.note_nora = {
   person: true,
   paper: {
     kind: 'note',
+    hand: 'you',
     about: 'A page of your notepad, in your own handwriting.',
     lines: [
       { text: 'NORA VALE', style: 'hand' },
@@ -475,6 +494,7 @@ CLUES.lost_journal = {
   needs: [],
   paper: {
     kind: 'note',
+    hand: 'you',
     about:
       'A biscuit tin, rusted shut, then not. Inside, folded small, pages torn from a notebook, the pencil gone soft with damp.',
     lines: [

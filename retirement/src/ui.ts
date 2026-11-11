@@ -44,7 +44,7 @@ import {
 } from '../shared/schema'
 import { REL, looksOld, randomFamily, randomRelative } from './family'
 import { BOARD_SIZE, LEADS, NOTE_MAX, type ClueId } from '../shared/story'
-import { CLUES, type Paper, type PaperLine } from './forest/story/clues'
+import { CLUES, type Hand, type Paper, type PaperLine } from './forest/story/clues'
 import type { Doc } from './forest/story/docs'
 import { KEEPSAKES } from './forest/story/finds'
 import { THOUGHT_GAP_MS, THOUGHT_MS, THOUGHT_PER_CHAR } from './forest/tuning'
@@ -109,6 +109,18 @@ const coinIcon = () => el('span', { class: 'coin', title: 'coins' })
 export interface DialogueChoice {
   label: string
   onPick: () => void
+}
+
+/**
+ * Writers whose font has no curly quotes (Jonah, the sergeant, M. Hale) or no punctuation at all
+ * (Bell): their lines get straight quotes, so nothing falls back to another font mid-word.
+ */
+const STRAIGHT_QUOTES: readonly Hand[] = ['jonah', 'bell', 'sergeant', 'hale']
+
+/** A handwritten line's text, made to suit its writer's font. */
+function handText(by: Hand, text: string): string {
+  if (!STRAIGHT_QUOTES.includes(by)) return text
+  return text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
 }
 
 /**
@@ -1221,13 +1233,21 @@ export class UI {
   }
 
   private narrate(lines: { text: string; kind: 'look' | 'thought' }[]) {
-    // Only in the forest, and never once a trip is ending (the black screen and its line): a
-    // thought queued a moment earlier (after a panel closes, a beat after a moment) is dropped.
-    if (!this.game?.forest || this.game.trip?.end) return
+    // Only in the forest (or waking in the infirmary after it), and never once a trip is ending
+    // (the black screen and its line): a thought queued a moment earlier (after a panel closes, a
+    // beat after a moment) is dropped.
+    if (!this.voiceHere()) return
     // A thought already waiting isn't said twice.
     for (const l of lines)
       if (!this.narrQueue.some((q) => q.text === l.text)) this.narrQueue.push(l)
     if (!this.narrBusy) this.nextNarration()
+  }
+
+  /** Whether the inner voice can be heard here: in the forest, or waking in the infirmary. */
+  private voiceHere(): boolean {
+    const g = this.game
+    if (!g || g.trip?.end) return false
+    return !!g.forest || g.mapId === 'infirmary'
   }
 
   /** Clears what's being said (leaving the forest, a trip ending, looking at something). */
@@ -1239,7 +1259,7 @@ export class UI {
   }
 
   private nextNarration() {
-    if (!this.game?.forest || this.game.trip?.end) return this.hushNarration()
+    if (!this.voiceHere()) return this.hushNarration()
     const l = this.narrQueue.shift()
     if (!l) {
       this.narrBusy = false
@@ -1440,6 +1460,8 @@ export class UI {
         img.decoding = 'async'
         return el('figure', { class: 'photo' }, img)
       }
+      const by = l.style === 'hand' ? (l.by ?? c.paper.hand) : undefined
+      if (by) return el('p', { class: `hand by-${by}`, text: handText(by, named(l.text)) })
       return el('p', { class: l.style ?? 'plain', text: named(l.text) })
     })
     // A paper that is a picture of itself (the missing poster): the image is the paper, and its

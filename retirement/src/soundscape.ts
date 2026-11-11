@@ -140,6 +140,7 @@ const CLIPS = {
   impact: { files: ['forest-impact'], gain: 0.4 },
   moan: { files: ['forest-moan'], gain: 0.4 },
   breath: { files: ['forest-breath'], gain: 0.55 },
+  gasp: { files: ['forest-gasp'], gain: 0.6 },
 }
 export type Clip = keyof typeof CLIPS
 export type PetSound = 'bark' | 'whine' | 'pant' | 'meow' | 'purr'

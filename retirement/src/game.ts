@@ -112,7 +112,7 @@ import {
 } from './forest/sound'
 import { Encounters, type Host, type Person } from './forest/encounter'
 import { prepareScare, showScare, type Scare } from './forest/scare'
-import { Threats, drawArm, drawFace, type ThreatHost } from './forest/threats'
+import { Threats, drawArm, drawFace, warmFace, type ThreatHost } from './forest/threats'
 import { StoryPlan } from './forest/story/plan'
 import { Bus, untilCrew } from './forest/story/bus'
 import { Ride, crewLook, warmRide } from './forest/story/ride'
@@ -3546,6 +3546,7 @@ export class Game {
     // Build the first few chunks and every sprite now, under the fade, not mid-step.
     warmForest()
     warmRide()
+    warmFace()
     for (const ch of f.chunksIn(s.x - 24, s.y - 16, s.x + 24, s.y + 16)) chunkGround(ch)
     this.warp('forest', s.x, s.y, s.dir, true, false)
     this.forest = f
@@ -3856,7 +3857,7 @@ export class Game {
     const vy = this.vh / TS / 2 + 6
     for (const ch of f.chunksIn(this.me.x - vx, this.me.y - vy, this.me.x + vx, this.me.y + vy))
       chunkGround(ch)
-    window.setTimeout(() => this.ui.thought('I shouldn’t have got on.'), 5000)
+    window.setTimeout(() => this.ui.thought('...where am I?'), 5000)
   }
 
   /** Riding: you walk the aisle; nothing else in the forest happens until you're off. */
@@ -3985,6 +3986,7 @@ export class Game {
     const w = INFIRMARY_WAKE
     this.warp('infirmary', w.x, w.y, w.dir, true, false)
     this.fade = 1
+    window.setTimeout(() => this.ui.thought(voiceFor('wake')), 250)
     if (lostPhoto)
       window.setTimeout(() => this.say('Your pocket is empty. The photo is gone.'), 6000)
     window.setTimeout(() => {
@@ -4179,7 +4181,9 @@ export class Game {
     if (now.kind === 'eyes') {
       if (layer === 'under') return
       const open = now.closing ? Math.max(0, 1 - now.closing / 900) : Math.min(1, now.t / 1600)
-      drawFace(c, now.x * TS + ox, (now.y - 1) * TS + oy, open, now.took, this.time)
+      // Its grin opens as it comes, and is at least half open once it has taken your light.
+      const grin = Math.max(now.near, now.took ? 0.5 : 0)
+      drawFace(c, now.x * TS + ox, (now.y - 1) * TS + oy, open, grin, this.time)
       return
     }
     // The arm: creeping into your light from behind once it's close, out of the dark. It starts
@@ -4257,6 +4261,9 @@ export class Game {
     if (line) {
       t.director.noteSaid(line)
       this.muse(line)
+    } else if (seen && this.save.story?.sites?.includes(seen.id as SiteId)) {
+      // Somewhere you've been before, and not quite sure of it.
+      t.director.arrivedAgain()
     }
     t.director.update(dt * wait)
   }
@@ -4938,6 +4945,7 @@ export class Game {
         footstep('leaves', volume * Math.max(0.2, 1 - d / 12), (x - this.me.x) / 5)
       },
       sound: (kind, x) => threatSound(kind, 1, (x - this.me.x) / 6),
+      gasp: (volume, x) => playClip('gasp', volume, (x - this.me.x) / 6),
       breath: (on, x) => {
         if (on) this.stalkerBreath = playClip('breath', 1, (x - this.me.x) / 4)
         else this.hushBreath()

@@ -397,6 +397,16 @@ export const EYES_CATCH = 2.2
 export const EYES_RETREAT = 4
 /** A false alarm creeps too, then just isn't there once it's this close. */
 export const EYES_FALSE_NEAR = 4
+/**
+ * Its gasp (sfx/forest-gasp.mp3), over and over while it's there: every GASP_FAR ms when it has
+ * just opened, every GASP_NEAR ms when it's nearly on you, and louder as it comes (GASP_QUIET of
+ * full volume at first, rising to full).
+ */
+export const GASP_FAR = 4200
+export const GASP_NEAR = 1500
+export const GASP_QUIET = 0.15
+/** How far the grin opens (px the jaw drops) when it's nearly on you. */
+export const GRIN_DROP = 8
 
 /** How strongly the face shows in the dark (it's dim greys, drawn at this much on top). */
 export const FACE_ALPHA = 0.5
@@ -508,3 +518,6 @@ export const BUS_DEEP_WIND = 0.3
 export const NORA_SIGHT_CHANCE = 0.5
 /** Seconds in the courtyard before she turns up for the first meeting (sooner if you look at things). */
 export const NORA_MEET_AFTER = 10
+
+/** How often a grandchild's, niece's or nephew's face gives you pause as they reach you (encounters.ts FACE_DOUBT). */
+export const FACE_DOUBT_CHANCE = 0.35

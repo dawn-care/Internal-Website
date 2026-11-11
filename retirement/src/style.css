@@ -1556,6 +1556,77 @@ button.bc-sq {
   font-size: 18px;
 }
 
+/* Each writer's handwriting (PaperLine `by` / Paper `hand`; fonts and licences in
+   retirement/fonts/hands). size-adjust evens out how big each font draws, and a font is only
+   downloaded when a paper in that hand is opened. */
+@font-face {
+  font-family: 'Hand You';
+  src: url('../fonts/hands/brother-signature.otf') format('opentype');
+  font-display: swap;
+  size-adjust: 120%;
+}
+@font-face {
+  font-family: 'Hand Evie';
+  src: url('../fonts/hands/notera.ttf') format('truetype');
+  font-display: swap;
+  size-adjust: 200%;
+}
+@font-face {
+  font-family: 'Hand Jonah';
+  src: url('../fonts/hands/unrulyness.ttf') format('truetype');
+  font-display: swap;
+  size-adjust: 168%;
+}
+@font-face {
+  font-family: 'Hand Bell';
+  src: url('../fonts/hands/john-bulgarry.ttf') format('truetype');
+  font-display: swap;
+  size-adjust: 144%;
+}
+@font-face {
+  font-family: 'Hand Sergeant';
+  src: url('../fonts/hands/thedoctorisin.ttf') format('truetype');
+  font-display: swap;
+  size-adjust: 150%;
+}
+@font-face {
+  font-family: 'Hand Hale';
+  src: url('../fonts/hands/lunafreya.ttf') format('truetype');
+  font-display: swap;
+  size-adjust: 168%;
+}
+
+.paper .hand.hand[class*='by-'] {
+  font-weight: normal;
+  font-synthesis: none;
+  text-decoration: none;
+}
+/* Thin pen fonts, thickened with a hairline stroke so they read. */
+.hand[class*='by-'],
+.note-field,
+.pin-card .scrawl {
+  -webkit-text-stroke: 0.1px currentColor;
+}
+.hand.by-you {
+  font-family: 'Hand You', cursive;
+  word-spacing: 0.3em;
+}
+.hand.by-evie {
+  font-family: 'Hand Evie', cursive;
+}
+.hand.by-jonah {
+  font-family: 'Hand Jonah', cursive;
+}
+.hand.by-bell {
+  font-family: 'Hand Bell', cursive;
+}
+.hand.by-sergeant {
+  font-family: 'Hand Sergeant', cursive;
+}
+.hand.by-hale {
+  font-family: 'Hand Hale', cursive;
+}
+
 .paper .art {
   font-style: italic;
   color: #5a5246;
@@ -1665,7 +1736,7 @@ button.bc-sq {
   width: 100%;
   box-sizing: border-box;
   font: inherit;
-  font-family: 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive;
+  font-family: 'Hand You', 'Segoe Print', 'Bradley Hand', cursive;
   padding: 6px 8px;
   border: 2px solid var(--wood-dark);
   border-radius: 6px;
@@ -1838,7 +1909,7 @@ button.bc-sq {
 .pin-card .scrawl {
   display: block;
   margin-top: 4px;
-  font-family: 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive;
+  font-family: 'Hand You', 'Segoe Print', 'Bradley Hand', cursive;
   color: #3b3a6a;
 }
 

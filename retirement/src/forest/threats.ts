@@ -7,6 +7,10 @@ import {
   EYES_CATCH,
   EYES_CREEP,
   EYES_FALSE_NEAR,
+  GASP_FAR,
+  GASP_NEAR,
+  GASP_QUIET,
+  GRIN_DROP,
   EYES_MS,
   EYES_RETREAT,
   FACE_DOT,
@@ -51,6 +55,8 @@ export interface ThreatHost {
   step(x: number, y: number, volume: number): void
   /** A soft sound as something gives itself away (eyes opening, an arm drawing back). */
   sound(kind: 'eyes' | 'snatch', x: number, y: number): void
+  /** The face's gasp from (x, y), at this loudness (0–1). */
+  gasp(volume: number, x: number, y: number): void
   /** Its breath, close behind you, while the arm reaches in (on), stopping when it's over (off). */
   breath(on: boolean, x: number, y: number): void
   /** Nothing else is going on (no one talking to you, no chase, the trip isn't ending). */
@@ -112,6 +118,10 @@ export interface Eyes {
   toward: number
   lx: number
   ly: number
+  /** 0–1: how far it has come, from where it opened to where it has you (its grin opens with it). */
+  near: number
+  /** Ms till its next gasp. */
+  gasp: number
 }
 
 export type Threat = Stalker | Eyes
@@ -223,6 +233,8 @@ export class Threats {
         toward: 0,
         lx: me.x,
         ly: me.y,
+        near: 0,
+        gasp: 900,
       }
       this.host.sound('eyes', x, y)
       return
@@ -314,6 +326,13 @@ export class Threats {
       e.y += (me.y - e.y) * k
       d = Math.hypot(e.x - me.x, e.y - me.y)
     }
+    // The nearer it gets, the wider it grins, and the louder and quicker it gasps.
+    e.near = Math.max(e.near, Math.min(1, Math.max(0, (e.d0 - d) / (e.d0 - EYES_CATCH))))
+    e.gasp -= ms
+    if (e.gasp <= 0) {
+      e.gasp = GASP_FAR + (GASP_NEAR - GASP_FAR) * e.near
+      this.host.gasp(GASP_QUIET + (1 - GASP_QUIET) * e.near ** 1.5, e.x, e.y)
+    }
     // Got away from it (it couldn't keep up), or it's given up.
     if (d > e.d0 + EYES_RETREAT || e.t > EYES_MS) {
       e.closing = 1
@@ -332,9 +351,7 @@ export class Threats {
     if (d < EYES_CATCH) {
       this.end()
       return this.host.caught(
-        e.toward > EYES_APPROACH
-          ? 'You should never have gone closer.'
-          : 'It was so slow. You should have kept away from it.',
+        e.toward > EYES_APPROACH ? 'You should never have gone closer.' : 'It was so slow...',
       )
     }
   }
@@ -370,17 +387,17 @@ const rnd = (a: number, b: number) => {
 const FACE_LIT = '#77746e'
 const FACE_EYE = '#8a877f'
 export const FACE_W = 18
-export const FACE_H = 20
+export const FACE_H = 20 + GRIN_DROP
 const faceCache = new Map<string, HTMLCanvasElement>()
 
 /**
  * The face in the dark: no head, nothing you could call a face, only what catches the light. Two
  * small pale eyes, set wide and not quite level, and under them a jagged grin of uneven teeth
- * hanging in the black, the upper ones pointing down, the lower ones up, interlocking. `open`: the
- * jaw drops and the teeth part (once it has taken some of your light, and when it has you).
+ * hanging in the black, the upper ones pointing down, the lower ones up, interlocking. `drop`: how
+ * many pixels the jaw has dropped, the teeth parting (0 to GRIN_DROP).
  */
-export function faceSprite(open: boolean): HTMLCanvasElement {
-  const key = open ? 'open' : 'shut'
+export function faceSprite(drop: number): HTMLCanvasElement {
+  const key = String(drop)
   let cv = faceCache.get(key)
   if (cv) return cv
   cv = document.createElement('canvas')
@@ -398,7 +415,6 @@ export function faceSprite(open: boolean): HTMLCanvasElement {
   f(dim, 13, 3, 2, 1)
   // The grin: a row of teeth across, sloping a little, uneven heights, each lit on the left and
   // shaded on the right, tapering to a point. The lower row sits between the upper ones.
-  const drop = open ? 4 : 0
   const upper = [
     [2, 3],
     [4, 4],
@@ -435,6 +451,11 @@ export function faceSprite(open: boolean): HTMLCanvasElement {
   }
   faceCache.set(key, cv)
   return cv
+}
+
+/** Builds every opening of the face up front (it's drawn at a new one each step it comes). */
+export function warmFace() {
+  for (let d = 0; d <= GRIN_DROP; d++) faceSprite(d)
 }
 
 const FIG_W = 30
@@ -488,15 +509,16 @@ function figureSprite(): HTMLCanvasElement {
 }
 
 /**
- * The face in the dark at (px, py), its centre: `fade` 0–1 (appearing and going), `open` once it
- * has taken some of your light. It sways very slightly, as if leaning to look at you.
+ * The face in the dark at (px, py), its centre: `fade` 0–1 (appearing and going), `open` 0–1 how
+ * wide it grins (it opens as it comes, and some more once it has taken your light). It sways very
+ * slightly, as if leaning to look at you.
  */
 export function drawFace(
   c: CanvasRenderingContext2D,
   px: number,
   py: number,
   fade: number,
-  open: boolean,
+  open: number,
   time: number,
 ) {
   if (fade <= 0) return
@@ -505,7 +527,9 @@ export function drawFace(
   c.globalAlpha = fade * FIGURE_ALPHA
   c.drawImage(figureSprite(), Math.round(px - FIG_W / 2) + sway, Math.round(py - 9))
   c.globalAlpha = fade * FACE_ALPHA
-  c.drawImage(faceSprite(open), Math.round(px - FACE_W / 2) + sway, Math.round(py - FACE_H / 2))
+  const drop = Math.round(Math.max(0, Math.min(1, open)) * GRIN_DROP)
+  // (The sprite is taller than the face, for the jaw: its top stays where the shut face's was.)
+  c.drawImage(faceSprite(drop), Math.round(px - FACE_W / 2) + sway, Math.round(py - 10))
   c.globalAlpha = 1
 }
 

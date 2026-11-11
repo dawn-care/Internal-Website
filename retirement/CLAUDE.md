@@ -6,7 +6,8 @@ code), with two exceptions: the forest's jumpscare images in retirement/scares (
 jumpscare/media, with jumpscare/sounds as scare-1..7.mp3; src/forest/scare.ts), and illustrated
 photos on the story's papers in retirement/photos (a paper line `{ style: 'art', img: '<file name>' }`
 in story/clues.ts shows the file, its text becoming the alt text; a paper with `img` is shown as
-that picture whole, its lines kept for screen readers; src/ui.ts PHOTOS). Pictures never
+that picture whole, its lines kept for screen readers; src/ui.ts PHOTOS). The papers' handwriting
+uses six font files in retirement/fonts/hands, one per writer (FOREST.md "Handwriting"). Pictures never
 show the player's character (it's whatever they made). Built by vite.retirement.config.ts into dist/retirement; `npm run dev:retirement`
 serves it alone at localhost:5173/retirement/ in offline mode (localStorage save, two fake
 neighbours who wander and chat, see src/net.ts LocalNet).
@@ -195,7 +196,10 @@ with the breakdown for any frame over 20 ms. `window.perf` and `window.game` are
     still before it comes for you, peaking as it starts; `forest-impact` (impact_sound 0–2.53s, 600ms
     out, -18 dB) at the grab; `forest-moan` (horror_ghost 0–8.7s, 900ms out, -22 dB) as a chaser you've
     lost fades away; `forest-breath` (ghost_breathing 0–15.2s, 800ms out, -24 dB) behind you while the
-    arm reaches in (stopped when it's over). Drone beds: `amb-forest-deep` (horror_drone 0.47–45s) and
+    arm reaches in (stopped when it's over); `forest-gasp` (sounds/gasp.mp3 0.08–1.4s, made deeper
+    and longer in ffmpeg: pitched down to 0.72 and slowed to 0.75, an octave-down copy mixed under it
+    at 55%, high-pass 55 Hz, low-pass 5 kHz, then two `aecho` reverbs into a 4.5s tail; cut-sfx.sh with
+    900ms out at -20 dB) from the face in the dark, repeated louder and quicker as it comes. Drone beds: `amb-forest-deep` (horror_drone 0.47–45s) and
     `amb-forest-lost` (ominous_drone 0–69.9s), ffmpeg `loudnorm=I=-26:TP=-2` with 2s fades baked in,
     looped like the birdsong (`setForestBeds`). sounds/dreadful_prayer.mp3 isn't used yet (kept for
     the chapel, stage 5).

@@ -81,6 +81,11 @@ export class Director {
   private lastTurnBack = -Infinity
   private turnBackSaid = new Set<string>()
 
+  /** You've reached a place you've been on an earlier trip (said at most once a trip). */
+  arrivedAgain() {
+    this.say('arrive')
+  }
+
   /** Anything said from outside (a clue, a site), so it isn't said again straight after. */
   noteSaid(line: string) {
     this.lastLine = line

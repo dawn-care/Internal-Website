@@ -388,8 +388,12 @@ carried photo lost; no face, just the line).
   so it only just stands out from the dark (toned down after play-testing: bright white looked
   goofy). Our own design. Back away and it fades; leave it and it
   goes after 12 s. Walk towards it and it takes some of your light (18% for the rest of the trip,
-  never below 45%) and its jaw drops, the teeth parting; keep coming and it has you: "You should
-  never have gone closer."
+  never below 45%) and its jaw drops at least halfway; keep coming and it has you: "You should
+  never have gone closer." **As it drifts closer its grin opens wider** (the jaw drops up to
+  `GRIN_DROP` px, in step with how far it has come from where it opened to where it has you), and
+  **it gasps**: `forest-gasp`, over and over, every 4.2 s when it has just opened down to every
+  1.5 s when it's on you, and louder each time (15% to full: `GASP_FAR`, `GASP_NEAR`, `GASP_QUIET`),
+  a crescendo as it comes. (The real face and its false-alarm cue gasp alike.)
 - **Caught by a threat:** the same jumpscare as being caught by an impostor.
 - **When:** the first 25–50 s into a trip, then every 30–70 s, up to twice as often deep in or once
   you're lost; never the same kind twice running; never during an encounter (and encounters wait
@@ -1455,6 +1459,33 @@ changed the poster's details to match the image: "MISSING PERSON", age 46, 5′6
 green eyes, the scar as an identifying mark, last seen Monday 14 September 1987 near the old Hollow
 Pines camp road, the blue raincoat, and the County Sheriff's Department. The returned-Evie photo should be made from the same picture
 (same face and hair, smooth brows) so the two compare cleanly.
+
+**Memory** (STORY.md "Memory: how the dementia shows", revised after play-testing: the protagonist
+seemed too sharp, and forgot Evie while remembering a neighbour). The old past is sure, the recent
+present isn't. Built: Evie's margin note is known at once ("Evie’s writing. She always pressed so
+hard."); setting out can think "What did I come out here for?" (one of the `enter` lines); reaching
+a landmark you reached on an earlier trip (`save.story.sites`) can think "I've been here before.
+Haven't I?" (`arrive`, 30%, once a trip, under the once-a-minute limit); waking in the infirmary
+always thinks "Where...?" or "This isn't my room." before Nurse Ada speaks (`wake`; the inner voice
+is heard in the infirmary now, src/ui.ts `voiceHere`); and a grandchild, niece or nephew reaching you
+can give you pause, 35% of the time (`FACE_DOUBT_CHANCE`; spouses, children and siblings are always
+known): "I know that face. Don't I?" or "So grown up. When did that happen?", real or fake alike.
+Not built: re-reading something already on the board.
+
+**Handwriting** (each writer has their own hand, so you can tell who wrote what, and your own
+writing in the woods looks like your notepad): a `hand` line is in the paper's `hand` or its own
+`by` (story/clues.ts `Hand`), drawn in that writer's font from retirement/fonts/hands (src/style.css
+`.hand.by-<writer>`; licences in fonts/hands/LICENSES.txt, several free for non-commercial use
+only). You (Brother Signature): `bus_warning`, `lost_journal`, `returned_evie_journal`,
+`note_nora`, and what you type on the notepad and the corkboard's cards. Evie (Notera): the
+birthday card and the margin note on her 1978 file. Jonah (Unrulyness): his journal and his letter.
+Bell (John Bulgarry): his signature on the fire record ("Reported by:" is now printed above it).
+Sgt. P. (Thedoctorisin): the note on the search roster. M. Hale (Lunafreya): the statement's
+signature. The note in Bell's locker is unsigned and stays in the anonymous hand. Jonah's, Bell's,
+the sergeant's and Hale's fonts have no curly quotes, so their lines are shown with straight ones
+(src/ui.ts `handText`). Named hands drop the note paper's bold and double underline. The pen
+fonts are thin, so each is drawn larger (`size-adjust`) and thickened with a hairline stroke
+(`-webkit-text-stroke`), also on the notepad and the corkboard's cards.
 
 **Pacing changes** (play-testing: things came too early):
 - **Nora's sighting** is a way past the fork now, with no thought (above).

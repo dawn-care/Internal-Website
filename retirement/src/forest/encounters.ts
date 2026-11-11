@@ -135,6 +135,20 @@ export const NURSE_SCRIPT: Script = {
   comes: '...',
 }
 
+/**
+ * A thought as a younger relative reaches you, now and then (FACE_DOUBT_CHANCE). The old past is
+ * clear, so a husband, wife, partner, child, brother or sister is always known at once; the ones
+ * who grew up in recent years are the faces that take a moment (STORY.md "Memory: how the
+ * dementia shows"). Said for the real and the fake alike, so it's never a tell.
+ */
+export const FACE_DOUBT = ['Is that...', 'So grown up. When did that happen?']
+export const FACE_DOUBT_RELATIONS: readonly Relation[] = [
+  'grandson',
+  'granddaughter',
+  'niece',
+  'nephew',
+]
+
 /** The truth, on the black screen, when one of them catches you (FOREST.md "Caught"). */
 export function caughtLine(rel: Relation | 'nurse'): string {
   return rel === 'nurse' ? 'That was not a nurse.' : `That was not your ${rel}.`

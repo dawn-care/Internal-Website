@@ -36,9 +36,16 @@ export type VoiceMoment =
   | 'night'
   /** Your pet isn't with you (said once, early, if you have one). */
   | 'nopet'
+  /**
+   * Reaching a place you've been on an earlier trip (once a trip, rarely): the recent past
+   * slipping (STORY.md "Memory: how the dementia shows").
+   */
+  | 'arrive'
+  /** Waking in the infirmary after a trip went wrong, a beat before Nurse Ada speaks. */
+  | 'wake'
 
 export const VOICE: Record<VoiceMoment, string[]> = {
-  enter: ['It’s very quiet.', 'The birds have stopped.'],
+  enter: ['It’s very quiet.', 'The birds have stopped.', 'What did I come out here for?'],
   deeper: ['I can’t see the lights any more.', 'The home’s lights are gone.'],
   sit: ['I’ll sit here. Someone will come.'],
   sitLong: [
@@ -73,6 +80,8 @@ export const VOICE: Record<VoiceMoment, string[]> = {
   ],
   night: ['It’s getting so dark.', 'I can’t see my own hands.'],
   nopet: ['I wish I hadn’t come without them.', 'It’s strange, being out here alone.'],
+  arrive: ['I’ve been here before. Haven’t I?', 'Have I been here?'],
+  wake: ['Where...?', 'This isn’t my room.'],
 }
 
 /** How likely a moment is to say anything at all (the rest of the time: silence). */
@@ -89,6 +98,8 @@ export const CHANCE: Record<VoiceMoment, number> = {
   banked: 0,
   night: 0,
   nopet: 0,
+  arrive: 0.3,
+  wake: 1,
 }
 
 /** A line for a moment, or null (silence). `avoid` is the line said last, never said twice running. */

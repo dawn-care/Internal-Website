@@ -5,6 +5,8 @@ import type { DialogueOptions } from '../ui'
 import { EYE_COLORS, eyeFor } from '../portraits'
 import {
   FAKE_NURSE_NAMES,
+  FACE_DOUBT,
+  FACE_DOUBT_RELATIONS,
   FAMILY_SCRIPT,
   FAMILY_TELLS,
   NURSE_PITCH,
@@ -20,6 +22,7 @@ import {
 } from './encounters'
 import {
   CHASE_CATCH,
+  FACE_DOUBT_CHANCE,
   CHASE_LOSE,
   CHASE_GIVE_UP_MS,
   CHASE_DREAD,
@@ -552,6 +555,8 @@ export class Encounters {
   }
 
   private greet(p: Person) {
+    const younger = p.rel !== 'nurse' && FACE_DOUBT_RELATIONS.includes(p.rel)
+    if (younger && Math.random() < FACE_DOUBT_CHANCE) this.host.thought(pick(FACE_DOUBT))
     this.say(p, this.script(p).greet, true)
   }
 

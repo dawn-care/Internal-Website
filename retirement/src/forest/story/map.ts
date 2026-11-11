@@ -1155,47 +1155,48 @@ export const NATURE_LOOKS: Record<string, { prompt: string; look: string[] }> = 
   fpine: {
     prompt: 'Look at the pine',
     look: [
-      'A tall pine, black with damp.',
-      'A pine. The bark has been scratched away at shoulder height, all round.',
-      'A pine, sap running from an old wound in its side.',
-      'A pine. Something has nested high up in it. Something big.',
+      'It’s a tree.',
+      'A pine tree.',
+      'Pinus lambertiana.'
     ],
   },
   ftree: {
     prompt: 'Look at the tree',
     look: [
-      'An old oak, knotted and leaning.',
-      'A twisted tree. Its roots grip a stone like fingers.',
-      'A tree with a hollow at its foot. You don’t look inside.',
+      'It’s an oak tree.',
+      'A tree.',
+      'An oak tree. No acorns.'
     ],
   },
   dead: {
     prompt: 'Look at the dead tree',
     look: [
-      'A dead tree, bare and grey. Beetles have written all over it under the bark.',
-      'A dead tree. A strip of cloth is tied round it, faded to nothing.',
-      'A dead tree, split by lightning long ago.',
+      'Beetles are everywhere.',
+      'It’s dead.',
+      'A dead tree.',
     ],
   },
   stump: {
     prompt: 'Look at the stump',
     look: [
-      'A stump, cut clean with a saw. Loggers, long ago.',
+      'A stump. Loggers cut this, long ago.',
       'A stump. You count the rings and lose your place.',
     ],
   },
   log: { prompt: 'Look at the log', look: ['A fallen log, soft and full of beetles.'] },
   rock: {
     prompt: 'Look at the stone',
-    look: ['A cold, dark stone, moss in its cracks.', 'A stone. Something has been rubbed off it.'],
+    look: [
+      'A cold, dark stone. Moss swarms over it.',
+      'A stone. Something has been rubbed off it.'
+    ],
   },
   shroom: {
     prompt: 'Look at the mushrooms',
-    look: ['Pale mushrooms in a little ring.', 'Mushrooms, brown and slick. Best leave them.'],
-  },
-  fern: {
-    prompt: 'Look at the brambles',
-    look: ['Brambles, thick with thorns.', 'Brambles. A tuft of grey wool is caught on them.'],
+    look: [
+      'Pale mushrooms in a little ring.',
+      'Mushrooms. Best leave them.'
+    ],
   },
 }
 
