@@ -404,7 +404,7 @@ carried photo lost; no face, just the line).
 Numbers: `THREAT_*`, `FALSE_ALARM`, `STALK_*`, `ARM_FROM`, `EYES_*`, `LIGHT_TAKEN`, `LIGHT_LEAST` in
 src/forest/tuning.ts; the code is src/forest/threats.ts.
 
-## The thing in the deep (planned, not built)
+## The thing in the deep (built: see "The thing, unease and energy" in the Build status)
 
 Proposed after play-testing: the forest's stakes still felt low. One creature, the one drawn for
 the empty bus (`thingSprite` in `story/ride.ts`: too tall and thin, grey-white, arms past its
@@ -439,7 +439,7 @@ forest's one persistent danger, alongside the rarer cues and encounters.
 - Its chase reuses the encounter chase's sound and the red edge, at a stage that rises with how
   close it is.
 
-**Unease and energy: two new gauges beside stamina** (planned):
+**Unease and energy: two new gauges beside stamina** (built):
 - **Unease**: how close the thing is, or anything else bad (a fake beginning to change, a threat
   that's real).
   - It rises as it nears, falls as you get away, and never says which way: you know it's close,
@@ -470,10 +470,10 @@ forest's one persistent danger, alongside the rarer cues and encounters.
 - STORY.md says the camp is forest territory where copies can attack. This is a rule about the
   thing only: the camp's buildings stay forest territory for everything else the story needs.
 
-**Open questions:**
-- Does it ever reach the map near the trailhead, or stay past some line (the fork, the creek)?
-- Does it survive between trips (a position kept per player), or start fresh each time?
-- How does energy interact with the safe crew bus and with being found again?
+**Decided** (the open questions): it hunts only once the service gate is open (P05, kept or solved
+this trip), and whenever you're lost or let off the empty bus; on the map it never comes south of
+the creek; it starts fresh each trip; meals go in your pocket. Energy pauses while you ride the
+crew bus (the forest stops) and resets each trip.
 
 ## Exploring, examining and documenting (planned)
 
@@ -566,8 +566,11 @@ and solving the board chronology; the forest itself is not destroyed.
 
 ## Meals
 
-Food cooked on the property (see COMMUNITY.md, "Cooking") helps you survive, never fight. You eat
-it from your hotbar.
+Food cooked on the property (see COMMUNITY.md, "Cooking") helps you survive, never fight. **Built
+so far:** click a meal in your basket to put one in your pocket (a slot each; two of the same is
+fine); in the forest, click it in your pocket to eat it: energy back (`MEAL_ENERGY`, 40%), and
+vegetable soup refills your stamina too. At home, click it to take it back out. The table below is
+still the plan for the other effects.
 
 Example meals _(recipes and numbers to tune)_:
 
@@ -1082,7 +1085,7 @@ rescuer"):
 - Searchers come with torches and call out. A real searcher's light is steady; a copy's gutters,
   and is sometimes heard from the wrong side.
 - **Sit down and wait** (E): everything comes 3× as fast (`WAIT_FASTER`).
-- You collapse after 5 minutes lost (`COLLAPSE_MS`).
+- You collapse when your energy runs out (about 5 minutes lost from full: the Energy gauge; `COLLAPSE_MS` is gone).
 - **Your old lean-to:** red arrow marks on the trees lead to it, and a tin box under it holds
   `lost_journal` (October 1987).
 - **A copy of the bus stop** turns up off to one side once you've been lost a minute (only once
@@ -1366,8 +1369,8 @@ saves that have them still load), and nothing sets them. Evie's portrait can sti
 ### Nora's real meetings (built: IMPLEMENTATION.md M4, part 2)
 
 `story/nora.ts` has her look, her lines and the little state machine; `src/game.ts` (`updateNora`,
-`noraTalks`) runs the scenes. Her copy at the shelter door, your double and the ravine are part 3,
-**not built**.
+`noraTalks`) runs the scenes. Her copy at the shelter door, your double and her body at the
+ravine are part 3, **not built** (the places themselves are: "The deep road" below).
 
 - **Nora** has a fixed look: long dark hair, a green jacket, a scarf, a lantern (a warm glow that
   moves with her). Her dialogue portrait has the mole on her left cheek (`PortraitOptions.mole`),
@@ -1501,3 +1504,79 @@ fonts are thin, so each is drawn larger (`size-adjust`) and thickened with a hai
 - **No copies before the padlock** (Real or fake, above).
 - **Evie's 1978 file** lost its summing-up line ("Each came back unhurt... not quite right"); a
   margin note about a phone call is there instead (invented). The three rows are unchanged.
+
+### The deep road (built: IMPLEMENTATION.md M4, part 3, first step)
+
+The places past the service gate, as places you can walk to and examine. **None of part 3's events
+is built yet**: Nora's death, her copy at the shelter door (`E_NORA_DOOR`), your double at the
+fork (`E_PLAYER_DOUBLE`) and her body and notebook at the ravine all come next. Everything is in
+`story/map.ts` (data), `story/layout.ts` (sizes), `story/art.ts` (sprites); `layout.test.ts` walks it.
+
+- **The road** runs north from the service gate to the **stream cut** (a second stream, west to
+  east right across the map). Its bridge is gone: the road stops at the water, with a BRIDGE OUT
+  board. The only crossing is a **footbridge** a few tiles east, and the path to it passes the
+  watchman's shelter's door (MAP.md 13). North of the water the road goes on to the fork. (Tested:
+  the only planks over the stream are the footbridge's.)
+- **The watchman's shelter** (`WATCH_SHELTER`): a small plank hut with a stovepipe, its window on
+  the footbridge side, a board by the door. Inside (`IN_WATCH_SHELTER`): his chair turned to the
+  window over the bridge, the watch log on the desk (the last page 1979), a stove wired shut, a
+  cupboard with a spare bolt for the door. The inside has one door for now; MAP.md's **rear exit**
+  is built with `E_NORA_DOOR`, which needs it.
+- **The logging fork** (`LOGGING_FORK`): a three-armed signpost (RAVINE west, SURVEY north, the east
+  arm snapped off). West, the old logging road to the ravine. North (the survey trail, MAP.md 16)
+  and east (towards the first-aid shelter, MAP.md 17) end in **fallen trees** for now, since those
+  places are M5; past a deadfall is just forest, and you get lost.
+- **The ravine** (`RAVINE_CULVERT`): a ledge at the end of the logging road, then the edge, a drop,
+  the drain at the bottom (water) and the far wall, drawn as rock tiles (`drop`, three kinds) that are
+  solid and a barrier like a fence (nothing is measured across). The sluice's rusted wheel stands on
+  the ledge; across the ravine, low in the far wall, the drainage opening (`culvert`), half buried,
+  is examined from the edge above it (you can't reach the far side). P08 and the way in through the
+  culvert are much later.
+- None of the new places has an arrival thought. The descriptions are invented.
+
+### The thing, unease and energy (built: IMPLEMENTATION.md M3b)
+
+`src/forest/thing.ts` is the thing; `src/game.ts` (`wakeThing`, `updateThing`, `drawThing`,
+`dread`, `eatMeal`, `pocketMeal`) wires it in. Every number is in `tuning.ts` (`THING_*`,
+`UNEASE_*`, `ENERGY_*`, `MEAL_ENERGY`).
+
+- **When it hunts:** from the start of a trip once P05 is kept; from the moment you open the gate
+  if you do it this trip; and whenever you get lost (35 tiles off) or the empty bus lets you off
+  (22 tiles off), before the gate too. It starts at the logging fork (or at least 70 tiles off),
+  always out of sight, fresh each trip.
+- **Where it can go:** on the map, never south of row -76 (just north of the creek): the trailhead,
+  the fork, Route 9's south end and Nora's camp are beyond it. Lost, anywhere.
+- **How it comes:** drifting towards you at 1 tile/s, 0.25 faster each minute out (at most 2.4),
+  swaying from side to side so it's never straight at you. Out of sight it goes through the woods
+  freely (water too); in sight it goes round trees, sliding along them. Sitting down to wait, it
+  closes in three times as fast (like everything else).
+- **Heard before seen:** heavy, uneven steps (the leaves pitched right down, a long stride then a
+  short one), carrying 26 tiles, quieter with distance and panned. It's drawn in your light; past
+  it, you only see it once it's coming for you, a pale shape in the dark. Its sprite faces you,
+  walks away, or is ride.ts's side view.
+- **Coming for you:** within 8 tiles (and you're not inside), the rise (`forest-rise`) and it comes
+  at 4.3 tiles/s: faster than you walk (3.3), slower than you hurry (5.2). Get 12 tiles off for
+  2.5 s, or last 25 s, and it loses you (`forest-moan`), goes off for 40 s and comes back from 55
+  tiles away. Within 0.8 it has you: the usual grab, jumpscare and infirmary, with "It had been
+  coming the whole time." The heartbeat, the red edge, the gutter of your light and the hush of
+  the wind follow the closer of it and a chasing fake (`dread()`).
+- **Indoors is a refuge:** it never comes through a door. It comes to the door you went in by and
+  waits 5 tiles off for 35 s (your unease stays up), then drifts off. Come out while it waits and
+  it comes for you, with that start on it. Your earlier self noticed: `lost_journal` has a new Day
+  7 entry ("It stood at the door till it got light. It didn't come in.").
+- **Nobody else on top of it:** while it's coming for you or close (unease from it over 0.55), no
+  rescuers or fakes turn up, no other threats, no uncanny moments. Once it hunts, the trip's real
+  danger budget for the other threats is 0 (getting lost still adds some), so the footsteps behind
+  you and the face in the dark are mostly cues. It waits while someone is talking to you or you're
+  reading something.
+- **Unease** (gauge beside stamina): the closest of it (1 at 2 tiles, 0 at 32), a fake changing or
+  chasing, and a real threat starting (0.45). Quick to rise, slow to settle. It never says which way.
+- **Energy** (gauge beside stamina): a full bar lasts about 12 minutes on the map; 2.5× faster lost
+  (about 5 minutes), 1.5× hurrying, 1.5× with unease over 0.6, 0.6× indoors; sitting down to wait
+  gives a little back. Below 20%, once a trip: "I'm so tired." Empty: you collapse (not while
+  someone's talking to you or a bus is pulling in). This replaces the old hidden 5-minute timer.
+- **Meals** in your pocket (`meal:<recipe>` in `save.pocket`, validated in shared/schema.ts; old
+  saves load unchanged): see "Meals".
+- **Not built:** the shed shelf's lantern refill, your light trembling when very uneasy, and tells
+  harder to notice when afraid.
+

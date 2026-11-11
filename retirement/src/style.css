@@ -1421,6 +1421,22 @@ button.bc-sq {
   background: #a5654a;
 }
 
+/* Energy (how long you can keep going) and unease (something near): the same gauge, own colours,
+   each labelled (FOREST.md "Unease and energy"). */
+.stamina.gauge-energy > div {
+  background: #9cb98a;
+}
+.stamina.gauge-energy.low > div {
+  background: #b0574a;
+}
+.stamina.gauge-unease > div {
+  background: #a49ac8;
+  transition: height 0.3s linear;
+}
+.stamina.gauge-unease.high > div {
+  background: #c46a7e;
+}
+
 .compare {
   display: flex;
   gap: 14px;

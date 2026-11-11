@@ -76,6 +76,13 @@ export const PROP_SIZE: Record<
   office: { w: 4, rows: 2, tall: 4 },
   rail: { w: 1, rows: 0, flat: true, tall: 1 },
   leanto: { w: 2, rows: 1, tall: 2 },
+  // The deep road (MAP.md 13–15).
+  gatehouse: { w: 4, rows: 2, tall: 4 },
+  // The ravine's rock: a barrier, so nothing is measured across it.
+  drop: { w: 1, rows: 1, tall: 1, tight: true, fence: true },
+  culvert: { w: 1, rows: 1, tall: 1, tight: true, fence: true },
+  sluice: { w: 1, rows: 1, tall: 2 },
+  deadfall: { w: 3, rows: 1, tall: 2 },
 }
 
 export interface PlacedProp extends Prop {

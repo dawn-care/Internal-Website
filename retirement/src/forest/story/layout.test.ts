@@ -12,11 +12,14 @@ import { INTERIORS, LANDMARKS } from './map'
 
 const LOST = OFF_PATH_LOST_MAX + 2
 
-/** Every tile you can walk to from the gap without ever being further than LOST from the paths. */
-function reachable(): Set<string> {
+/**
+ * Every tile you can walk to from the gap (or from `from`) without ever being further than LOST
+ * from the paths.
+ */
+function reachable(from: [number, number] = [0, -1]): Set<string> {
   const L = layout()
-  const seen = new Set<string>(['0,-1'])
-  const queue: [number, number][] = [[0, -1]]
+  const seen = new Set<string>([`${from[0]},${from[1]}`])
+  const queue: [number, number][] = [from]
   while (queue.length) {
     const [x, y] = queue.pop()!
     for (const [dx, dy] of [
@@ -40,16 +43,38 @@ describe('Hollow Pines map', () => {
   const can = reachable()
   const at = (x: number, y: number) => can.has(`${Math.floor(x)},${Math.floor(y)}`)
 
-  it('reaches every site up to the service gate on foot', () => {
+  // Past the service gate (once it's open): walked from just north of it.
+  const deep = reachable([0, -160])
+  const atDeep = (x: number, y: number) => deep.has(`${Math.floor(x)},${Math.floor(y)}`)
+
+  it('reaches every site on foot: up to the service gate, and past it once it’s open', () => {
     for (const lm of LANDMARKS) {
       // (Insides are reached only through their doors.)
       if (lm.id === 'DRESSING' || INTERIORS.includes(lm)) continue
+      const reach = lm.y < -158 ? atDeep : at
       // (Its point can be on the building itself: anywhere a step or two from it will do.)
       let near = false
       for (let dy = -2; dy <= 2; dy++)
-        for (let dx = -2; dx <= 2; dx++) near ||= at(lm.x + dx, lm.y + dy)
+        for (let dx = -2; dx <= 2; dx++) near ||= reach(lm.x + dx, lm.y + dy)
       expect(near, lm.id).toBe(true)
     }
+  })
+
+  it('crosses the stream cut only by the footbridge, past the watchman’s shelter', () => {
+    const L = layout()
+    // The road's bridge is gone: water where it would be.
+    expect(L.solid(0, -178)).toBe(true)
+    // The footbridge is there, and walkable.
+    expect(L.ground(7, -178)).toBe('plank')
+    expect(L.solid(7, -178)).toBe(false)
+    // Every way over the water is within a step or two of the footbridge.
+    for (let x = -60; x <= 60; x++)
+      for (let y = -182; y <= -176; y++)
+        if (L.ground(x, y) === 'plank') expect(Math.abs(x - 7), `${x},${y}`).toBeLessThanOrEqual(1)
+  })
+
+  it('keeps you out of the ravine', () => {
+    for (let x = -44; x <= -18; x++) expect(atDeep(x, -219), `${x}`).toBe(false)
   })
 
   it('never loses you for standing right up against the camp’s fence from inside', () => {

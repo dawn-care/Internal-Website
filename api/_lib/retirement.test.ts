@@ -415,10 +415,19 @@ describe('/api/retirement', () => {
         expect((await post({ ...save(), family: f })).statusCode, JSON.stringify(f)).toBe(400)
     })
 
+    it('carries meals in your pocket for the forest, two of the same if you like', async () => {
+      const s = { ...save(), family, pocket: ['photo', 'meal:soup', 'meal:soup'] }
+      expect((await post(s)).statusCode).toBe(200)
+      expect(
+        ((await call({ method: 'GET', op: 'me' })).body as { save: Save }).save.pocket,
+      ).toEqual(['photo', 'meal:soup', 'meal:soup'])
+    })
+
     it('refuses a pocket that is not well-formed', async () => {
       const bad = [
         { family, pocket: ['photo', 'photo'] },
         { family, pocket: ['sandwich'] },
+        { family, pocket: ['meal:sandwich'] },
         { family, pocket: ['photo', 'photo', 'photo', 'photo'] },
         // A photo you don't have, or have lost, can't be in your pocket.
         { pocket: ['photo'] },

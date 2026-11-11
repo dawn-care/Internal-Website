@@ -31,6 +31,7 @@ import {
   FAMILY_MIN,
   POCKET_SLOTS,
   RELATIONS,
+  pocketMeal,
   type Relation,
 } from '../shared/catalog'
 import {
@@ -43,7 +44,7 @@ import {
   type Relative,
 } from '../shared/schema'
 import { REL, looksOld, randomFamily, randomRelative } from './family'
-import { BOARD_SIZE, LEADS, NOTE_MAX, type ClueId } from '../shared/story'
+import { BOARD_SIZE, LEADS, NOTE_MAX, type ClueId, type ItemId } from '../shared/story'
 import { CLUES, type Hand, type Paper, type PaperLine } from './forest/story/clues'
 import type { Doc } from './forest/story/docs'
 import { KEEPSAKES } from './forest/story/finds'
@@ -301,6 +302,40 @@ export class UI {
     el('span', { class: 'label', text: 'Stamina' }),
     this.stamina,
   )
+
+  /**
+   * Unease and energy (FOREST.md "Unease and energy"): upright gauges like stamina, in the forest
+   * only, each with its label and a meter value (never colour alone).
+   */
+  private gauges = {
+    unease: this.gauge('Unease', 'Unease: something is near (it never says where)'),
+    energy: this.gauge('Energy', 'Energy: how long you can keep going (meals and rest help)'),
+  }
+  private gaugeKeys = { unease: '', energy: '' }
+
+  private gauge(label: string, title: string) {
+    const bar = el('div', { class: `stamina gauge-${label.toLowerCase()}`, title })
+    bar.append(el('div'))
+    bar.setAttribute('role', 'meter')
+    bar.setAttribute('aria-label', label)
+    bar.setAttribute('aria-valuemin', '0')
+    bar.setAttribute('aria-valuemax', '100')
+    return {
+      bar,
+      box: el('div', { class: 'stamina-box' }, el('span', { class: 'label', text: label }), bar),
+    }
+  }
+
+  setGauge(which: 'unease' | 'energy', v: number) {
+    const key = String(Math.round(v * 50))
+    if (key === this.gaugeKeys[which]) return
+    this.gaugeKeys[which] = key
+    const g = this.gauges[which]
+    ;(g.bar.firstElementChild as HTMLElement).style.height = `${Math.round(v * 100)}%`
+    g.bar.setAttribute('aria-valuenow', String(Math.round(v * 100)))
+    g.bar.classList.toggle('low', which === 'energy' && v < 0.2)
+    g.bar.classList.toggle('high', which === 'unease' && v > 0.6)
+  }
 
   setStamina(v: number | null, tired: boolean) {
     const key = v === null ? 'off' : `${Math.round(v * 50)}|${tired}`
@@ -1006,18 +1041,13 @@ export class UI {
     }
     for (const id of RECIPE_IDS) {
       const n = g.save.inv[`meal:${id}`] ?? 0
-      if (n)
-        produce.push(
-          el(
-            'span',
-            {
-              class: 'produce',
-              title: `${RECIPES[id].name} (you cooked it; Chef Rosa buys meals)`,
-            },
-            mealIcon(id, 24),
-            el('span', { text: `×${n}` }),
-          ),
-        )
+      if (!n) continue
+      // A meal can go in your pocket, to eat in the forest (FOREST.md "Meals"): click it.
+      const b = button('', () => g.pocketMeal(id), 'produce meal')
+      b.title = `${RECIPES[id].name}: click to put one in your pocket for the forest (Chef Rosa buys meals too)`
+      b.setAttribute('aria-label', `${RECIPES[id].name}, ${n}: put one in your pocket`)
+      b.append(mealIcon(id, 24), el('span', { text: `×${n}` }))
+      produce.push(b)
     }
     const eggs = g.save.inv.egg ?? 0
     if (eggs)
@@ -1056,8 +1086,21 @@ export class UI {
     const pocket = [...(g.save.pocket ?? []), ...(g.trip?.story.carried ?? [])]
     const pocketSlots = Array.from({ length: POCKET_SLOTS }, (_, i) => {
       const it = pocket[i]
+      const meal = it ? pocketMeal(it) : null
+      if (meal) {
+        // In the forest, eat it; at home, take it back out into your basket.
+        const name = RECIPES[meal].name
+        const b = button('', () => (g.trip ? g.eatMeal(i) : g.unpocketMeal(i)), 'slot pocket-slot')
+        b.title = g.trip ? `${name} (click to eat it)` : `${name} (click to take it out)`
+        b.setAttribute(
+          'aria-label',
+          g.trip ? `${name}: eat it` : `${name}: take it out of your pocket`,
+        )
+        b.append(mealIcon(meal, 32))
+        return b
+      }
       if (it && it !== 'photo') {
-        const item = ITEMS[it]
+        const item = ITEMS[it as ItemId]
         const k = el('span', { class: 'slot pocket-slot' })
         k.title = item.name.replace(/^the /, 'The ')
         k.setAttribute('aria-label', k.title)
@@ -1091,7 +1134,9 @@ export class UI {
             ),
           ]
         : []),
-      ...(this.stamina.hidden ? [] : [this.staminaBox]),
+      ...(this.stamina.hidden
+        ? []
+        : [this.staminaBox, this.gauges.energy.box, this.gauges.unease.box]),
       ...(g.trip?.story
         ? [this.notepadButton(g.trip.story.found.size + g.trip.story.kept.size)]
         : []),

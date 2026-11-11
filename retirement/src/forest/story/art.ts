@@ -947,6 +947,118 @@ const PROP_ART: Record<
       }
     },
   },
+  // --- the deep road (story/map.ts: MAP.md 13–15) ---
+  gatehouse: {
+    // The watchman's shelter: a small plank hut, tin roof, a stovepipe, the door in front and a
+    // window on its left looking onto the footbridge, a board by the door.
+    w: 64,
+    h: 60,
+    draw: (f) => {
+      f('#54473a', 0, 26, 64, 33)
+      for (let y = 28; y < 58; y += 4) f('#44392e', 0, y, 64, 1)
+      f('#62645e', 0, 10, 64, 18)
+      for (let x = 2; x < 64; x += 5) f('#50524d', x, 10, 2, 18)
+      f('#7a4a35', 36, 14, 8, 3)
+      f('#45473f', 0, 26, 64, 2)
+      // The stovepipe, with a cap.
+      f('#2e2e2c', 48, 0, 5, 12)
+      f('#3e3e3a', 46, 0, 9, 2)
+      // The window over the footbridge (on the left, the bridge side).
+      f('#44392e', 4, 34, 18, 14)
+      f('#26302f', 5, 35, 16, 12)
+      f('#44392e', 12, 35, 2, 12)
+      f('#3a4846', 6, 36, 5, 2)
+      // The door, shut, with an iron bolt plate.
+      f('#2a211b', 26, 36, 14, 23)
+      f('#4a3a2c', 27, 37, 12, 22)
+      f('#3a2e24', 32, 37, 1, 22)
+      f('#6a6a62', 36, 45, 3, 4)
+      // The board by the door, and its empty hook.
+      f('#8c8270', 48, 36, 13, 7)
+      f('#5c5446', 49, 38, 11, 1)
+      f('#5c5446', 49, 40, 8, 1)
+      f('#2a2a28', 54, 45, 1, 3)
+    },
+  },
+  drop: {
+    // The ravine's rock, one tile at a time: the lip you stand at (v 0: the ground breaking off
+    // into a ragged edge), the drop (v 1: dark, a few roots and ledges), the far wall (v 2: rock
+    // face catching a little light, the forest floor at its top).
+    w: 16,
+    h: 16,
+    outline: false,
+    draw: (f, v) => {
+      if (v === 0) {
+        f('#2a2620', 0, 0, 16, 9)
+        f('#3a342a', 0, 0, 16, 2)
+        for (let x = 0; x < 16; x += 2) f('#4a443a', x, 8 + ((x * 7) % 3), 2, 2)
+        f('#0c0c0e', 0, 11, 16, 5)
+        f('#4a3a2c', 5, 10, 1, 4)
+        return
+      }
+      if (v === 1) {
+        f('#0a0a0c', 0, 0, 16, 16)
+        f('#16161a', 2, 3, 4, 1)
+        f('#16161a', 9, 10, 5, 1)
+        f('#2a2018', 12, 0, 1, 6)
+        f('#1c1c20', 6, 13, 3, 2)
+        return
+      }
+      f('#0c0c0e', 0, 10, 16, 6)
+      f('#2c2a26', 0, 2, 16, 9)
+      for (let x = 0; x < 16; x += 3) f('#3c3a34', x, 3 + (x % 4), 2, 5)
+      f('#2a2620', 0, 0, 16, 3)
+    },
+  },
+  culvert: {
+    // The drainage opening, low in the far wall: a round mouth half buried in silt and branches.
+    w: 16,
+    h: 16,
+    outline: false,
+    draw: (f) => {
+      f('#2c2a26', 0, 2, 16, 9)
+      f('#2a2620', 0, 0, 16, 3)
+      f('#0c0c0e', 0, 10, 16, 6)
+      f('#4a4840', 3, 4, 10, 9)
+      f('#050506', 4, 5, 8, 8)
+      f('#3a3226', 3, 10, 10, 3)
+      f('#4a3a2c', 2, 9, 6, 1)
+      f('#4a3a2c', 9, 11, 5, 1)
+    },
+  },
+  sluice: {
+    // The sluice's wheel on its post at the ravine's edge, rusted, a chain going down.
+    w: 16,
+    h: 28,
+    draw: (f) => {
+      f('#3a3d3c', 7, 10, 3, 18)
+      f('#5a3a2a', 2, 2, 13, 13)
+      f('#2a2c2c', 4, 4, 9, 9)
+      f('#5a3a2a', 8, 2, 1, 13)
+      f('#5a3a2a', 2, 8, 13, 1)
+      f('#7a4a35', 7, 7, 3, 3)
+      for (let i = 0; i < 4; i++) f(i % 2 ? '#6a6a62' : '#4a4a46', 10, 16 + i * 3, 2, 2)
+      f('#a8a294', 6, 19, 5, 3)
+    },
+  },
+  deadfall: {
+    // Fallen trees across the way: two trunks, one on the other, branches still on them.
+    w: 48,
+    h: 24,
+    draw: (f) => {
+      f('#3a2c22', 0, 12, 48, 8)
+      f('#4a3a2c', 0, 12, 48, 2)
+      f('#2a2018', 40, 10, 8, 12)
+      f('#3a2c22', 4, 6, 40, 6)
+      f('#4a3a2c', 4, 6, 40, 1)
+      for (const x of [6, 14, 26, 34]) {
+        f('#2a3a26', x, 2, 6, 6)
+        f('#33452e', x + 1, 2, 3, 2)
+      }
+      f('#2a3a26', 2, 18, 7, 5)
+      f('#2a3a26', 30, 19, 8, 4)
+    },
+  },
   rail: {
     w: 16,
     h: 16,
@@ -1092,7 +1204,9 @@ export function flatStory(o: ForestObj): boolean {
         o.id === 'firepit' ||
         o.id === 'papers' ||
         o.id === 'chair' ||
-        o.id === 'doormat')) ||
+        o.id === 'doormat' ||
+        o.id === 'drop' ||
+        o.id === 'culvert')) ||
     (o.k === 'find' && o.id !== 'drawing' && o.id !== 'arrow')
   )
 }

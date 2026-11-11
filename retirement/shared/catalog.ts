@@ -544,4 +544,13 @@ export const FAMILY_MAX = 3
 /** Your pocket: a few small things you carry (the family photo, the forest's keys; later light and meals). */
 export const POCKET_SLOTS = 3
 export const POCKET_ITEMS = ['photo', ...ITEM_IDS] as const
-export type PocketItem = (typeof POCKET_ITEMS)[number]
+/**
+ * The photo, a key, or a meal to eat in the forest (`meal:<recipe>`, FOREST.md "Meals"; you can
+ * carry more than one of the same meal).
+ */
+export type PocketItem = (typeof POCKET_ITEMS)[number] | `meal:${string}`
+/** Whether a pocket entry is a meal, and which. */
+export function pocketMeal(it: string): string | null {
+  const id = it.startsWith('meal:') ? it.slice(5) : null
+  return id && RECIPES[id] ? id : null
+}

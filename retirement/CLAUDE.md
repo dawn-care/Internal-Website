@@ -48,7 +48,8 @@ marks which are built.
   and sprites), light.ts (darkness, your light, fog, the colour grades), sound.ts (its synthesized
   ambience, twig snaps, stand-in growl/hiss), encounter.ts (people who find you: real or fake,
   dialogue, the transformation, being led, the chase) and encounters.ts (their words, tells and
-  voices, as data), threats.ts (footsteps behind you with the reaching arm, and the face in the dark: cues that are
+  voices, as data), thing.ts (the thing in the deep: it hunts you once the service gate is open,
+  heard before seen, never through a door; the unease and energy gauges are in game.ts), threats.ts (footsteps behind you with the reaching arm, and the face in the dark: cues that are
   sometimes real), scare.ts (the jumpscare when you're caught).
   src/forest/story/: the story, as data plus the little that runs it (STORY.md; FOREST.md "Stage 4"):
   map.ts (the fixed Hollow Pines map, MAP.md: roads, paths, creek, the camp's fences and gates,

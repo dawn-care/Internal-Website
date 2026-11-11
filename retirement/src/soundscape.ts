@@ -74,7 +74,7 @@ const lastClip = new Map<string, AudioBuffer>()
  * to 1 (right). Each step picks a random recording (never the same twice running) and varies
  * pitch and loudness a little, so walking doesn't sound mechanical.
  */
-export function footstep(surface: Surface, volume = 1, pan = 0) {
+export function footstep(surface: Surface, volume = 1, pan = 0, rate = 1) {
   if (isMuted() || volume <= 0.01) return
   const ctx = audioContext()
   if (!ctx) return
@@ -94,7 +94,7 @@ export function footstep(surface: Surface, volume = 1, pan = 0) {
   lastClip.set(s.clips, clip)
   const src = ctx.createBufferSource()
   src.buffer = clip
-  src.playbackRate.value = s.rate * (0.92 + Math.random() * 0.16)
+  src.playbackRate.value = s.rate * rate * (0.92 + Math.random() * 0.16)
   const gain = ctx.createGain()
   gain.gain.value = STEP_VOLUME * s.gain * volume * (0.85 + Math.random() * 0.3)
   const panner = ctx.createStereoPanner()

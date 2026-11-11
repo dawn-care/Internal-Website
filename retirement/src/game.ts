@@ -24,6 +24,7 @@ import {
   CLOSET,
   KEY_HOOK,
   POCKET_SLOTS,
+  pocketMeal as mealOf,
   SKIN_TONES,
 } from '../shared/catalog'
 import {
@@ -113,6 +114,7 @@ import {
 import { Encounters, type Host, type Person } from './forest/encounter'
 import { prepareScare, showScare, type Scare } from './forest/scare'
 import { Threats, drawArm, drawFace, warmFace, type ThreatHost } from './forest/threats'
+import { Thing, thingFrame, warmThing, type ThingHost } from './forest/thing'
 import { StoryPlan } from './forest/story/plan'
 import { Bus, untilCrew } from './forest/story/bus'
 import { Ride, crewLook, warmRide } from './forest/story/ride'
@@ -200,7 +202,22 @@ import {
   CHASE_VIGNETTE,
   COLLAPSE_FADE_MS,
   COLLAPSE_HOLD_MS,
-  COLLAPSE_MS,
+  ENERGY_DRAIN,
+  ENERGY_HURRY,
+  ENERGY_INDOORS,
+  ENERGY_LOST,
+  ENERGY_LOW,
+  ENERGY_SIT,
+  ENERGY_UNEASY,
+  MEAL_ENERGY,
+  THING_BUS_START,
+  THING_LOST_START,
+  THING_START,
+  THING_START_MIN,
+  THING_SOUTH,
+  UNEASE_FALL,
+  UNEASE_RISE,
+  UNEASY,
   EXIT_BACK,
   HOME_GLOW_UNTIL,
   MUSIC_SILENT_FROM,
@@ -381,6 +398,17 @@ export class Game {
     scare: Scare
     /** 0–1: hurrying drains it, walking refills it. */
     stamina: number
+    /**
+     * 0–1: how long until you collapse (FOREST.md "Unease and energy"). It drains all trip, faster
+     * lost, hurrying or very uneasy; meals and sitting down give some back. Empty: you collapse.
+     */
+    energy: number
+    /** You've felt it running low (said once a trip). */
+    energyLow: boolean
+    /** 0–1: how close something bad is (the thing above all), never which way. */
+    unease: number
+    /** The thing in the deep (forest/thing.ts), once it's hunting you this trip. */
+    thing: Thing | null
     /** Ran out: no hurrying until it's refilled a little. */
     tired: boolean
     /** What this trip has to find, where, and what's in your notepad (story/plan.ts). */
@@ -3547,6 +3575,7 @@ export class Game {
     warmForest()
     warmRide()
     warmFace()
+    warmThing()
     for (const ch of f.chunksIn(s.x - 24, s.y - 16, s.x + 24, s.y + 16)) chunkGround(ch)
     this.warp('forest', s.x, s.y, s.dir, true, false)
     this.forest = f
@@ -3575,9 +3604,14 @@ export class Game {
       scare: prepareScare(),
       stamina: 1,
       tired: false,
+      energy: 1,
+      energyLow: false,
+      unease: 0,
+      thing: null,
       story: new StoryPlan(f, new Set(this.save.board?.clues.map((c) => c.id))),
       director: new Director(this.directorHost()),
-      danger: DANGER_PER_TRIP,
+      // (Once the thing hunts you, the other threats are cues: it's the trip's real danger.)
+      danger: solvedBefore.includes('P05') ? 0 : DANGER_PER_TRIP,
       offPath: false,
       waiting: -1,
       bus: mapBus(),
@@ -3592,6 +3626,8 @@ export class Game {
       campTime: 0,
       noraMetNow: false,
     }
+    // It lives up the deep road: it hunts once the service gate is open.
+    if (solvedBefore.includes('P05')) this.wakeThing('start')
     this.ui.refresh()
     this.ui.renderChat()
     this.scheduleSync(30)
@@ -3635,6 +3671,8 @@ export class Game {
     if (t.end) return
     t.threats.update(t.threats.busy() ? dt : dt * wait)
     if (t.end) return
+    this.updateThing(dt, wait)
+    if (t.end) return
     this.updateStory(dt, wait)
     this.updateNora(dt)
     // (Inside a building, as dark as it is at its door.)
@@ -3676,11 +3714,11 @@ export class Game {
       this.lookingForPath(dt)
       this.updateShelter()
       this.updateBus(dt)
-      // The safety net: lost long enough, you sit down among the roots and wake up at home.
-      // (Not with a bus pulling in: that one might be your way out.)
-      if (t.lostFor > COLLAPSE_MS && !t.enc.busy() && !t.threats.busy() && !t.bus?.visible())
-        this.endTrip('collapse', COLLAPSE_LINE)
     }
+    // Out of energy: you sit down among the roots and wake up in the infirmary. (Not with someone
+    // talking to you, or a bus pulling in: that one might be your way out.)
+    if (t.energy <= 0 && !t.enc.busy() && !t.threats.busy() && !t.bus?.visible())
+      this.endTrip('collapse', COLLAPSE_LINE)
     f.prune(this.me.x, this.me.y)
     const vx = this.vw / TS / 2 + 4
     const vy = this.vh / TS / 2 + 6
@@ -3764,7 +3802,7 @@ export class Game {
       if (!t.story.reached.has('BUS_STOP') && !this.save.story?.sites?.includes('BUS_STOP')) return
       const until = untilCrew(now)
       if (until < BUS_COPY_SOON[0] || until > BUS_COPY_SOON[1]) return
-      if (COLLAPSE_MS - t.lostFor < until + 30_000) return
+      if (this.energyLeftMs() < until + 30_000) return
       // Off to the side of the way you're facing (the lean-to is straight ahead).
       const d = DIR_VEC[this.me.dir]
       const side = Math.random() < 0.5 ? 1 : -1
@@ -3818,6 +3856,8 @@ export class Game {
       t.bus = null
     }
     if (was) return
+    // Lost, it's never far off.
+    this.wakeThing('lost')
     // Lost is dangerous: one more real danger this trip.
     t.danger += LOST_DANGER
     // Where the path was: the nearest bit of it (heading back that way is turning back).
@@ -3851,6 +3891,8 @@ export class Game {
     for (let r = 0; r < 12 && this.blocked(this.me.x, this.me.y); r++) this.me.x += 1
     t.deeper = true
     t.danger += 1
+    // Let off deep, where it is: it finds you much sooner.
+    this.wakeThing('bus')
     t.waiting = -1
     this.fade = 1
     const vx = this.vw / TS / 2 + 4
@@ -4022,12 +4064,12 @@ export class Game {
             : 0
           : this.trip.ride
             ? this.trip.ride.dread()
-            : this.trip.enc.chaseLevel(),
+            : this.dread(),
     )
     if (f) {
       setAmbience(hour, 'none')
       // The wind drops away as dread builds: the forest holds its breath.
-      const dread = this.trip && !this.trip.end ? this.trip.enc.chaseLevel() : 0
+      const dread = this.dread()
       // An uncanny silence (story/events.ts) stills it all, drones and all.
       const still = 1 - (this.trip?.director.hush() ?? 0)
       const hush = (1 - DREAD_HUSH * Math.min(1, dread * 1.6)) * still
@@ -4215,6 +4257,7 @@ export class Game {
           !!t.end ||
           t.enc.busy() ||
           t.threats.busy() ||
+          this.thingNear() ||
           this.ui.dialogueOpen() ||
           this.ui.panelOpen()
         )
@@ -4957,6 +5000,7 @@ export class Game {
         !this.trip.nora?.busy() &&
         !this.ui.dialogueOpen() &&
         !this.ui.panelOpen() &&
+        !this.thingNear() &&
         !this.indoors(),
       deepness: () => this.trip?.deep ?? 0,
       lost: () => !!this.forest?.lost,
@@ -4979,6 +5023,187 @@ export class Game {
         t.tired = true
       },
     }
+  }
+
+  // --- the thing in the deep, your unease and your energy (FOREST.md "The thing in the deep") ---
+
+  /**
+   * The thing starts hunting (or, already hunting, comes closer): `start` up the deep road (or at
+   * least THING_START_MIN off), `lost` not far off, `bus` closer still. Always out of sight.
+   */
+  private wakeThing(why: 'start' | 'lost' | 'bus') {
+    const t = this.trip
+    if (!t) return
+    const r = why === 'bus' ? THING_BUS_START : why === 'lost' ? THING_LOST_START : THING_START_MIN
+    if (t.thing && t.thing.phase !== 'away' && t.thing.dist() <= r) return
+    let x = THING_START.x
+    let y = THING_START.y
+    if (why !== 'start' || Math.hypot(x - this.me.x, y - this.me.y) < r) {
+      for (let i = 0; i < 40; i++) {
+        const a = Math.random() * Math.PI * 2
+        x = this.me.x + Math.cos(a) * r
+        y = this.me.y + Math.sin(a) * r
+        if (why !== 'start' || y < THING_SOUTH) break
+      }
+    }
+    if (t.thing && t.thing.phase !== 'away') {
+      t.thing.x = x
+      t.thing.y = y
+    } else t.thing = new Thing(this.thingHost(), x, y)
+    // From here it's the trip's real danger: the other threats are cues (lost still adds some).
+    if (why === 'start') t.danger = Math.min(t.danger, 0)
+  }
+
+  private thingHost(): ThingHost {
+    return {
+      me: () => {
+        // Inside a building, you're at its door as far as it's concerned.
+        const room = roomAt(Math.floor(this.me.x), Math.floor(this.me.y))
+        return room
+          ? { x: room.out.x, y: room.out.y, moving: false }
+          : { x: this.me.x, y: this.me.y, moving: this.me.moving }
+      },
+      indoors: () => this.indoors(),
+      lost: () => !!this.forest?.lost,
+      blocked: (x, y) => this.blocked(x, y),
+      view: () => ({ w: this.vw / TS / 2, h: this.vh / TS / 2 }),
+      // Heavy, low steps (the leaves pitched right down).
+      step: (x, _y, volume) =>
+        footstep('leaves', Math.min(1, volume * 1.6), (x - this.thingFrom().x) / 8, 0.55),
+      sound: (kind, x) =>
+        playClip(kind === 'notice' ? 'rise' : 'moan', 0.8, (x - this.thingFrom().x) / 6),
+      caught: (line) => this.endTrip('caught', line),
+    }
+  }
+
+  /** Where you are for the thing's sounds (at the door, inside a building). */
+  private thingFrom(): { x: number; y: number } {
+    const room = roomAt(Math.floor(this.me.x), Math.floor(this.me.y))
+    return room ? room.out : this.me
+  }
+
+  /** The thing, your unease and your energy, each frame. */
+  private updateThing(dt: number, wait: number) {
+    const t = this.trip!
+    // It hunts once the gate is open (solved on this trip too), and whenever you're lost.
+    if (!t.thing && this.solved('P05')) this.wakeThing('start')
+    const th = t.thing
+    // (It waits while someone is talking to you, or you're reading something.)
+    const held = t.enc.busy() || !!t.nora?.busy() || this.ui.dialogueOpen() || this.ui.panelOpen()
+    if (th && !held) th.update(th.phase === 'hunt' ? dt * wait : dt)
+    if (t.end) return
+    // Unease: the thing above all, or a fake beginning to change, or something real starting.
+    const want = Math.max(th?.closeness() ?? 0, t.enc.chaseLevel(), t.threats.now?.real ? 0.45 : 0)
+    t.unease +=
+      (want - t.unease) * Math.min(1, dt * (want > t.unease ? UNEASE_RISE : UNEASE_FALL) * 4)
+    this.ui.setGauge('unease', t.unease)
+    // Energy: draining all trip, faster lost, hurrying or very uneasy; slower indoors; a little
+    // back sitting down to wait.
+    if (t.waiting >= 0) t.energy = Math.min(1, t.energy + ENERGY_SIT * dt)
+    else {
+      let k = 1
+      if (this.forest?.lost) k *= ENERGY_LOST
+      if (this.me.moving && this.hurrying()) k *= ENERGY_HURRY
+      if (t.unease > UNEASY) k *= ENERGY_UNEASY
+      if (this.indoors()) k *= ENERGY_INDOORS
+      t.energy = Math.max(0, t.energy - ENERGY_DRAIN * k * dt * wait)
+    }
+    if (!t.energyLow && t.energy < ENERGY_LOW) {
+      t.energyLow = true
+      this.muse('I’m so tired.', true)
+    }
+    this.ui.setGauge('energy', t.energy)
+  }
+
+  /**
+   * The thing is coming for you, or close: nobody else turns up (no rescuers, no other threats, no
+   * uncanny moments) on top of it.
+   */
+  private thingNear(): boolean {
+    const th = this.trip?.thing
+    return !!th && (th.phase === 'chase' || th.closeness() > 0.55)
+  }
+
+  /** Roughly how long your energy will last as things are (ms). */
+  private energyLeftMs(): number {
+    const t = this.trip
+    if (!t) return Infinity
+    const k = this.forest?.lost ? ENERGY_LOST : 1
+    return (t.energy / (ENERGY_DRAIN * k)) * 1000
+  }
+
+  /** Puts one of a meal from your basket in your pocket, for the forest (FOREST.md "Meals"). */
+  pocketMeal(id: string) {
+    if (this.trip) return this.say('You can’t sort your pocket out here.')
+    const key = `meal:${id}`
+    if ((this.save.inv[key] ?? 0) <= 0) return
+    const pocket = (this.save.pocket ??= [])
+    if (pocket.length >= POCKET_SLOTS) {
+      if (!pocket.length) delete this.save.pocket
+      return this.say('Your pocket is full.')
+    }
+    this.save.inv[key]--
+    if (!this.save.inv[key]) delete this.save.inv[key]
+    pocket.push(`meal:${id}`)
+    this.say(`You wrap up the ${RECIPES[id].name.toLowerCase()} and put it in your pocket.`)
+    this.markDirty()
+    this.ui.refresh()
+  }
+
+  /** Takes a meal out of your pocket, back into your basket (at home). */
+  unpocketMeal(i: number) {
+    const it = this.save.pocket?.[i]
+    const id = it ? mealOf(it) : null
+    if (!id || this.trip) return
+    this.save.pocket!.splice(i, 1)
+    if (!this.save.pocket!.length) delete this.save.pocket
+    this.save.inv[`meal:${id}`] = (this.save.inv[`meal:${id}`] ?? 0) + 1
+    this.markDirty()
+    this.ui.refresh()
+  }
+
+  /** Eats a meal from your pocket (in the forest): energy back, and soup warms you right up. */
+  eatMeal(i: number) {
+    const t = this.trip
+    const it = this.save.pocket?.[i]
+    if (!t || !it || !mealOf(it)) return
+    this.save.pocket!.splice(i, 1)
+    if (!this.save.pocket!.length) delete this.save.pocket
+    t.energy = Math.min(1, t.energy + MEAL_ENERGY)
+    if (it === 'meal:soup') {
+      t.stamina = 1
+      t.tired = false
+    }
+    if (t.energy >= ENERGY_LOW) t.energyLow = false
+    this.markDirty()
+    this.ui.refresh()
+  }
+
+  /** How afraid you are right now, for the heartbeat, the red edge and your light (0–1). */
+  dread(): number {
+    const t = this.trip
+    if (!t || t.end) return 0
+    return Math.max(t.enc.chaseLevel(), t.thing?.chaseLevel() ?? 0)
+  }
+
+  /** Draws the thing: in your light (`under` the dark), and faintly past it while it comes. */
+  private drawThing(ox: number, oy: number, layer: 'under' | 'over') {
+    const t = this.trip!
+    const th = t.thing
+    if (!th || th.phase === 'away' || !th.inView()) return
+    // Past your light you only see it coming for you: a pale shape in the dark.
+    const seen = layer === 'over' ? (th.phase === 'chase' ? 0.18 + 0.3 * th.chaseLevel() : 0) : 1
+    if (seen <= 0) return
+    const { cv, flip } = thingFrame(th.dir, Math.floor(th.anim) % 2)
+    const px = Math.round(th.x * TS + ox)
+    const py = Math.round(th.y * TS + oy)
+    const c = this.ctx
+    c.save()
+    c.globalAlpha *= seen
+    c.translate(px, py - cv.height + 4)
+    if (flip) c.scale(-1, 1)
+    c.drawImage(cv, -cv.width / 2, 0)
+    c.restore()
   }
 
   /** What the forest's people need from the game (src/forest/encounter.ts). */
@@ -5021,6 +5246,7 @@ export class Game {
         !this.ui.panelOpen() &&
         !this.trip.threats.busy() &&
         !this.trip.nora?.busy() &&
+        !this.thingNear() &&
         !this.indoors(),
       talking: () => this.ui.dialogueOpen() || this.ui.panelOpen(),
       danger: () => (this.trip?.danger ?? 0) > 0,
@@ -5225,13 +5451,14 @@ export class Game {
       if (a > 0) glowsAt.push({ x: ev.x * TS + ox, y: ev.y * TS + oy, r: 2.2 * TS, a: 0.9 * a })
     }
     // Your light wavers; with something coming for you it shakes and gutters, more as it closes in.
-    const fear = t.end ? 0 : t.enc.chaseLevel()
+    const fear = this.dread()
     const flicker =
       1 +
       Math.sin(this.time / 310) * 0.02 +
       Math.sin(this.time / 83) * 0.01 -
       fear * CHASE_FLICKER * (0.5 + 0.5 * Math.sin(this.time / 47) * Math.sin(this.time / 113))
     this.drawThreats(t.threats, ox, oy, 'under')
+    this.drawThing(ox, oy, 'under')
     this.darkness.draw(
       c,
       this.vw,
@@ -5260,19 +5487,21 @@ export class Game {
     // The chase: you can make it out even in the dark, a pale shape coming, and the edge of the
     // world goes red as it closes in, pulsing with your heartbeat.
     // (Caught: the red stays at full through the grab.)
-    const level = t.end ? (t.end.kind === 'caught' && grab < 1 ? 1 : 0) : t.enc.chaseLevel()
-    if (level > 0 && who) {
-      c.globalAlpha = CHASE_SEEN[0] + (CHASE_SEEN[1] - CHASE_SEEN[0]) * level
+    const level = t.end ? (t.end.kind === 'caught' && grab < 1 ? 1 : 0) : this.dread()
+    const chased = t.end ? level : t.enc.chaseLevel()
+    if (chased > 0 && who) {
+      c.globalAlpha = CHASE_SEEN[0] + (CHASE_SEEN[1] - CHASE_SEEN[0]) * chased
       this.drawForestPerson(who, ox, oy, false)
       c.globalAlpha = 1
     }
     // A grinning fake backing off: past your light its grin still shows, hanging in the dark.
-    if (who && !who.real && who.grin && level <= 0 && !t.end) {
+    if (who && !who.real && who.grin && chased <= 0 && !t.end) {
       c.globalAlpha = GRIN_GLOW
       this.drawGrin(who, ox, oy, 'pale')
       c.globalAlpha = 1
     }
     this.drawThreats(t.threats, ox, oy, 'over')
+    this.drawThing(ox, oy, 'over')
     if (!t.end) this.drawGlints(t.story, ox, oy)
     // Caught by someone: it stays there in front of you as the light goes, drawn over the dark.
     if (t.end?.kind === 'caught' && t.end.who && grab < 1) {

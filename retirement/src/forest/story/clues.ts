@@ -510,6 +510,12 @@ CLUES.lost_journal = {
         style: 'hand',
       },
       { text: '', style: 'gap' },
+      { text: 'Day 7.', style: 'small' },
+      {
+        text: 'Something walked round the hut all night. Big. It stood at the door till it got light. It didn’t come in.',
+        style: 'hand',
+      },
+      { text: '', style: 'gap' },
       { text: 'Day 9.', style: 'small' },
       {
         text: 'If you’re reading this, sit down and wait. They find you when you stop.',

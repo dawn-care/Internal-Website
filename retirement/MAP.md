@@ -163,6 +163,7 @@ Names and IDs here are stable content keys. Layout coordinates should be authore
 - **Story encounter `E_NORA_DOOR`:** on an eligible expedition **after Nora's second real conversation**, the player examines the shelter when fake Nora approaches in panic from outside. The mole on her **left cheek** is absent. The player's choice affects immediate scene, not the forest's power to imitate the protagonist.
 - **Early exploration:** if the player reaches this shelter before meeting Nora twice, it is an ordinary shelter. No empty lore cutscene. The return visit stages the door event.
 - **Fairness:** if the player exits/reloads at the wrong time, the encounter can safely retrigger until resolved; do not force an unfair death.
+- **Built so far:** the road on from the footbridge to the fork, the stream cut (the road bridge out, the footbridge the only crossing, past the shelter's door), and the shelter with its inside (chair at the window, watch log, stove, cupboard). Not yet: the rear exit and `E_NORA_DOOR` (FOREST.md "The deep road").
 
 ### 14 — `LOGGING_FORK`: deep crossing and protagonist's double
 
@@ -170,6 +171,7 @@ Names and IDs here are stable content keys. Layout coordinates should be authore
 - **Visuals:** old logging-road fork with ravine sign, survey trail and broken shelter marker.
 - **Story `E_PLAYER_DOUBLE`:** after the fake-Nora door event, the player sees their own likeness beyond the crossing. It notices the real player and withdraws. This encounter is unsettling, not an instant chase or another mistaken-rescuer minigame.
 - **If encountered early:** place is traversable; the double has not yet been cued. Do not artificially bar it.
+- **Built so far:** the fork and its three-armed signpost, the logging road west to the ravine; the survey trail north and the road east end in fallen trees until `SURVEY_LOOKOUT` and `SHELTER_EXTERIOR` are built (M5). Not yet: `E_PLAYER_DOUBLE`.
 
 ### 15 — `RAVINE_CULVERT`: Nora's death site and late drainage access
 
@@ -178,6 +180,7 @@ Names and IDs here are stable content keys. Layout coordinates should be authore
 - **Fixed clues after Nora's death:** `nora_field_note`, `nora_body_evidence`. The body has her **real left-cheek mole** and injuries showing a physical assault and fatal fall. The note indicates she followed the protagonist's likeness. Do not display a graphic murder flashback.
 - **Puzzle `P08`:** late, after bringing the `drainage_survey` home; identify and clear the floodgate, lower water, enter the drainage passage.
 - **Continuity:** Nora can be encountered alive earlier; her body appears only after the scheduled offscreen event. It is not a random corpse prop. If seen after death but before the player's double, provide observations that support—not spoil—the eventual deduction.
+- **Built so far:** the ledge, the edge, the drop, the drain and the far wall (solid rock you can't cross), the sluice wheel, and the drainage opening seen from the edge above it. Not yet: Nora's body and things, and `P08`.
 
 ### 16 — `SURVEY_LOOKOUT`: earlier-self cache
 

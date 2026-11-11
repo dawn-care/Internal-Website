@@ -168,6 +168,8 @@ export const HOLLOW_SEED = 401_987
 // FENCE_WING tiles past the sides, far beyond where you'd be lost, so nothing goes round them.
 const CAMP = { south: -127, north: -158, west: -22, east: 22 }
 const FENCE_WING = 40
+/** The ravine's edge: the row you stand above it at, and how far it runs. */
+const RAVINE = { y: -217, x0: -46, x1: -16, culvert: -41 }
 
 export const LINES: Line[] = [
   // The footpath in from the treeline, to the fork.
@@ -243,16 +245,77 @@ export const LINES: Line[] = [
       [-14, -149],
     ],
   },
-  // The deep road, north through the service gate (MAP.md 13–18 are built along it later).
+  // The deep road, north through the service gate (MAP.md 12–15) to the stream cut, where its
+  // bridge is gone...
   {
     ground: 'road',
     width: 2.4,
     walk: true,
     pts: [
       [0.5, -150],
-      [0.5, -172],
-      [-3, -188],
-      [-6, -204],
+      [0.5, -174.5],
+    ],
+  },
+  // ...so the way over is the footbridge by the watchman's shelter (MAP.md 13: the only crossing,
+  // and it passes the shelter's door)...
+  {
+    ground: 'path',
+    width: 1.4,
+    walk: true,
+    pts: [
+      [0.5, -169],
+      [5, -170.5],
+      [7.5, -173.5],
+      [7.5, -183],
+      [4.5, -186],
+      [0.5, -187],
+    ],
+  },
+  // ...and on the far side the road again, north to the logging fork (MAP.md 14).
+  {
+    ground: 'road',
+    width: 2.4,
+    walk: true,
+    pts: [
+      [0.5, -182.5],
+      [0.5, -196],
+      [-3, -205],
+    ],
+  },
+  // From the fork: west, the old logging road down to the ravine (MAP.md 15)...
+  {
+    ground: 'road',
+    width: 2,
+    walk: true,
+    pts: [
+      [-3, -205],
+      [-13, -209],
+      [-24, -213.5],
+      [-34, -214],
+    ],
+  },
+  // ...north, the survey trail (to the lookout, MAP.md 16: not built yet, so it ends at a fallen
+  // tree)...
+  {
+    ground: 'path',
+    width: 1.2,
+    walk: true,
+    pts: [
+      [-3, -205],
+      [-2, -213],
+      [0, -219],
+    ],
+  },
+  // ...and east, the road on towards the first-aid shelter (MAP.md 17: not built yet, so it ends
+  // in a deadfall too).
+  {
+    ground: 'road',
+    width: 2,
+    walk: true,
+    pts: [
+      [-3, -205],
+      [6, -208],
+      [14, -209],
     ],
   },
   // The creek, west to east across the map (the road crosses it on a bridge, the trail on a
@@ -274,7 +337,50 @@ export const LINES: Line[] = [
       [110, -66],
     ],
   },
+  // The stream cut across the deep road (MAP.md 13), fast and deep, the road bridge long gone.
+  {
+    ground: 'water',
+    width: 2.6,
+    walk: false,
+    pts: [
+      [-80, -182],
+      [-40, -178],
+      [-15, -179.5],
+      [0.5, -178.5],
+      [14, -179],
+      [40, -177],
+      [90, -181],
+    ],
+  },
+  // The drain at the bottom of the ravine (MAP.md 15), below the edge.
+  {
+    ground: 'water',
+    width: 2,
+    walk: false,
+    pts: [
+      [RAVINE.x0, RAVINE.y - 3],
+      [RAVINE.x1, RAVINE.y - 3],
+    ],
+  },
 ]
+
+/**
+ * The ravine (MAP.md 15): along row `y` its edge (the lip you stand at), two rows of drop below
+ * it, the drain at the bottom (a water line) and the far wall with the drainage opening in it,
+ * from x0 to x1. Drawn as rock, solid all along.
+ */
+function ravine(): Prop[] {
+  const out: Prop[] = []
+  for (let x = RAVINE.x0; x <= RAVINE.x1; x++) {
+    out.push({ id: 'drop', x, y: RAVINE.y, v: 0 })
+    out.push({ id: 'drop', x, y: RAVINE.y - 1, v: 1 })
+    out.push({ id: 'drop', x, y: RAVINE.y - 2, v: 1 })
+    // (The far wall, with the drainage opening in it.)
+    if (x !== RAVINE.culvert) out.push({ id: 'drop', x, y: RAVINE.y - 5, v: 2 })
+  }
+  out.push({ id: 'culvert', x: RAVINE.culvert, y: RAVINE.y - 5 })
+  return out
+}
 
 /** A run of the perimeter's wire fence: along a row (v 0) or down a column (v 1). */
 function wire(x0: number, y0: number, x1: number, y1: number): Prop[] {
@@ -603,6 +709,110 @@ export const LANDMARKS: Landmark[] = [
         y: CAMP.north,
         prompt: 'Look through the gate',
         look: 'A vehicle gate, chained shut. Beyond it the road runs on north into the dark.',
+      },
+    ],
+  },
+  {
+    // MAP.md 13. The road bridge is gone; the footbridge passes the shelter's door. (Its inside is
+    // IN_WATCH_SHELTER. E_NORA_DOOR, the knock at this door, and its rear exit come later.)
+    id: 'WATCH_SHELTER',
+    name: 'The watchman’s shelter',
+    x: 9,
+    y: -172,
+    r: 7,
+    seen: [],
+    areas: [{ x0: 4, y0: -175, x1: 14, y1: -168, walk: true }],
+    props: [
+      { id: 'gatehouse', x: 9, y: -172 },
+      { id: 'closedsign', x: -2, y: -175 },
+    ],
+    spots: [
+      {
+        x: 12,
+        y: -172,
+        prompt: 'Read the board',
+        look: 'A board by the door: HOLLOW PINES · WATCH SHELTER. Under it, a hook for a lantern, empty.',
+      },
+      {
+        x: -2,
+        y: -175,
+        prompt: 'Read the sign',
+        look: 'BRIDGE OUT, on a board striped red and white. Beyond it the road just stops at the water: two concrete stubs, and the stream going by fast and black between them.',
+      },
+    ],
+  },
+  {
+    // MAP.md 14. Your double is seen past here later (E_PLAYER_DOUBLE); for now it's just the fork.
+    id: 'LOGGING_FORK',
+    name: 'The logging fork',
+    x: -2,
+    y: -205,
+    r: 6,
+    seen: [],
+    areas: [{ x0: -7, y0: -208, x1: 1, y1: -202, walk: true }],
+    props: [
+      { id: 'forksign', x: 1, y: -204 },
+      // The survey trail and the road east end in fallen trees (MAP.md 16 and 17 aren't built).
+      { id: 'deadfall', x: -1, y: -220 },
+      { id: 'deadfall', x: 15, y: -209 },
+    ],
+    spots: [
+      {
+        x: 1,
+        y: -204,
+        prompt: 'Read the signpost',
+        look: 'Three arms. West: RAVINE. North, hand-painted: SURVEY. East, a board snapped off short, the nail holes still in it.',
+      },
+      {
+        x: 0,
+        y: -220,
+        prompt: 'Look at the fallen tree',
+        look: 'A pine down across the trail, its roots up in the air. The trail goes on past it, a long way, uphill.',
+      },
+      {
+        x: 16,
+        y: -209,
+        prompt: 'Look at the fallen trees',
+        look: 'Two trees down across the road, one on the other, the needles still green.',
+      },
+    ],
+  },
+  {
+    // MAP.md 15. Nora's death site later (her body, the kettle, the notebook: STORY.md); the
+    // drainage opening is P08's (PUZZLES.md), much later.
+    id: 'RAVINE_CULVERT',
+    name: 'The ravine',
+    x: -30,
+    y: -214,
+    r: 7,
+    seen: [],
+    areas: [{ x0: -44, y0: -216, x1: -20, y1: -212, walk: true }],
+    props: [...ravine(), { id: 'sluice', x: -25, y: -216 }],
+    spots: [
+      {
+        x: -30,
+        y: RAVINE.y,
+        prompt: 'Look over the edge',
+        look: 'The ground stops. Below, a long way below, water moving over stones, and the dark of the far side.',
+      },
+      {
+        x: -35,
+        y: RAVINE.y,
+        prompt: 'Look over the edge',
+        look: 'A steep fall of rock and roots. Halfway down, a ledge where the pine needles have piled up deep.',
+      },
+      {
+        x: -25,
+        y: -216,
+        prompt: 'Look at the wheel',
+        look: 'An iron wheel on a post at the edge, rusted solid, a chain from it going down into the ravine. A plate on the post: SLUICE · DO NOT OPERATE IN FLOOD.',
+      },
+      {
+        // (Faced from the lip: the opening itself is across the ravine.)
+        x: RAVINE.culvert,
+        y: RAVINE.y,
+        prompt: 'Look over the edge',
+        look: 'Across the ravine, low in the far wall, a round dark opening, half buried in silt and branches. Water runs out of it.',
       },
     ],
   },
@@ -960,6 +1170,61 @@ export const INTERIORS: Landmark[] = [
       { x: 194, y: -48, prompt: 'Read the plate', doc: 'pulley_diagram' },
     ],
   ),
+  // The watchman's shelter (MAP.md 13): his chair at the window over the footbridge, the watch log,
+  // a stove, a bolt on the door. (The descriptions are invented.)
+  interior(
+    'IN_WATCH_SHELTER',
+    'Inside the watchman’s shelter',
+    210,
+    -53,
+    8,
+    5,
+    [
+      { id: 'window', x: 211, y: -54 },
+      { id: 'chair', x: 211, y: -53 },
+      { id: 'desk', x: 214, y: -53 },
+      { id: 'stove', x: 217, y: -53 },
+      { id: 'cabinet', x: 210, y: -50 },
+    ],
+    [
+      {
+        x: 211,
+        y: -54,
+        prompt: 'Look out of the window',
+        look: 'The footbridge, close enough to touch, and the stream going under it. Anyone crossing would pass right by this glass.',
+      },
+      {
+        x: 211,
+        y: -53,
+        prompt: 'Look at the chair',
+        look: 'A wooden chair turned to face the window, its seat worn pale. Somebody sat here a long time.',
+      },
+      {
+        x: 214,
+        y: -53,
+        prompt: 'Read the log',
+        look: 'A watch log, open on the desk: names and times in and out over the bridge, the same few names, night after night. The last page is 1979. After that, nothing.',
+      },
+      {
+        x: 215,
+        y: -53,
+        prompt: 'Look at the desk',
+        look: 'A tin mug, a stub of pencil, a torch with no batteries in it.',
+      },
+      {
+        x: 217,
+        y: -53,
+        prompt: 'Look at the stove',
+        look: 'A little stove, cold. Its door has been tied shut with wire.',
+      },
+      {
+        x: 210,
+        y: -50,
+        prompt: 'Open the cupboard',
+        look: 'A blanket, folded. Tins of beans, the labels gone. A spare bolt for the door, still in its paper.',
+      },
+    ],
+  ),
 ]
 LANDMARKS.push(...INTERIORS)
 
@@ -1014,6 +1279,13 @@ export const DOORS: Door[] = [
     out: { x: -15.5, y: -148.6 },
     door: { x: 196, y: -47 },
     in: { x: 196.5, y: -47.4 },
+  },
+  {
+    room: 'IN_WATCH_SHELTER',
+    outside: { x: 10, y: -172 },
+    out: { x: 10.5, y: -170.6 },
+    door: { x: 213, y: -48 },
+    in: { x: 213.5, y: -48.4 },
   },
 ]
 
@@ -1100,6 +1372,22 @@ export const PROP_LOOKS: Record<string, { prompt: string; look: string[] }> = {
   },
   closedsign: { prompt: 'Read the sign', look: ['ROAD CLOSED.'] },
   waymark: { prompt: 'Read the trail marker', look: ['A trail marker post.'] },
+  gatehouse: {
+    prompt: 'Look at the shelter',
+    look: [
+      'A small plank hut with a tin roof and a stovepipe, one window looking onto the footbridge.',
+    ],
+  },
+  drop: {
+    prompt: 'Look over the edge',
+    look: ['The ravine. Too steep to climb down, and a long way to the bottom.'],
+  },
+  culvert: { prompt: 'Look at the opening', look: ['A drainage opening in the far wall.'] },
+  sluice: { prompt: 'Look at the wheel', look: ['An iron wheel on a post, rusted solid.'] },
+  deadfall: {
+    prompt: 'Look at the fallen tree',
+    look: ['Fallen trees, too big to climb over, the branches still on them.'],
+  },
   cabin: {
     prompt: 'Look at the cabin',
     look: ['A small plank cabin with a tin roof. The door hangs open a hand’s width.'],
@@ -1154,27 +1442,15 @@ export const PROP_LOOKS: Record<string, { prompt: string; look: string[] }> = {
 export const NATURE_LOOKS: Record<string, { prompt: string; look: string[] }> = {
   fpine: {
     prompt: 'Look at the pine',
-    look: [
-      'It’s a tree.',
-      'A pine tree.',
-      'Pinus lambertiana.'
-    ],
+    look: ['It’s a tree.', 'A pine tree.', 'Pinus lambertiana.'],
   },
   ftree: {
     prompt: 'Look at the tree',
-    look: [
-      'It’s an oak tree.',
-      'A tree.',
-      'An oak tree. No acorns.'
-    ],
+    look: ['It’s an oak tree.', 'A tree.', 'An oak tree. No acorns.'],
   },
   dead: {
     prompt: 'Look at the dead tree',
-    look: [
-      'Beetles are everywhere.',
-      'It’s dead.',
-      'A dead tree.',
-    ],
+    look: ['Beetles are everywhere.', 'It’s dead.', 'A dead tree.'],
   },
   stump: {
     prompt: 'Look at the stump',
@@ -1188,15 +1464,12 @@ export const NATURE_LOOKS: Record<string, { prompt: string; look: string[] }> = 
     prompt: 'Look at the stone',
     look: [
       'A cold, dark stone. Moss swarms over it.',
-      'A stone. Something has been rubbed off it.'
+      'A stone. Something has been rubbed off it.',
     ],
   },
   shroom: {
     prompt: 'Look at the mushrooms',
-    look: [
-      'Pale mushrooms in a little ring.',
-      'Mushrooms. Best leave them.'
-    ],
+    look: ['Pale mushrooms in a little ring.', 'Mushrooms. Best leave them.'],
   },
 }
 

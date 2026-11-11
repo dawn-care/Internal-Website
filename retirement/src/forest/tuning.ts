@@ -73,8 +73,6 @@ export const TURN_BACK_MAX = 2
 export const MUSE_GAP_MS = 60_000
 /** How often a real threat starting brings "Something feels... off." (a gut feeling, not a rule). */
 export const FEELS_OFF_CHANCE = 0.5
-/** Lost for this long (without being brought home), you collapse and wake in the infirmary. */
-export const COLLAPSE_MS = FAST ? 25_000 : 5 * 60_000
 /**
  * Sitting down to wait while lost: time runs this much faster for everything that comes to you
  * (people, threats, uncanny moments, the collapse). Your eyes close after this long (ms), and a
@@ -521,3 +519,58 @@ export const NORA_MEET_AFTER = 10
 
 /** How often a grandchild's, niece's or nephew's face gives you pause as they reach you (encounters.ts FACE_DOUBT). */
 export const FACE_DOUBT_CHANCE = 0.35
+
+// --- the thing in the deep (thing.ts; FOREST.md "The thing in the deep") ----------------------
+
+/** Its drift towards you (tiles/s): slow at first, THING_SPEED_RISE faster each minute out. */
+export const THING_SPEED = 1
+export const THING_SPEED_RISE = 0.25
+export const THING_SPEED_MAX = 2.4
+/** It notices you (and comes for you) this close, if you're not inside. */
+export const THING_NOTICE = 8
+/** Coming for you: faster than you walk (3.3), slower than you hurry (5.2). */
+export const THING_CHASE_SPEED = 4.1
+/** It has you this close. */
+export const THING_CATCH = 0.8
+/** It loses you once you've stayed this far off for THING_LOSE_MS, or gives up after the max. */
+export const THING_LOSE = 12
+export const THING_LOSE_MS = 2500
+export const THING_CHASE_MAX_MS = 15_000
+/** Having lost you (or waited at a door), it's gone this long, then back from this far off. */
+export const THING_RETURN_MS = FAST ? 10_000 : 50_000
+export const THING_RETREAT = 55
+/** It waits this far from a door you went in by (a start on it when you come out)... */
+export const THING_DOOR = 5
+/** ...for this long, then drifts off. */
+export const THING_WAIT_MS = 35_000
+/** Its steps carry this far (tiles); your unease starts this far off. */
+export const THING_HEAR = 26
+export const THING_UNEASE_RANGE = 30
+/** On the map it never comes south of this row (just north of the creek). */
+export const THING_SOUTH = -76
+/** Where it starts: up the deep road at the fork, or this far from you if that's closer. */
+export const THING_START = { x: -2, y: -205 }
+export const THING_START_MIN = 70
+/** Lost, or let off the empty bus: it starts this far off (it's never far, out there). */
+export const THING_LOST_START = 35
+export const THING_BUS_START = 22
+
+// --- unease and energy (the gauges beside stamina; FOREST.md) ------------------------------------
+
+/** Unease follows what's wrong (0–1 a second): quick to rise, slow to settle. */
+export const UNEASE_RISE = 0.6
+export const UNEASE_FALL = 0.12
+/** Energy drains this much a second on the map (a full bar lasts about 12 minutes)... */
+export const ENERGY_DRAIN = FAST ? 1 / 90 : 1 / 720
+/** ...this many times faster lost (about 5 minutes), hurrying, or very uneasy (over UNEASY)... */
+export const ENERGY_LOST = 2.0
+export const ENERGY_HURRY = 1.3
+export const ENERGY_UNEASY = 1.4
+export const UNEASY = 0.6
+/** ...more slowly inside a building, and it comes back a little sitting down to wait. */
+export const ENERGY_INDOORS = 0.6
+export const ENERGY_SIT = 0.004
+/** Below this, you feel it (a thought, once a trip). */
+export const ENERGY_LOW = 0.2
+/** Eating a meal from your pocket in the forest gives back this much energy. */
+export const MEAL_ENERGY = 0.4

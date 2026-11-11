@@ -27,6 +27,7 @@ import {
   FAMILY_MAX,
   FAMILY_MIN,
   POCKET_ITEMS,
+  pocketMeal,
   POCKET_SLOTS,
   RELATIONS,
   type Accessory,
@@ -671,8 +672,14 @@ function familyAndPocket(f: unknown, p: unknown): { family?: Family; pocket?: Po
   const pocket =
     p === undefined
       ? []
-      : arr(p, 'pocket', POCKET_SLOTS).map((it, i) => oneOf(it, POCKET_ITEMS, `pocket[${i}]`))
-  if (new Set(pocket).size !== pocket.length) throw new SaveError('pocket has something twice.')
+      : arr(p, 'pocket', POCKET_SLOTS).map((it, i): PocketItem =>
+          typeof it === 'string' && pocketMeal(it)
+            ? (it as PocketItem)
+            : oneOf(it, POCKET_ITEMS, `pocket[${i}]`),
+        )
+  // (Meals can be carried two at a time; the photo and each key only once.)
+  const things = pocket.filter((it) => !pocketMeal(it))
+  if (new Set(things).size !== things.length) throw new SaveError('pocket has something twice.')
   if (pocket.includes('photo') && (!family || family.lost))
     throw new SaveError("You can't carry a family photo you don't have.")
   return { ...(family ? { family } : {}), ...(pocket.length ? { pocket } : {}) }
