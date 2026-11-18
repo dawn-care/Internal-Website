@@ -1,5 +1,11 @@
-import { Navigate } from 'react-router-dom'
-import ReviewsMetric from '../components/metrics/ReviewsMetric'
+import { Navigate, useSearchParams } from 'react-router-dom'
+import PrBalanceMetric from '../components/metrics/PrBalanceMetric'
+import PrBreadthMetric from '../components/metrics/PrBreadthMetric'
+import PrCoverageMetric from '../components/metrics/PrCoverageMetric'
+import PrIterationPicker from '../components/metrics/PrIterationPicker'
+import PrSizeMetric from '../components/metrics/PrSizeMetric'
+import PrSpeedMetric from '../components/metrics/PrSpeedMetric'
+import PrSummaryMetric from '../components/metrics/PrSummaryMetric'
 import LoadingState from '../components/LoadingState'
 import PageTitle from '../components/PageTitle'
 import Skeleton from '../components/Skeleton'
@@ -8,8 +14,8 @@ import { useAuth } from '../lib/auth'
 const SIGN_IN = `/tasks?returnTo=${encodeURIComponent('/metrics')}`
 
 /**
- * Small, independent team metrics, one widget per card (signed-in only). Unlike
- * /dashboard, each widget fetches its own public data directly — see src/lib/reviewers.
+ * The team's five PR metrics per deadline iteration (signed-in only). Unlike /dashboard,
+ * the cards fetch public data directly — one shared fetch, see src/lib/prMetrics.
  */
 export default function Metrics() {
   const { user, loading } = useAuth()
@@ -30,13 +36,26 @@ export default function Metrics() {
 }
 
 function SignedInMetrics() {
+  // ?iteration=<name> keeps the pick shareable; absent = the entire project.
+  const [params, setParams] = useSearchParams()
+  const iteration = params.get('iteration')
+  const pick = (name: string | null) =>
+    setParams(name ? { iteration: name } : {}, { replace: true })
+
   return (
     <div>
       <h1 className="text-4xl font-semibold">Metrics</h1>
-      <p className="mt-3 max-w-prose text-ink-muted">How the team&apos;s doing, at a glance.</p>
       <div aria-hidden="true" className="mt-6 horizon-line w-24" />
-      <div className="mt-8 grid gap-6">
-        <ReviewsMetric />
+      <div className="mt-8">
+        <PrIterationPicker value={iteration} onChange={pick} />
+      </div>
+      <div className="mt-6 grid grid-cols-1 gap-6">
+        <PrSummaryMetric iteration={iteration} />
+        <PrSizeMetric iteration={iteration} />
+        <PrSpeedMetric iteration={iteration} />
+        <PrBalanceMetric iteration={iteration} />
+        <PrCoverageMetric iteration={iteration} />
+        <PrBreadthMetric iteration={iteration} />
       </div>
     </div>
   )

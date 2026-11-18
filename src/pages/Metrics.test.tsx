@@ -5,19 +5,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AuthState } from '../lib/auth'
 import { AuthContext } from '../lib/auth/context'
 import { MOCK_USER } from '../lib/auth/mock'
-import { fetchReviewerMetrics } from '../lib/reviewers/client'
-import { clearReviewerMetricsCache } from '../lib/reviewers/data'
+import { fetchPrMetrics } from '../lib/prMetrics/client'
+import { clearPrMetricsCache } from '../lib/prMetrics/data'
+import { mockPrMetrics } from '../lib/prMetrics/mock'
 import Metrics from './Metrics'
 
-vi.mock('../lib/reviewers/client', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../lib/reviewers/client')>()),
-  fetchReviewerMetrics: vi.fn(),
+vi.mock('../lib/prMetrics/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/prMetrics/client')>()),
+  fetchPrMetrics: vi.fn(),
 }))
 
 afterEach(() => {
   cleanup()
-  clearReviewerMetricsCache()
-  vi.mocked(fetchReviewerMetrics).mockReset()
+  clearPrMetricsCache()
+  vi.mocked(fetchPrMetrics).mockReset()
 })
 
 function SignIn() {
@@ -25,7 +26,7 @@ function SignIn() {
   return <p>Sign-in panel {location.search}</p>
 }
 
-function renderMetrics(auth: Partial<AuthState>) {
+function renderMetrics(auth: Partial<AuthState>, url = '/metrics') {
   const value: AuthState = {
     user: MOCK_USER,
     loading: false,
@@ -38,7 +39,7 @@ function renderMetrics(auth: Partial<AuthState>) {
   }
   render(
     <AuthContext value={value}>
-      <MemoryRouter initialEntries={['/metrics']}>
+      <MemoryRouter initialEntries={[url]}>
         <Routes>
           <Route path="/metrics" element={<Metrics />} />
           <Route path="/tasks" element={<SignIn />} />
@@ -48,56 +49,79 @@ function renderMetrics(auth: Partial<AuthState>) {
   )
 }
 
+const CARDS = [
+  'PR Metrics Summary',
+  'PR Size',
+  'Review and Merge Time',
+  'Author and Review Balance',
+  'Focus-Area Coverage',
+  'Breadth of Knowledge',
+]
+
 describe('Metrics page', () => {
   it('sends signed-out visitors to sign in, returning to /metrics', () => {
     renderMetrics({ user: null })
     expect(screen.getByText('Sign-in panel ?returnTo=%2Fmetrics')).toBeTruthy()
   })
 
-  it('renders the Reviews widget, ranked by trailing-window count, with its own anchor', async () => {
-    vi.mocked(fetchReviewerMetrics).mockResolvedValue({
-      generatedAt: '2026-11-05T05:00:00Z',
-      windowDays: 14,
-      allTime: { 'river-b': 14, 'sam-k': 6 },
-      trailingWindow: { 'river-b': 1, 'sam-k': 5 },
-    })
+  it('renders all six PR cards from one fetch, for the entire project by default', async () => {
+    vi.mocked(fetchPrMetrics).mockResolvedValue(mockPrMetrics())
     renderMetrics({})
 
-    const reviews = await screen.findByRole('region', { name: 'Reviews' })
-    expect(document.getElementById('reviews')).toBe(reviews)
-
-    const rows = within(reviews).getAllByRole('row')
-    // rows[0] is the header row; sam-k outranks river-b on the trailing window despite
-    // having fewer all-time reviews.
-    expect(within(rows[1]).getByRole('link', { name: /@sam-k/ })).toBeTruthy()
-    expect(within(rows[2]).getByRole('link', { name: /@river-b/ })).toBeTruthy()
-    expect(within(reviews).getByText(/Trailing 14 days as of Nov 5, 2026/)).toBeTruthy()
-
-    const link = within(reviews).getByRole('link', { name: /@sam-k/ })
-    expect(link.getAttribute('href')).toBe(
-      `https://github.com/dawn-care/DAWN/pulls?q=${encodeURIComponent('is:pr is:merged reviewed-by:sam-k')}`,
-    )
+    const summary = await screen.findByRole('region', { name: 'PR Metrics Summary' })
+    for (const name of CARDS) expect(screen.getByRole('region', { name })).toBeTruthy()
+    expect(fetchPrMetrics).toHaveBeenCalledTimes(1)
+    expect((screen.getByLabelText('Scope') as HTMLSelectElement).value).toBe('')
+    expect(screen.getByText(/102 PRs merged/)).toBeTruthy()
+    expect(within(summary).getByText('68%')).toBeTruthy()
   })
 
-  it("shows an empty state when the workflow hasn't generated the file yet", async () => {
-    vi.mocked(fetchReviewerMetrics).mockResolvedValue(null)
+  it('shows one iteration from ?iteration=', async () => {
+    vi.mocked(fetchPrMetrics).mockResolvedValue(mockPrMetrics())
+    renderMetrics({}, '/metrics?iteration=Deadline%202')
+
+    const summary = await screen.findByRole('region', { name: 'PR Metrics Summary' })
+    expect((screen.getByLabelText('Scope') as HTMLSelectElement).value).toBe('Deadline 2')
+    expect(within(summary).getByText('65%')).toBeTruthy()
+    expect(within(summary).getByText('88% / 88%')).toBeTruthy()
+    expect(within(summary).getByText('98%')).toBeTruthy()
+
+    const balance = screen.getByRole('region', { name: 'Author and Review Balance' })
+    expect(within(balance).getByText('Over-authoring')).toBeTruthy()
+    expect(within(balance).getByText('Under-authoring')).toBeTruthy()
+    expect(within(balance).getByText('Over-reviewing')).toBeTruthy()
+
+    const coverage = screen.getByRole('region', { name: 'Focus-Area Coverage' })
+    expect(within(coverage).getByText('(59 of 60 PRs)')).toBeTruthy()
+  })
+
+  it('switches iterations with the picker', async () => {
+    vi.mocked(fetchPrMetrics).mockResolvedValue(mockPrMetrics())
     renderMetrics({})
-    expect(await screen.findByText(/haven.t been generated yet/)).toBeTruthy()
+
+    const picker = (await screen.findByLabelText('Scope')) as HTMLSelectElement
+    fireEvent.change(picker, { target: { value: 'Deadline 1' } })
+    const coverage = screen.getByRole('region', { name: 'Focus-Area Coverage' })
+    expect(within(coverage).getByText('(37 of 40 PRs)')).toBeTruthy()
   })
 
-  it('shows an error with retry, which recovers', async () => {
-    vi.mocked(fetchReviewerMetrics)
+  it("shows an empty state in every card when the file isn't generated yet", async () => {
+    vi.mocked(fetchPrMetrics).mockResolvedValue(null)
+    renderMetrics({})
+    expect(await screen.findAllByText(/haven.t been generated yet/)).toHaveLength(6)
+    expect(screen.queryByLabelText('Scope')).toBeNull()
+  })
+
+  it('shows an error with retry, and one retry reloads every card', async () => {
+    vi.mocked(fetchPrMetrics)
       .mockRejectedValueOnce(new Error('Request failed (500): error'))
-      .mockResolvedValue({
-        generatedAt: '2026-11-05T05:00:00Z',
-        windowDays: 14,
-        allTime: {},
-        trailingWindow: {},
-      })
+      .mockResolvedValue(mockPrMetrics())
     renderMetrics({})
 
-    expect(await screen.findByText('Request failed (500): error')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
-    expect(await screen.findByText(/No reviews recorded/)).toBeTruthy()
+    const errors = await screen.findAllByText('Request failed (500): error')
+    expect(errors).toHaveLength(6)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Try again' })[0])
+    expect(await screen.findByLabelText('Scope')).toBeTruthy()
+    expect(screen.queryByText('Request failed (500): error')).toBeNull()
   })
 })
