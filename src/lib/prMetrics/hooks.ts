@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { clearReviewerMetricsCache, loadReviewerMetrics } from './data'
-import type { ReviewerMetrics } from './types'
+import { clearPrMetricsCache, loadPrMetrics } from './data'
+import type { PrMetricsFile } from './types'
 
-export interface ReviewerMetricsQuery {
+export interface PrMetricsQuery {
   /** undefined while loading; null when the workflow hasn't generated the file yet. */
-  data: ReviewerMetrics | null | undefined
+  data: PrMetricsFile | null | undefined
   loading: boolean
   error: Error | null
   refetch: () => void
@@ -12,18 +12,29 @@ export interface ReviewerMetricsQuery {
 
 interface Settled {
   attempt: number
-  data?: ReviewerMetrics | null
+  data?: PrMetricsFile | null
   error: Error | null
 }
 
-/** metrics/reviewers.json from dawn-care/DAWN, fetched once and cached. */
-export function useReviewerMetrics(): ReviewerMetricsQuery {
+/** Every mounted hook: a retry in one widget reloads all of them (they share one fetch). */
+const retryListeners = new Set<() => void>()
+
+/** metrics/pr-metrics.json from dawn-care/DAWN, fetched once and shared by every widget. */
+export function usePrMetrics(): PrMetricsQuery {
   const [attempt, setAttempt] = useState(0)
   const [settled, setSettled] = useState<Settled | null>(null)
 
   useEffect(() => {
+    const retry = () => setAttempt((n) => n + 1)
+    retryListeners.add(retry)
+    return () => {
+      retryListeners.delete(retry)
+    }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
-    loadReviewerMetrics().then(
+    loadPrMetrics().then(
       (data) => {
         if (!cancelled) setSettled({ attempt, data, error: null })
       },
@@ -38,8 +49,8 @@ export function useReviewerMetrics(): ReviewerMetricsQuery {
   }, [attempt])
 
   const refetch = useCallback(() => {
-    clearReviewerMetricsCache()
-    setAttempt((n) => n + 1)
+    clearPrMetricsCache()
+    for (const retry of retryListeners) retry()
   }, [])
 
   const current = settled?.attempt === attempt ? settled : null

@@ -268,16 +268,36 @@ GitHub Project; the site reads and writes them through GitHub's API.
   src/components/dashboard/Widget — it's generic, not dashboard-specific). Unlike
   /dashboard, each widget fetches its own public data directly in the browser, with no
   /api route and no user token, because the sources are public and need no secret.
-- Pattern per metric, modeled on src/lib/reviewers: a src/lib/<metric>/ module with
+- Pattern per data source, modeled on src/lib/prMetrics: a src/lib/<source>/ module with
   client.ts (the fetch + a typed error), mock.ts (fallback for VITE_TASKS_MOCK=true, so
   local dev needs no network), data.ts (fetch-once cache, matching src/lib/drive/data.ts),
-  hooks.ts, and an index.ts barrel; then one src/components/metrics/<Metric>.tsx widget
-  that handles its own loading/error/empty state and is listed in src/pages/Metrics.tsx.
-  One widget failing never blocks the others.
-- Current widgets: Reviews (#reviews) — per-person counts of distinct merged PRs
-  reviewed, from metrics/reviewers.json on the `metrics` branch of the separate
-  dawn-care/DAWN repo (dawn-care/DAWN#475), produced nightly by that repo's own
-  pr-metrics.yml workflow. A 404 means the workflow hasn't run yet, not an error.
+  hooks.ts, selectors.ts (pure, vitest-tested), and an index.ts barrel; then
+  src/components/metrics/<Metric>.tsx widgets that each handle their own
+  loading/error/empty state and are listed in src/pages/Metrics.tsx. One widget failing
+  never blocks the others.
+- Current widgets: the five team PR metrics. Raw input: metrics/pull-requests.json on the
+  `metrics` branch of the separate dawn-care/DAWN repo, collected nightly by that repo's
+  pr-metrics.yml (.github/scripts/pr-metrics/main.mjs). DAWN only hands over facts about
+  every merged PR (author, dates, reviews, labels incl. linked/branch issues, changed files)
+  and computes nothing. The site computes everything in the browser (src/lib/prMetrics/
+  compute.ts) with the rules in src/config/prMetrics.ts (PR_METRICS_RULES: deadlines, team,
+  focus-area experts, breadth labels, size exclusions, targets); a rule change never needs
+  DAWN. One fetch is shared by every card. A 404 means the workflow hasn't run yet, not an
+  error. Types: src/lib/prMetrics/types.ts (raw PullRequestsFile, schemaVersion 1; computed
+  PrMetricsFile, which mock.ts fully exemplifies). Cards, in order: PR Metrics Summary
+  (#pr-summary, five tiles: headline, target, Met/Not met), PR Size (#pr-size), Review and
+  Merge Time (#pr-speed), Author and Review Balance (#pr-balance, scatter with target box +
+  table), Focus-Area Coverage (#pr-coverage, one share where each PR counts once + the
+  focus-area experts table), Breadth of Knowledge (#pr-breadth, heatmap table). A scope
+  picker defaults to "Entire project" (every iteration combined by combineIterations: counts
+  add up, balance and breadth are recomputed from the totals); ?iteration=<name> picks one
+  deadline iteration. In the UI, focus-area owners are called "focus-area experts" and
+  breadth labels "focus areas". People are GitHub logins, shown as names via nameForLogin in
+  src/config/team.ts. To preview real data locally (PowerShell): in DAWN run
+  `$env:GH_TOKEN = (gh auth token); node .github/scripts/pr-metrics/main.mjs --out
+  ../Internal-Website/public/pull-requests.local.json` (gitignored), then here run
+  `$env:VITE_TASKS_MOCK = 'true'; $env:VITE_PR_METRICS_URL = '/pull-requests.local.json';
+  npm run dev` (the URL override beats mock data).
 
 ## Meetings (Google Calendar)
 - The shared "DAWN Team" Google Calendar is the ONLY source of meetings:

@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 api/_game
+public/*.local.json
 
 # Editor directories and files
 .vscode/*
