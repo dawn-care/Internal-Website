@@ -10,6 +10,7 @@ import Home from './pages/Home'
 import Meetings from './pages/Meetings'
 import Metrics from './pages/Metrics'
 import NotFound from './pages/NotFound'
+import Shame from './pages/Shame'
 import Tasks from './pages/Tasks'
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/meetings" element={<Meetings />} />
             <Route path="/metrics" element={<Metrics />} />
+            <Route path="/shame" element={<Shame />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/tasks', label: 'Tasks', end: false, signedInOnly: true },
   { to: '/meetings', label: 'Meetings', end: false, signedInOnly: true },
   { to: '/metrics', label: 'Metrics', end: false, signedInOnly: true },
+  { to: '/shame', label: 'Shame', end: false, signedInOnly: true },
   { to: '/agendas', label: 'Agendas', end: false },
   { to: '/artifacts', label: 'Artifacts', end: false },
 ]

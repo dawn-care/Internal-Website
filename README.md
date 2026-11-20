@@ -145,6 +145,112 @@ with an error naming the missing field; renaming an optional one silently hides 
 is really needed, change the name in `api/_lib/config.ts` in the same step. Adding new
 options (e.g. another Status) is fine: unknown statuses count as "open".
 
+## Shame bot: `/shame` in Discord and the `/shame` page
+
+The DAWN repo's shame bot (`dawn-care/DAWN`, `.github/workflows/discord-shame.yml`) shames
+people automatically and logs every shame in `metrics/shame.json` on its public `metrics`
+branch. This site adds two things:
+
+- **`/shame @person category reason`** in Discord. It posts a message with an **Endorse**
+  button, and it counts once 2 teammates other than the shamer and the person shamed endorse
+  it within 24 hours. Then `/api/discord` sends it to DAWN as a `manual-shame`
+  repository_dispatch, and DAWN re-checks it, logs it and posts its own message.
+- **The `/shame` page** (signed in, nav "Shame"), which reads `metrics/shame.json` in the
+  browser and shows shames per category, per person (and what each person is shamed for
+  most), per week, and the recent ones with their reasons, shamers and endorsers.
+
+The page needs no setup. The Discord command needs the steps below, done once by someone with
+admin rights on the team's Discord server, the Vercel project, and `dawn-care/DAWN`.
+
+### 1. Create the Discord application
+
+1. Go to <https://discord.com/developers/applications> → **New Application**, name it (e.g.
+   "DAWN Shame").
+2. On **General Information**, copy the **Application ID** and the **Public Key**.
+3. On **Bot**, click **Reset Token** and copy the **bot token** (shown once). It's only used
+   to register the command (step 3), never by the site.
+4. On **Installation**, under **Guild Install**, add the scope **`applications.commands`**
+   (no `bot` scope and no permissions needed). Copy the install link, open it, and add the
+   app to the team's server.
+
+### 2. Create the GitHub token for DAWN
+
+On GitHub: **Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+Generate new token**.
+
+- **Resource owner**: `dawn-care` (an org owner may have to approve the request).
+- **Repository access**: _Only select repositories_ → `dawn-care/DAWN` only.
+- **Permissions**: Repository → **Contents: Read and write** (that's what repository_dispatch
+  needs; Metadata: read comes with it). Nothing else.
+- Pick an expiry and put a reminder in the calendar to rotate it before then.
+
+### 3. Set the environment variables on Vercel
+
+**Vercel → Project → Settings → Environment Variables**, for **Production** (add them to
+Development too if you want to try it with `vercel dev` and a tunnel):
+
+| Variable               | Value                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `DISCORD_PUBLIC_KEY`   | The application's **Public Key** (64 hex characters).                                       |
+| `DISCORD_USER_MAP`     | The same JSON as DAWN's `DISCORD_USER_MAP` secret: `{"githubLogin": "discordUserId", ...}`. |
+| `SHAME_DISPATCH_TOKEN` | The fine-grained token from step 2. Secret.                                                 |
+
+`DISCORD_USER_MAP` decides who's on the team: only people in it can use `/shame`, be shamed,
+or endorse (DAWN checks its own copy again). Keep the two copies in sync when someone joins or
+leaves. To get a Discord user ID, turn on **Developer Mode** in Discord's settings, then
+right-click a person → **Copy User ID**. Redeploy after changing any of these.
+
+### 4. Register the command
+
+From this repo, with the values from step 1 (`DISCORD_GUILD_ID` is the server's ID: right-click
+the server icon → **Copy Server ID**; with it, the command shows up immediately):
+
+```sh
+DISCORD_APPLICATION_ID=... DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... npm run discord:register
+```
+
+PowerShell:
+
+```powershell
+$env:DISCORD_APPLICATION_ID = '...'; $env:DISCORD_BOT_TOKEN = '...'; $env:DISCORD_GUILD_ID = '...'
+npm run discord:register
+```
+
+Run it again whenever `api/_lib/discord/command.ts` changes (e.g. a new category, which must
+be added to DAWN's `CATEGORIES` in `rules.mjs` first).
+
+### 5. Set the Interactions Endpoint URL
+
+Once the env vars are deployed: Developer Portal → **General Information → Interactions
+Endpoint URL** → `https://<your-domain>/api/discord` → **Save**. Discord checks the URL with a
+signed `PING` and an unsigned request when you save; if it refuses, check that
+`DISCORD_PUBLIC_KEY` is set on Production and that the deployment is live (and not behind
+Vercel Deployment Protection).
+
+Then try `/shame` in the server. If a setting is missing, the bot says which one, privately.
+
+### How it works
+
+- Every request is checked against Discord's Ed25519 signature (`api/_lib/discord/verify.ts`);
+  unsigned ones get 401.
+- **Nothing is stored on the site.** The Endorse button's `custom_id` carries the person
+  shamed, the shamer, the category and the endorsers so far; the reason is read back from the
+  message text; the 24-hour window comes from the message ID's timestamp. So there's nothing to
+  clean up, and the message is the record. If two people click at the exact same moment for
+  the first endorsement, one of the clicks can be lost (the message shows who counted, so they
+  click again). Two clicks at the same moment for the last endorsement are harmless: DAWN logs
+  each message once.
+- The message pings only the person shamed (`allowed_mentions`), never anyone named in the
+  reason.
+- Refusals (not on the team, endorsing your own or someone's shame twice, expired) are
+  ephemeral replies to the clicker. If GitHub refuses the dispatch, the button stays and the
+  clicker is told to try again.
+
+### Previewing the page locally
+
+`VITE_TASKS_MOCK=true npm run dev` shows made-up shames. To preview the real log, save it as
+`public/shame.local.json` (git-ignored) and run with `VITE_SHAME_URL=/shame.local.json`.
+
 ## Rotating secrets
 
 Rotate a secret right away if it may have leaked (committed, pasted in chat, a lost laptop with
@@ -172,5 +278,10 @@ disconnect and reconnect the store), then redeploy. The burndown history is kept
 its protection is its restrictions: Drive API only, HTTP referrers limited to the site's
 domains. To rotate, create a new key in Google Cloud with the same restrictions, update Vercel,
 redeploy, then delete the old key.
+
+**`SHAME_DISPATCH_TOKEN`**: generate a new fine-grained token (same settings), update it in
+Vercel, redeploy, then delete the old one on GitHub. **Discord bot token / public key**: the bot
+token isn't stored anywhere (only used to register the command); reset it in the Developer
+Portal if it leaked. The public key isn't secret.
 
 After any rotation, check the deployment: sign in, open `/tasks`, and open the Sprint tab.

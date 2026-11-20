@@ -68,7 +68,8 @@ GitHub Project; the site reads and writes them through GitHub's API.
 - Server env vars (never prefixed VITE_, never sent to the browser):
   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET, GITHUB_ORG,
   GITHUB_PROJECT_NUMBER, BLOB_READ_WRITE_TOKEN, GOOGLE_CALENDAR_ID, GOOGLE_SA_EMAIL,
-  GOOGLE_SA_PRIVATE_KEY. (GITHUB_SNAPSHOT_TOKEN and CRON_SECRET are reserved for an
+  GOOGLE_SA_PRIVATE_KEY, DISCORD_PUBLIC_KEY, DISCORD_USER_MAP, SHAME_DISPATCH_TOKEN.
+  (GITHUB_SNAPSHOT_TOKEN and CRON_SECRET are reserved for an
   optional future scheduled snapshot job; don't require them.)
 - Server code must fail with a clear error naming any missing required env var, except:
   missing GitHub App vars mean "auth unavailable" (preview deployments), and missing
@@ -298,6 +299,25 @@ GitHub Project; the site reads and writes them through GitHub's API.
   ../Internal-Website/public/pull-requests.local.json` (gitignored), then here run
   `$env:VITE_TASKS_MOCK = 'true'; $env:VITE_PR_METRICS_URL = '/pull-requests.local.json';
   npm run dev` (the URL override beats mock data).
+
+## Shame (Discord /shame + /shame page)
+- dawn-care/DAWN's shame bot logs every shame in metrics/shame.json on its `metrics` branch
+  (format and the manual-shame dispatch: DAWN's .github/scripts/shame/README.md). This site
+  never writes that file.
+- /api/discord.ts is the Discord app's Interactions Endpoint: verifies the Ed25519 signature
+  (DISCORD_PUBLIC_KEY; unsigned → 401), answers PING, runs `/shame user category reason` and
+  its Endorse button (api/_lib/discord/shame.ts, pure and tested). Stateless: the button's
+  custom_id carries target/shamer/category/endorsers, the reason is read back from the
+  message, the 24h window comes from the message snowflake. Team = DISCORD_USER_MAP (JSON
+  GitHub login → Discord ID, same as DAWN's secret). At 2 endorsements (not the shamer or the
+  target) it POSTs the manual-shame repository_dispatch to dawn-care/DAWN with
+  SHAME_DISPATCH_TOKEN, then edits the message; if GitHub refuses, the button stays. Only the
+  target is ever pinged (allowed_mentions). Categories, reason limit and endorsement count in
+  api/_lib/discord/command.ts mirror DAWN's rules.mjs; register the command with
+  `npm run discord:register`.
+- /shame page (signed-in only, nav after Metrics): src/lib/shame (same pattern as
+  src/lib/prMetrics; 404 = no shames yet; VITE_SHAME_URL override; mock data with
+  VITE_TASKS_MOCK) and src/components/shame. Labels come from the file's `categories`.
 
 ## Meetings (Google Calendar)
 - The shared "DAWN Team" Google Calendar is the ONLY source of meetings:

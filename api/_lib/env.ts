@@ -143,3 +143,38 @@ export function normalizePrivateKey(raw: string): string {
   }
   return key.replace(/\\r\\n|\\n/g, '\n').replace(/\r\n/g, '\n')
 }
+
+/**
+ * The Discord application's public key, which every /api/discord request is verified
+ * against. Required: without it the endpoint can't tell Discord's requests from anyone's.
+ */
+export function getDiscordPublicKey(): string {
+  const key = read('DISCORD_PUBLIC_KEY')
+  if (!key) throw new ConfigError('Missing required environment variable(s): DISCORD_PUBLIC_KEY.')
+  if (!/^[0-9a-f]{64}$/i.test(key)) {
+    throw new ConfigError('DISCORD_PUBLIC_KEY must be the 64-character hex key from Discord.')
+  }
+  return key
+}
+
+export interface ShameBotConfig {
+  /** DISCORD_USER_MAP: JSON of GitHub login → Discord user ID (the same as DAWN's secret). */
+  userMap: string
+  /** SHAME_DISPATCH_TOKEN: fine-grained token with Contents: write on dawn-care/DAWN only. */
+  dispatchToken: string
+}
+
+/**
+ * What /shame needs beyond the public key, or the names of what's missing. Missing values
+ * are reported to the person in Discord (names only) rather than crashing.
+ */
+export function getShameBotConfig(): ShameBotConfig | { missing: string[] } {
+  const userMap = read('DISCORD_USER_MAP')
+  const dispatchToken = read('SHAME_DISPATCH_TOKEN')
+  if (userMap && dispatchToken) return { userMap, dispatchToken }
+  return {
+    missing: [!userMap && 'DISCORD_USER_MAP', !dispatchToken && 'SHAME_DISPATCH_TOKEN'].filter(
+      (v): v is string => Boolean(v),
+    ),
+  }
+}

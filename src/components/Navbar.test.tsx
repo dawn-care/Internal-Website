@@ -58,13 +58,14 @@ describe('Navbar', () => {
       (a) => a.textContent,
     )
 
-  it('orders Dashboard, Tasks, Meetings, Metrics, then the public pages when signed in', () => {
+  it('orders Dashboard, Tasks, Meetings, Metrics, Shame, then the public pages when signed in', () => {
     renderNavbar({ user: { login: 'ada', name: 'Ada', avatarUrl: '' } })
     expect(menuLinks()).toEqual([
       'Dashboard',
       'Tasks',
       'Meetings',
       'Metrics',
+      'Shame',
       'Agendas',
       'Artifacts',
     ])
