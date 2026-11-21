@@ -14,7 +14,7 @@ export interface ShameEntry {
   login: string
   /** One of `categories`' ids. */
   category: string
-  /** What caught it: behemoth, late_night, slow_review, no_reviewer, idle_author or manual. */
+  /** What caught it: behemoth, late_night, slow_review, idle_author or manual. */
   type: string
   /** The PR number, for shames about a PR. */
   pr?: number

@@ -140,7 +140,15 @@ const mention = (id: string) => `<@${id}>`
 
 function headline(state: Pick<ShameState, 'by' | 'target' | 'category'>, reason: string): string {
   const label = SHAME_CATEGORIES[state.category]
-  return `🔔 ${mention(state.by)} wants to shame ${mention(state.target)} for ${label}: "${reason}"`
+  const shames = [
+    `🫵😐 ${mention(state.by)} casts shame on ${mention(state.target)} for ${label}: "${reason}"`,
+    `${mention(state.by)} is shaming ${mention(state.target)} for ${label}: "${reason}"`,
+    `${mention(state.target)}'s ${label}...so shameful 🙂‍↔️. ${mention(state.by)} says they "${reason}"`,
+    `${mention(state.by)} would like to politely shame ${mention(state.target)} for ${label}: "${reason}"`,
+    `${mention(state.by)} is accusing ${mention(state.target)} of bad ${label}: "${reason}"`,
+    `🤢 ${mention(state.by)} thinks ${mention(state.target)} STINKS at ${label}: "${reason}"`,
+  ]
+  return shames[Math.floor(Math.random() * shames.length)]
 }
 
 function endorsementLine(endorsedBy: string[]): string {

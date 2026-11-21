@@ -22,10 +22,9 @@ export const RECENT_SHAMES = 15
 
 /** What caught each automatic shame, in words. `manual` is a /shame in Discord. */
 export const SHAME_TYPE_LABELS: Record<string, string> = {
-  behemoth: 'PR over 1000 lines',
-  late_night: 'Working 1–5am',
-  slow_review: 'Review overdue',
-  no_reviewer: 'No reviewer requested',
-  idle_author: 'No follow-up after a review',
-  manual: '/shame in Discord',
+  behemoth: 'MASSIVE BEHEMOTH PRS 🧌',
+  late_night: 'NOT SLEEPING 🫩',
+  slow_review: 'Late review (after 24h) (shame)',
+  idle_author: 'No follow-up after a review (shame)',
+  manual: 'Manual shaming',
 }

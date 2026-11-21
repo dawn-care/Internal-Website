@@ -18,7 +18,6 @@ const FACTS: Fact[] = [
   { daysAgo: 47, login: DAVID, category: 'reviews', type: 'slow_review', pr: 305 },
   { daysAgo: 44, login: TESS, category: 'sleep', type: 'late_night', pr: 312 },
   { daysAgo: 40, login: ALEX, category: 'follow_through', type: 'idle_author', pr: 318 },
-  { daysAgo: 38, login: HAROON, category: 'reviews', type: 'no_reviewer', pr: 320 },
   { daysAgo: 37, login: JAY, category: 'reviews', type: 'slow_review', pr: 322 },
   { daysAgo: 33, login: ASHTON, category: 'pr_size', type: 'behemoth', pr: 330 },
   {
@@ -94,7 +93,7 @@ export function mockShames(now = new Date()): ShameFile {
       deadlines: 'Deadlines',
       broke_something: 'Broke something',
       communication: 'Communication',
-      other: 'Other',
+      other: 'Something else',
     },
     shames,
     updatedAt: shames[shames.length - 1].at,

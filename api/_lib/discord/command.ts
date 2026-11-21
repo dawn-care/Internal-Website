@@ -16,7 +16,7 @@ export const SHAME_CATEGORIES = {
   deadlines: 'Deadlines',
   broke_something: 'Broke something',
   communication: 'Communication',
-  other: 'Other',
+  other: 'Something else',
 } as const
 
 export type ShameCategory = keyof typeof SHAME_CATEGORIES

@@ -22,13 +22,6 @@ const FILE: ShameFile = {
     },
     { at: '2026-11-03T15:00:00.000Z', login: 'bob', category: 'sleep', type: 'late_night', pr: 2 },
     {
-      at: '2026-11-04T15:00:00.000Z',
-      login: 'Bob',
-      category: 'reviews',
-      type: 'no_reviewer',
-      pr: 3,
-    },
-    {
       at: '2026-11-05T15:00:00.000Z',
       login: 'carol',
       category: 'sleep',
