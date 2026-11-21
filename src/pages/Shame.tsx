@@ -31,7 +31,7 @@ export default function Shame() {
             EVERYONE HERE sHOULD BE ASHAMED 🙂‍↔️🙂‍↔️🙂‍↔️🙂‍↔️🙂‍↔️
           </p>
           <div className="mt-8 grid grid-cols-1 gap-6">
-            <ShameByCategory />``
+            <ShameByCategory />
             <ShameByPerson />
             <ShameOverTime />
             <RecentShames />
