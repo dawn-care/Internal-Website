@@ -138,17 +138,31 @@ export function snowflakeTime(id: string): number {
 
 const mention = (id: string) => `<@${id}>`
 
-function headline(state: Pick<ShameState, 'by' | 'target' | 'category'>, reason: string): string {
-  const label = SHAME_CATEGORIES[state.category]
-  const shames = [
-    `🫵😐 ${mention(state.by)} casts shame on ${mention(state.target)} for ${label}: "${reason}"`,
-    `${mention(state.by)} is shaming ${mention(state.target)} for ${label}: "${reason}"`,
-    `${mention(state.target)}'s ${label}...so shameful 🙂‍↔️. ${mention(state.by)} says they "${reason}"`,
-    `${mention(state.by)} would like to politely shame ${mention(state.target)} for ${label}: "${reason}"`,
-    `${mention(state.by)} is accusing ${mention(state.target)} of bad ${label}: "${reason}"`,
-    `🤢 ${mention(state.by)} thinks ${mention(state.target)} STINKS at ${label}: "${reason}"`,
-  ]
-  return shames[Math.floor(Math.random() * shames.length)]
+type Headline = (by: string, target: string, label: string, reason: string) => string
+
+/**
+ * One is picked at random when a shame is posted; endorsing keeps whichever was posted.
+ * Each must end with the reason in quotes and have no `"` before it, so readShameMessage
+ * can find the reason again.
+ */
+export const HEADLINES: readonly Headline[] = [
+  (by, target, label, reason) => `🫵😐 ${by} casts shame on ${target} for ${label}: "${reason}"`,
+  (by, target, label, reason) => `${by} is shaming ${target} for ${label}: "${reason}"`,
+  (by, target, label, reason) =>
+    `${target}'s ${label}...so shameful 🙂‍↔️. ${by} says they "${reason}"`,
+  (by, target, label, reason) =>
+    `${by} would like to politely shame ${target} for ${label}: "${reason}"`,
+  (by, target, label, reason) => `${by} is accusing ${target} of bad ${label}: "${reason}"`,
+  (by, target, label, reason) => `🤢 ${by} thinks ${target} STINKS at ${label}: "${reason}"`,
+]
+
+function headline(
+  state: Pick<ShameState, 'by' | 'target' | 'category'>,
+  reason: string,
+  random: () => number,
+): string {
+  const pick = HEADLINES[Math.floor(random() * HEADLINES.length)] ?? HEADLINES[0]
+  return pick(mention(state.by), mention(state.target), SHAME_CATEGORIES[state.category], reason)
 }
 
 function endorsementLine(endorsedBy: string[]): string {
@@ -157,18 +171,22 @@ function endorsementLine(endorsedBy: string[]): string {
 }
 
 /**
- * The reason, read back out of a /shame message: the headline is everything before the
- * last line (the endorsement line never contains a newline; the reason may), and the
- * reason sits between the first `: "` (category labels never contain one) and the
- * headline's closing quote.
+ * A /shame message read back: the headline is everything before the last line (the
+ * endorsement line never contains a newline; the reason may), and the reason sits between
+ * the headline's first `"` (no headline, label or mention has one before it) and its
+ * closing quote.
  */
-export function reasonFromContent(content: string): string | null {
+export function readShameMessage(content: string): { head: string; reason: string } | null {
   const lastLine = content.lastIndexOf('\n')
   if (lastLine < 0) return null
   const head = content.slice(0, lastLine)
-  const start = head.indexOf(': "')
-  if (start < 0 || !head.endsWith('"') || head.length <= start + 4) return null
-  return head.slice(start + 3, -1)
+  const start = head.indexOf('"')
+  if (start < 0 || !head.endsWith('"') || head.length < start + 3) return null
+  return { head, reason: head.slice(start + 1, -1) }
+}
+
+export function reasonFromContent(content: string): string | null {
+  return readShameMessage(content)?.reason ?? null
 }
 
 function endorseButton(state: ShameState) {
@@ -202,7 +220,11 @@ function invoker(interaction: Interaction): string | undefined {
 // ---- /shame -------------------------------------------------------------------------------
 
 /** The reply to `/shame user category reason`: a public message with an Endorse button. */
-export function startShame(interaction: Interaction, team: TeamMap): InteractionResponse {
+export function startShame(
+  interaction: Interaction,
+  team: TeamMap,
+  random: () => number = Math.random,
+): InteractionResponse {
   const by = invoker(interaction)
   if (!by || !team.has(by)) return ephemeral('Only the D.A.W.N. team can use /shame.')
 
@@ -224,7 +246,7 @@ export function startShame(interaction: Interaction, team: TeamMap): Interaction
   return {
     type: ResponseType.CHANNEL_MESSAGE,
     data: {
-      content: `${headline(state, reason)}\n${endorsementLine([])}`,
+      content: `${headline(state, reason, random)}\n${endorsementLine([])}`,
       // Ping only the person shamed: never the shamer, and nobody named in the reason
       // (no @everyone, roles or users from the text).
       allowed_mentions: { parse: [], users: [target] },
@@ -249,10 +271,12 @@ export function endorse(interaction: Interaction, team: TeamMap, now: number): E
   })
   const message = interaction.message
   const state = decodeCustomId(interaction.data?.custom_id ?? '')
-  const reason = message ? reasonFromContent(message.content) : null
-  if (!message || !SNOWFLAKE.test(message.id) || !state || reason === null) {
+  const read = message ? readShameMessage(message.content) : null
+  if (!message || !SNOWFLAKE.test(message.id) || !state || !read) {
     return reply("Couldn't read this shame. Start a new one with /shame.")
   }
+  // Keep the headline as posted (it was picked at random), only the endorsements change.
+  const { head, reason } = read
 
   const clicker = invoker(interaction)
   if (!clicker || !team.has(clicker)) return reply('Only the D.A.W.N. team can endorse a shame.')
@@ -264,7 +288,6 @@ export function endorse(interaction: Interaction, team: TeamMap, now: number): E
   }
 
   const next: ShameState = { ...state, endorsedBy: [...state.endorsedBy, clicker] }
-  const head = headline(next, reason)
 
   if (next.endorsedBy.length < ENDORSEMENTS_NEEDED) {
     return {

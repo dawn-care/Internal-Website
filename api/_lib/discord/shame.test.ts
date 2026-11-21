@@ -5,6 +5,7 @@ import {
   decodeCustomId,
   encodeCustomId,
   endorse,
+  HEADLINES,
   parseTeamMap,
   reasonFromContent,
   snowflakeTime,
@@ -40,8 +41,9 @@ function command(by: string, options: Record<string, unknown>): Interaction {
   }
 }
 
-const shame = (reason = 'late to standup') =>
-  startShame(command(ALICE, { user: BOB, category: 'meetings', reason }), TEAM)
+/** Posts a /shame with the first headline, or the one `random` picks. */
+const shame = (reason = 'late to standup', random = () => 0) =>
+  startShame(command(ALICE, { user: BOB, category: 'meetings', reason }), TEAM, random)
 
 /** A click on the Endorse button of the message a response posted. */
 function click(posted: InteractionResponse, clicker: string, messageId = MESSAGE_ID): Interaction {
@@ -91,7 +93,7 @@ describe('/shame', () => {
     expect(res.type).toBe(4)
     expect(res.data?.flags).toBeUndefined()
     expect(res.data?.content).toBe(
-      `🔔 <@${ALICE}> wants to shame <@${BOB}> for Meetings: "late to standup, ask @everyone <@${CAROL}>"\nEndorsements: 0/2`,
+      `🫵😐 <@${ALICE}> casts shame on <@${BOB}> for Meetings: "late to standup, ask @everyone <@${CAROL}>"\nEndorsements: 0/2`,
     )
     expect(res.data?.allowed_mentions).toEqual({ parse: [], users: [BOB] })
     expect(click(res, CAROL).data?.custom_id).toBe(`shame:${BOB}:${ALICE}:meetings:`)
@@ -130,6 +132,11 @@ describe('/shame', () => {
     expect(res.data?.components).toBeUndefined()
   })
 
+  it('picks a headline at random', () => {
+    expect(shame('x', () => 0.99).data?.content).toMatch(/STINKS at Meetings: "x"\n/)
+    expect(shame('x', () => 0.4).data?.content).toMatch(/^<@\d+>'s Meetings\.\.\./)
+  })
+
   it('trims the reason', () => {
     expect(shame('  slept in  ').data?.content).toContain(': "slept in"\n')
   })
@@ -139,6 +146,13 @@ describe('reasonFromContent', () => {
   it('reads back reasons with quotes, colons and newlines', () => {
     const reason = 'said "done": it was not\nat all'
     expect(reasonFromContent(shame(reason).data!.content!)).toBe(reason)
+  })
+  it('reads the reason back from every headline', () => {
+    const reason = 'said "done": it was not\nat all'
+    HEADLINES.forEach((_, i) => {
+      const posted = shame(reason, () => i / HEADLINES.length)
+      expect(reasonFromContent(posted.data!.content!)).toBe(reason)
+    })
   })
   it('rejects text it did not write', () => {
     expect(reasonFromContent('hello')).toBeNull()
@@ -177,10 +191,23 @@ describe('endorsing', () => {
     expect(out.kind).toBe('reply')
     expect(out.response.type).toBe(7)
     expect(replyText(out)).toBe(
-      `🔔 <@${ALICE}> wants to shame <@${BOB}> for Meetings: "late to standup"\nEndorsements: 1/2 · <@${CAROL}>`,
+      `🫵😐 <@${ALICE}> casts shame on <@${BOB}> for Meetings: "late to standup"\nEndorsements: 1/2 · <@${CAROL}>`,
     )
     expect(out.response.data?.allowed_mentions).toEqual({ parse: [] })
     expect(decodeCustomId(click(out.response, DAVE).data!.custom_id!)?.endorsedBy).toEqual([CAROL])
+  })
+
+  it('keeps the posted headline through every endorsement', () => {
+    HEADLINES.forEach((_, i) => {
+      const posted = shame('late to standup', () => i / HEADLINES.length)
+      const head = posted.data!.content!.split('\n')[0]
+      const first = endorse(click(posted, CAROL), TEAM, now)
+      const second = endorse(click(first.response, DAVE), TEAM, now)
+      expect(replyText(first)?.startsWith(`${head}\nEndorsements: 1/2`)).toBe(true)
+      expect(second.kind).toBe('counted')
+      expect(replyText(second)?.startsWith(`${head}\n✅ It counts`)).toBe(true)
+      if (second.kind === 'counted') expect(second.payload.reason).toBe('late to standup')
+    })
   })
 
   it('dispatches on the second endorsement and removes the button', () => {

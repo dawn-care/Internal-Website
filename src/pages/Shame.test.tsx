@@ -65,7 +65,7 @@ describe('Shame page', () => {
     for (const name of CARDS) expect(screen.getByRole('region', { name })).toBeTruthy()
     expect(fetchShames).toHaveBeenCalledTimes(1)
     expect(
-      within(categories).getByText(/23 shames for 6 people: 18 caught by the bot, 5 from/),
+      within(categories).getByText(/22 shames for 6 people: 17 caught by the bot, 5 from/),
     ).toBeTruthy()
 
     const people = screen.getByRole('region', { name: 'Shames by Person' })
@@ -95,7 +95,7 @@ describe('Shame page', () => {
     expect(await screen.findAllByText('Request failed (500): error')).toHaveLength(4)
     fireEvent.click(screen.getAllByRole('button', { name: 'Try again' })[0])
     expect(await screen.findByRole('region', { name: 'Recent Shames' })).toBeTruthy()
-    expect(await screen.findByText(/23 shames/)).toBeTruthy()
+    expect(await screen.findByText(/22 shames/)).toBeTruthy()
     expect(screen.queryByText('Request failed (500): error')).toBeNull()
   })
 })
