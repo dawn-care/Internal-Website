@@ -1,5 +1,6 @@
 import type { ClueId, EventId, ItemId, LeadId, PuzzleId } from '../../../shared/story'
 import type { DocId } from './docs'
+import { DOOR_TRACES } from './deep'
 
 /*
  * Hollow Pines: the forest's fixed map (MAP.md). The same every trip, so it's a place you learn. A
@@ -104,6 +105,8 @@ export interface Spot {
   met?: { event: EventId; look: string }[]
   /** Until this puzzle is solved, looking here only says `look` (what's behind is shut away). */
   shut?: { puzzle: PuzzleId; look: string }
+  /** Only there once this has happened (Nora's things at the ravine, after her death). */
+  after?: EventId
 }
 
 export type ComboId = 'P02' | 'P05'
@@ -728,6 +731,14 @@ export const LANDMARKS: Landmark[] = [
     ],
     spots: [
       {
+        // Under its window: what's left after the knocking at the door (E_NORA_DOOR).
+        x: 9,
+        y: -172,
+        prompt: 'Look at the window',
+        look: 'A small window, the glass grimed over. The footbridge shows in it, and you, faintly.',
+        met: [{ event: 'E_NORA_DOOR', look: DOOR_TRACES }],
+      },
+      {
         x: 12,
         y: -172,
         prompt: 'Read the board',
@@ -787,8 +798,51 @@ export const LANDMARKS: Landmark[] = [
     r: 7,
     seen: [],
     areas: [{ x0: -44, y0: -216, x1: -20, y1: -212, walk: true }],
-    props: [...ravine(), { id: 'sluice', x: -25, y: -216 }],
+    props: [
+      ...ravine(),
+      { id: 'sluice', x: -25, y: -216 },
+      // Nora, once she's died here (E_NORA_DEATH: drawn only then, `Forest.open`): her body under
+      // the edge at the west end, her kettle and her notebook nearby (story/deep.ts).
+      { id: 'norabody', x: -40, y: -216 },
+      { id: 'norakettle', x: -37, y: -215 },
+      { id: 'noranotebook', x: -36, y: -213 },
+    ],
     spots: [
+      {
+        x: -40,
+        y: -216,
+        prompt: 'Kneel beside her',
+        clue: 'nora_body_evidence',
+        after: 'E_NORA_DEATH',
+      },
+      {
+        x: -39,
+        y: -216,
+        prompt: 'Kneel beside her',
+        clue: 'nora_body_evidence',
+        after: 'E_NORA_DEATH',
+      },
+      {
+        x: -36,
+        y: -213,
+        prompt: 'Pick up the notebook',
+        clue: 'nora_field_note',
+        after: 'E_NORA_DEATH',
+      },
+      {
+        x: -37,
+        y: -215,
+        prompt: 'Look at the kettle',
+        look: 'Her kettle, the dent in its side, on its side in the needles. Still half full.',
+        after: 'E_NORA_DEATH',
+      },
+      {
+        x: -33,
+        y: -214,
+        prompt: 'Look at the ground',
+        look: 'Two long grooves in the needles, from the road to the edge, as if something was dragged. Or someone dug their heels in.',
+        after: 'E_NORA_DEATH',
+      },
       {
         x: -30,
         y: RAVINE.y,
@@ -1287,15 +1341,25 @@ export const DOORS: Door[] = [
     door: { x: 213, y: -48 },
     in: { x: 213.5, y: -48.4 },
   },
+  {
+    // Its rear exit (MAP.md 13), in the back wall, onto the bank behind the hut.
+    room: 'IN_WATCH_SHELTER',
+    outside: { x: 11, y: -173 },
+    out: { x: 11.5, y: -174.6 },
+    door: { x: 216, y: -54 },
+    in: { x: 216.5, y: -52.6 },
+  },
 ]
 
 // Each inside's way out, drawn so you can find it (play-testing: it was just more wall): a door in
 // the front wall, and a worn doormat on the floor in front of it.
 for (const d of DOORS) {
   const lm = INTERIORS.find((l) => l.id === d.room)!
+  // (A door in the back wall has its mat on the floor below it instead.)
+  const back = d.door.y < lm.areas[0].y0
   lm.props.push(
     { id: 'exitdoor', x: d.door.x, y: d.door.y },
-    { id: 'doormat', x: d.door.x, y: d.door.y - 1 },
+    { id: 'doormat', x: d.door.x, y: back ? d.door.y + 1 : d.door.y - 1 },
   )
 }
 

@@ -1828,6 +1828,26 @@ button.bc-sq {
   position: relative;
 }
 
+/* Your lantern (E, in the forest): a little lamp, glowing when lit, dark when turned down (labelled either way). */
+.lantern-slot {
+  position: relative;
+}
+.lantern-slot .lamp {
+  display: block;
+  width: 16px;
+  height: 24px;
+  margin: 2px auto 0;
+  border: 3px solid #3a3027;
+  border-top-width: 5px;
+  border-radius: 3px 3px 5px 5px;
+  background: radial-gradient(circle at 50% 60%, #ffe7a3 0 30%, #e9a94a 70%);
+  box-shadow: 0 0 10px rgba(255, 210, 120, 0.7);
+}
+.lantern-slot.off .lamp {
+  background: #2a2724;
+  box-shadow: none;
+}
+
 .notepad-slot .pad {
   display: block;
   width: 22px;

@@ -11,9 +11,10 @@ import {
   GASP_NEAR,
   GASP_QUIET,
   GRIN_DROP,
+  STALK_SHINE_S,
+  THREAT_DARK_FASTER,
   EYES_MS,
   EYES_RETREAT,
-  FACE_DOT,
   FACE_ALPHA,
   FIGURE_ALPHA,
   FALSE_ALARM,
@@ -61,6 +62,10 @@ export interface ThreatHost {
   breath(on: boolean, x: number, y: number): void
   /** Nothing else is going on (no one talking to you, no chase, the trip isn't ending). */
   quiet(): boolean
+  /** Whether (x, y) is in your lantern's beam. */
+  beamOn(x: number, y: number): boolean
+  /** Your lantern is out: they come sooner, and it's always the eyes. */
+  dark(): boolean
   /** How deep you are (0–1) and whether you're lost: threats come more often. */
   deepness(): number
   lost(): boolean
@@ -100,6 +105,8 @@ export interface Stalker {
   extra: number
   /** You can hear it breathing (once the arm is reaching in). */
   breathing: boolean
+  /** How long (s) your lantern's beam has been on it: long enough and it pulls back. */
+  shone: number
 }
 
 export interface Eyes {
@@ -159,7 +166,7 @@ export class Threats {
       // Sooner the deeper you are and once you're lost.
       const faster =
         1 - THREAT_DEEP_FASTER * Math.max(this.host.deepness(), this.host.lost() ? 1 : 0)
-      this.next -= ms / faster
+      this.next -= (ms / faster) * (this.host.dark() ? THREAT_DARK_FASTER : 1)
       if (this.next <= 0 && this.host.quiet()) this.start()
       return
     }
@@ -169,9 +176,10 @@ export class Threats {
   }
 
   private start() {
-    // Never the same kind twice running.
-    const kind: Threat['kind'] =
-      this.last === 'steps'
+    // Never the same kind twice running (in the dark, always the eyes).
+    const kind: Threat['kind'] = this.host.dark()
+      ? 'eyes'
+      : this.last === 'steps'
         ? 'eyes'
         : this.last === 'eyes'
           ? 'steps'
@@ -200,6 +208,7 @@ export class Threats {
         nextStep: STALK_LAG,
         extra: STALK_EXTRA_STEPS,
         breathing: false,
+        shone: 0,
       }
       return
     }
@@ -263,17 +272,16 @@ export class Threats {
   private updateStalker(s: Stalker, dt: number) {
     s.t += dt
     const me = this.host.me
-    const f = DIRS[me.dir]
-    const facing = f.x * s.v.x + f.y * s.v.y > FACE_DOT
-    if (facing) {
-      // You turned round. Too late, and it takes your breath as it goes.
-      if (s.real && s.near >= ARM_FROM) {
-        this.host.takeBreath()
-        const at = this.stalkerAt(s)
-        this.host.sound('snatch', at.x, at.y)
+    // Turn your lantern's beam on it and hold it there: it pulls back into the dark. (Lantern
+    // out, there's no beam to turn on it.)
+    const at = this.stalkerAt(s)
+    if (this.host.beamOn(at.x, at.y)) {
+      s.shone += dt
+      if (s.shone >= STALK_SHINE_S) {
+        if (s.real && s.near >= ARM_FROM) this.host.sound('snatch', at.x, at.y)
+        return this.end()
       }
-      return this.end()
-    }
+    } else s.shone = Math.max(0, s.shone - dt)
     if (!s.real) {
       if (s.t > STALK_FALSE_S) return this.end()
     } else {

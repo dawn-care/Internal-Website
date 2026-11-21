@@ -83,6 +83,10 @@ export const PROP_SIZE: Record<
   culvert: { w: 1, rows: 1, tall: 1, tight: true, fence: true },
   sluice: { w: 1, rows: 1, tall: 2 },
   deadfall: { w: 3, rows: 1, tall: 2 },
+  // Nora at the ravine (drawn only after her death; flat, so nothing blocks the way).
+  norabody: { w: 2, rows: 0, flat: true, tall: 1 },
+  norakettle: { w: 1, rows: 0, flat: true, tall: 1 },
+  noranotebook: { w: 1, rows: 0, flat: true, tall: 1 },
 }
 
 export interface PlacedProp extends Prop {

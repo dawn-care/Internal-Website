@@ -483,6 +483,56 @@ CLUES.note_nora = {
   voice: [],
 }
 
+// The ravine (MAP.md 15; PUZZLES.md E_NORA_BODY), once Nora has died there: her body and her
+// notebook. Both are fixed: they stay there for later trips. (The wording is invented; no gore,
+// STORY.md "Accessibility/tone".) Her notebook is in an anonymous hand (no font of her own yet).
+CLUES.nora_body_evidence = {
+  id: 'nora_body_evidence',
+  title: 'Nora, at the ravine',
+  needs: [],
+  paper: {
+    kind: 'note',
+    hand: 'you',
+    about: 'What you write in your notepad, kneeling beside her. Your hand won’t keep still.',
+    lines: [
+      { text: 'NORA', style: 'hand' },
+      { text: 'At the ravine. Under the edge, where the bank drops away.', style: 'hand' },
+      { text: 'Green jacket. Her scarf. The mole on her left cheek.', style: 'hand' },
+      { text: 'Bruises round both wrists, like someone held on hard.', style: 'hand' },
+      { text: 'She fell a long way.', style: 'hand' },
+      { text: 'Her kettle beside her.', style: 'hand' },
+    ],
+  },
+  voice: ['Nora.'],
+}
+
+CLUES.nora_field_note = {
+  id: 'nora_field_note',
+  title: 'Nora’s notebook',
+  needs: [],
+  paper: {
+    kind: 'note',
+    about:
+      'Nora’s notebook, fallen open in the needles, swollen with damp. The pencil has run in places.',
+    lines: [
+      { text: 'Tues.', style: 'small' },
+      {
+        text: 'Further than it looked. Slept in the old watch hut by the bridge. Something walked round it all night. Didn’t come in.',
+        style: 'hand',
+      },
+      { text: '', style: 'gap' },
+      { text: 'Weds.', style: 'small' },
+      {
+        text: 'Met them on the road this morning, the one from the home who wanders up to the camp. Said they’d found something down by the ravine and would show me.',
+        style: 'hand',
+      },
+      { text: 'Knew my name straight off this time.', style: 'hand' },
+      { text: 'Going to have a look. Back by dark.', style: 'hand' },
+    ],
+  },
+  voice: [],
+}
+
 /** Every clue that's written so far. */
 // Found only when you're lost: your own notes from October 1987 (STORY.md: you searched the woods,
 // went missing for days and began recording routes and rules), in a tin box under the lean-to

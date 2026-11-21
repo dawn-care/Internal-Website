@@ -1,5 +1,5 @@
 import type { Dir } from '../../../shared/schema'
-import type { ClueId, ItemId, LeadId, PuzzleId } from '../../../shared/story'
+import type { ClueId, EventId, ItemId, LeadId, PuzzleId } from '../../../shared/story'
 import type { Forest, Stamp } from '../gen'
 import { FINDS_PER_TRIP, PRINTS, SHELTER_MARK_EVERY } from '../tuning'
 import { CLUES } from './clues'
@@ -43,6 +43,11 @@ export class StoryPlan {
   opened = new Set<PuzzleId>()
   /** Landmarks you've reached this trip (MAP.md site ids, for the rough site map). */
   readonly reached = new Set<string>()
+  /**
+   * The scripted beats that have happened (save.story.events, kept up to date by the game): some
+   * spots are only there after one (Nora's things at the ravine, `Spot.after`).
+   */
+  readonly events = new Set<EventId>()
 
   constructor(
     private forest: Forest,
@@ -97,7 +102,13 @@ export class StoryPlan {
   /** Something to examine at a tile (wherever the map is still what's drawn). */
   spotAt(x: number, y: number): Spot | undefined {
     if (!this.forest.isMap(x, y)) return undefined
-    return layout().spotAt(x, y)
+    const s = layout().spotAt(x, y)
+    return s && this.present(s) ? s : undefined
+  }
+
+  /** Whether a spot is there yet (`after` an event that has happened, or always). */
+  present(s: Spot): boolean {
+    return !s.after || this.events.has(s.after)
   }
 
   /** Where your 1987 self sheltered when lost (put out once you're lost: game.ts). */
@@ -139,6 +150,7 @@ export class StoryPlan {
    * second one in the same place (`also`). Null when there's nothing left to find there.
    */
   clueAt(s: Spot): ClueId | null {
+    if (!this.present(s)) return null
     for (const id of [s.clue, s.also])
       if (id && this.canFind(id) && !this.found.has(id) && !this.banked.has(id)) return id
     return null

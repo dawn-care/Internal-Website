@@ -77,6 +77,9 @@ marks which are built.
   `Forest.open` (only a fence-like prop becomes walkable).
   The memory scenes (STORY.md's CS_*) are not implemented (`save.story.queued`/`seen` exist but
   nothing sets them).
+  story/deep.ts is the deep road's beats as data (Nora's offscreen death, her copy at the shelter
+  door, your double at the fork; game.ts updateDeep runs them; `Spot.after` shows her things at the
+  ravine only after her death).
   story/nora.ts is the real Nora (her look, lines and the sighting/meeting scenes; events kept in
   `save.story.events` as they happen); people you've met are clues with `person` (`note_nora`).
 - src/art.ts (tiles, buildings, crops, furniture), src/people.ts (16×24 characters with an

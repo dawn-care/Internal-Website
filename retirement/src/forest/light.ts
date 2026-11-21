@@ -110,6 +110,50 @@ export function darknessAt(deep: number, night: number): number {
   return Math.min(0.97, DARK_NEAR + (DARK_DEEP - DARK_NEAR) * deep + DARK_NIGHT * night)
 }
 
+const beams = new Map<number, HTMLCanvasElement>()
+
+/**
+ * Your lantern's beam, pointing right from its origin at (BEAM_AT, height / 2): a wedge `half`
+ * radians either side, fading out over `len` px and soft at its edges. Cached per length (in steps
+ * of 8 px), so it's drawn with one rotated drawImage a frame.
+ */
+export function beamSprite(len: number, half: number): HTMLCanvasElement {
+  const L = Math.max(16, Math.round(len / 8) * 8)
+  let cv = beams.get(L)
+  if (cv) return cv
+  const spread = Math.tan(half) * L
+  cv = document.createElement('canvas')
+  cv.width = L + BEAM_AT * 2
+  cv.height = Math.ceil(spread * 2) + BEAM_AT * 2
+  const c = cv.getContext('2d')!
+  const cy = cv.height / 2
+  c.filter = 'blur(5px)'
+  const g = c.createRadialGradient(BEAM_AT, cy, 0, BEAM_AT, cy, L)
+  g.addColorStop(0, 'rgba(0,0,0,1)')
+  g.addColorStop(0.65, 'rgba(0,0,0,0.85)')
+  g.addColorStop(1, 'rgba(0,0,0,0)')
+  c.fillStyle = g
+  c.beginPath()
+  c.moveTo(BEAM_AT, cy - 4)
+  c.lineTo(BEAM_AT + L, cy - spread)
+  c.lineTo(BEAM_AT + L, cy + spread)
+  c.lineTo(BEAM_AT, cy + 4)
+  c.closePath()
+  c.fill()
+  beams.set(L, cv)
+  return cv
+}
+/** Room round the beam's sprite for its soft edges (px). */
+const BEAM_AT = 12
+
+/** Your lantern's beam for this frame: which way (radians), how far (px), how wide, how lit. */
+export interface Beam {
+  angle: number
+  len: number
+  half: number
+  a: number
+}
+
 export class Darkness {
   private cv = document.createElement('canvas')
   private c = this.cv.getContext('2d')!
@@ -129,6 +173,8 @@ export class Darkness {
     others: { x: number; y: number; r: number; a: number }[],
     /** More cut out of the dark, faintly (the paths, so you can see where they go). */
     cut?: (c: Ctx) => void,
+    /** Your lantern's beam, from (lx, ly), as well as the light round you (`radiusPx`). */
+    beam?: Beam,
   ) {
     if (this.cv.width !== w || this.cv.height !== h) {
       this.cv.width = w
@@ -143,6 +189,15 @@ export class Darkness {
     // Quantized, so a handful of sprite sizes covers every depth.
     const r = Math.max(8, Math.round(radiusPx / 4) * 4)
     c.drawImage(glow(r), Math.round(lx - r), Math.round(ly - r))
+    if (beam && beam.a > 0.01) {
+      const sp = beamSprite(beam.len, beam.half)
+      c.save()
+      c.globalAlpha = beam.a
+      c.translate(Math.round(lx), Math.round(ly))
+      c.rotate(beam.angle)
+      c.drawImage(sp, -BEAM_AT, -sp.height / 2)
+      c.restore()
+    }
     if (cut) {
       c.save()
       cut(c)

@@ -1138,7 +1138,10 @@ export class UI {
         ? []
         : [this.staminaBox, this.gauges.energy.box, this.gauges.unease.box]),
       ...(g.trip?.story
-        ? [this.notepadButton(g.trip.story.found.size + g.trip.story.kept.size)]
+        ? [
+            this.lanternButton(g.trip.lantern),
+            this.notepadButton(g.trip.story.found.size + g.trip.story.kept.size),
+          ]
         : []),
       el(
         'div',
@@ -1147,6 +1150,23 @@ export class UI {
         ...(produce.length ? produce : [el('span', { class: 'muted', text: 'empty' })]),
       ),
       ...(water ? [water] : []),
+    )
+  }
+
+  /** Your lantern in the hotbar (in the forest): lit or turned down (E). */
+  private lanternButton(lit: boolean): HTMLElement {
+    const b = button('', () => this.game.toggleLantern(), `slot lantern-slot${lit ? '' : ' off'}`)
+    b.title = lit
+      ? 'Your lantern is lit (E to turn it down; aim it with the mouse or ← →)'
+      : 'Your lantern is down (E to light it)'
+    b.setAttribute('aria-pressed', String(lit))
+    b.setAttribute('aria-label', lit ? 'Lantern: lit' : 'Lantern: turned down')
+    b.append(el('span', { class: 'key', text: 'E' }), el('span', { class: 'lamp' }))
+    return el(
+      'div',
+      { class: 'notepad-box' },
+      el('span', { class: 'label', text: lit ? 'Lantern' : 'Dark' }),
+      b,
     )
   }
 
@@ -1178,7 +1198,9 @@ export class UI {
       // action goes after a " · ", e.g. "Water the Tomato · [X] Dig up".
       const parts = text.split(/\[([^\]]+)\] ?/)
       const nodes: Node[] = []
-      if (parts[0]) nodes.push(el('kbd', { text: 'E' }), document.createTextNode(` ${parts[0]}`))
+      // (In the forest E is your lantern, so things there are used with Space.)
+      const use = this.game.forest ? 'Space' : 'E'
+      if (parts[0]) nodes.push(el('kbd', { text: use }), document.createTextNode(` ${parts[0]}`))
       for (let i = 1; i < parts.length; i += 2)
         nodes.push(el('kbd', { text: parts[i] }), document.createTextNode(` ${parts[i + 1] ?? ''}`))
       this.prompt.replaceChildren(...nodes)
@@ -1549,7 +1571,12 @@ export class UI {
     if (state === 'new' && opts.onTake) {
       actions.push(
         button(
-          c.paper.kind === 'printed' ? 'Copy it into your notepad' : 'Take it',
+          // (What you note down beside Nora at the ravine is your own page: kept, not taken.)
+          c.paper.kind === 'printed'
+            ? 'Copy it into your notepad'
+            : c.id === 'nora_body_evidence'
+              ? 'Keep the page'
+              : 'Take it',
           () => {
             opts.onTake!()
             done()
@@ -2689,6 +2716,11 @@ export class UI {
       ['Enter', 'Chat (shows as a speech bubble)'],
       ['F', 'Give your pet a treat (face it and press E to pet it)'],
       ['E at a bench or chair', 'Sit down (walk to get up)'],
+      ['In the forest: WASD', 'Walk'],
+      ['In the forest: mouse or ← →', 'Point your lantern (you face where it shines)'],
+      ['In the forest: E', 'Turn your lantern down or back up: harder to see, harder to be seen'],
+      ['In the forest: Space or click', 'Look at or use what you are facing'],
+      ['In the forest: N', 'Your notepad'],
       ['Esc', 'Close a window, stop decorating'],
     ]
     this.showPanel(

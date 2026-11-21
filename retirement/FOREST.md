@@ -375,8 +375,11 @@ carried photo lost; no face, just the line).
   hidden by the dark until it reaches your light, with only the faintest trace of it out in the dark): dark, wet flesh, too long and crooked
   where it shouldn't bend, streaked and dripping with blood, with long jointed, clawed fingers
   that twitch as it reaches (redrawn after play-testing: the first, pale skeletal arm felt corny).
-  Turn to face them in time and it's gone; turn once the arm is in sight and it snatches your breath
-  as it goes (stamina emptied); never turn and it has you: "It was right behind you."
+  **Turn your lantern's beam on it** and hold it there half a second (`STALK_SHINE_S`), and it
+  pulls back into the dark, at any point before it has you (changed with the beam: it used to be
+  turning to face it, with your breath snatched if you turned late). The spill of light round you
+  doesn't count, only the beam; with your lantern turned down there's no beam to turn on it.
+  Never shine on it and it has you: "It was right behind you."
 - **The face in the dark.** Rule: never walk towards it. (It started as a pair of eyes, which didn't
   read as eyes, then a full face, which was too much of a face; redrawn after play-testing to
   follow the reference: no head at all.) Out of the dark just beyond your light: two small pale
@@ -1370,7 +1373,7 @@ saves that have them still load), and nothing sets them. Evie's portrait can sti
 
 `story/nora.ts` has her look, her lines and the little state machine; `src/game.ts` (`updateNora`,
 `noraTalks`) runs the scenes. Her copy at the shelter door, your double and her body at the
-ravine are part 3, **not built** (the places themselves are: "The deep road" below).
+ravine are part 3: "Nora's death, the door, your double" below.
 
 - **Nora** has a fixed look: long dark hair, a green jacket, a scarf, a lantern (a warm glow that
   moves with her). Her dialogue portrait has the mole on her left cheek (`PortraitOptions.mole`),
@@ -1579,4 +1582,89 @@ fork (`E_PLAYER_DOUBLE`) and her body and notebook at the ravine all come next. 
   saves load unchanged): see "Meals".
 - **Not built:** the shed shelf's lantern refill, your light trembling when very uneasy, and tells
   harder to notice when afraid.
+
+### Nora's death, the door, your double (built: IMPLEMENTATION.md M4, part 3)
+
+The deep road's beats (PUZZLES.md `E_NORA_DOOR`, `E_PLAYER_DOUBLE`, `E_NORA_BODY`). Their words and
+places are `story/deep.ts`; `src/game.ts` (`updateDeep`, `updateDoor`, `doorAsk`, `updateDouble`)
+runs them. Every event is kept the moment it happens (`save.story.events`), like Nora's meetings.
+All the wording is invented.
+
+- **Her death** (`E_NORA_DEATH`, a new event id; old saves load unchanged): offscreen, never shown.
+  It's recorded the first time you go through the service gate on a trip after her second meeting
+  (not the same trip: she's only just set off). From then on her body, her kettle and her notebook
+  are at the ravine (props drawn only then, `Forest.open`; their spots appear only then, `Spot.after`).
+- **The door** (`E_NORA_DEATH` first, once): inside the watchman's shelter, 1.8 s after you look at
+  something there (or 14 s in), three hard blows on the door and her voice: "LET ME IN! PLEASE! IT'S
+  RIGHT BEHIND ME!" Her portrait is Nora's, frightened, **without the mole**. Choices:
+  - **Look out of the window:** her face at the glass, plainly ("white and smooth in the dark"; the
+    mole isn't mentioned because it isn't there). She keeps pounding and asks again after 4.5 s.
+  - **Read your notepad:** your notepad opens (the People page, with "A mole on her left cheek.");
+    she pounds and asks again once it's closed.
+  - **Keep it shut**, or three asks without opening: a few more blows, weaker, then nothing.
+  - **Open the door:** she comes in, frightened, talks, then smiles and wants you to come with her
+    "down past the ravine". **Go with her:** caught ("That was not Nora."). **Stay here:** "...All
+    right. I'll wait." She stands in front of the front door ("She's standing in front of the door,
+    between you and it."), so the way out is the **rear exit** in the back wall (new: a second
+    door into `IN_WATCH_SHELTER`, out onto the bank behind the hut). Out that way, she's gone.
+  - No countdown: the choice waits for you (PUZZLES.md: never an unfair timed choice).
+  - After, both ways: under the shelter's window, long scratches and her green scarf on a nail.
+  - No thought (STORY.md: never label her).
+- **Your double** (after the door, once): at the logging fork, someone in your own clothes and face
+  (your Wardrobe look) stands up whichever way on is furthest from you, looks at you, says
+  "Hello?" in your voice (a speech bubble and your voice's blips), and walks off into the trees,
+  fading. Then "Oh." (or "...No." if you've already found Nora). No chase.
+- **The ravine** (`E_NORA_BODY` when you kneel beside her): her body under the edge at the west end
+  (dark hair over her face, the green jacket, the scarf: no gore), her kettle on its side, her
+  notebook, and drag marks in the needles from the road. Two clues: `nora_body_evidence` (a page you
+  write in your notepad beside her, in your own hand: the mole on her left cheek, bruises round her
+  wrists, a long fall; thought "Nora."; its button says "Keep the page") and `nora_field_note` (her
+  notebook, in an anonymous hand: she slept in the watch hut, then "Met them on the road this
+  morning, the one from the home who wanders up to the camp... Knew my name straight off this time."
+  No thought: PUZZLES.md suggests "She thought it was me.", left out as too conclusive).
+- **Not built:** Nora's own handwriting font; the double seen from further off on later trips.
+
+### Your lantern (built)
+
+**Your lantern is a beam** (changed after the first version, a circle of light round you, to be
+scarier: you only ever see one way, and what's behind you stays dark until you turn the light on
+it). A cone `BEAM_SPREAD` (0.42 rad, about 24°) either side, reaching 1.7× what the circle used to
+(`BEAM_REACH`), soft-edged and fading out (a cached sprite drawn rotated: light.ts `beamSprite`);
+round you only a little light spills (`BEAM_SPILL`, 1.9 tiles), enough to see what's next to you.
+
+- **Aiming it** (`updateAim`): the mouse, once you move it (the beam points at the cursor); the
+  **left and right arrows** turn it (2.8 rad/s), and in the forest the arrows don't walk (WASD
+  does); with neither, it swings round to the way you're walking. Any arrow press hands it to the
+  keys, any mouse movement to the mouse.
+- **You face where it shines**, whichever way you walk (you can back away from something with your
+  light on it), so what you examine is what you're lighting.
+- **Keys in the forest:** **E** turns the lantern down and back up (or the Lantern button in the
+  hotbar); **Space** or a click looks at and uses things (the prompt shows Space there); N is the
+  notepad. On the grounds E is still "use". (L is no longer the lantern.)
+- **The arm** is deterred by the beam (above, "Footsteps behind you").
+- **Not built yet (step two):** the face in the dark's rule becoming "don't look at it" (holding
+  your beam on it), and the thing seeing your beam from further off than it sees you.
+
+**E** (or the Lantern button in the hotbar, beside the gauges) turns your lantern down to almost
+nothing, and back up. It resets to lit each trip. Code: `toggleLantern`, `updateLantern`,
+`drawDarkEyes` in src/game.ts; `dark()` and `loud()` on the thing's and threats' hosts; numbers in
+tuning.ts (`LANTERN_*`, `THING_*_DARK`, `THING_GUESS*`, `THING_NOTICE_STILL`, `THREAT_DARK_FASTER`,
+`EYES_DARK_*`).
+
+- **You:** the beam goes out and the light round you fades (over a quarter of a second) to 1.4
+  tiles: enough to see your feet.
+  The paths still show faintly, as always.
+- **The thing can hardly see you:** it notices you only within 3.5 tiles (2.5 standing still; 1.5×
+  further if you're hurrying, because it hears you), hunts 25% slower, and loses you at 7 tiles
+  instead of 12. It can only guess where you are: it searches round where it last saw your light,
+  going to a spot 2–8 tiles from there, and every 6 s (or on reaching it) that centre creeps 30% of
+  the way towards you (all the way if you hurry). Tested by script, standing still under a hunt that
+  starts 12 tiles off: lit, it found me in about 4 s; dark, after 15–27 s; dark, creeping a few steps
+  aside first, 30–34 s. So it buys you time to get past or away, not safety.
+- **The eyes come:** the threats come 2.5× as often and they're always the face in the dark. And,
+  only as cues, pairs of pale eyes open round you in the dark (the first 2.5 s after the light goes
+  down, then one every 1–3.5 s, more at once the longer you stay dark, up to 9), 3.5–9 tiles off,
+  blinking, each for 2.5–7 s. They close if you come within 2.5 tiles or light your lantern. They
+  raise your unease a little (at most 0.35).
+- **Not built:** searchers and rescuers finding you less easily in the dark.
 

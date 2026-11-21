@@ -74,6 +74,9 @@ export const EVENT_IDS = [
   'E_NORA_AGAIN',
   'E_NORA_MEET_1',
   'E_NORA_MEET_2',
+  // Her death (offscreen): the first time you go through the service gate on a trip after her
+  // second meeting. From then on she's at the ravine (story/deep.ts).
+  'E_NORA_DEATH',
   'E_NORA_DOOR',
   'E_PLAYER_DOUBLE',
   'E_NORA_BODY',

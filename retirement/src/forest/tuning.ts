@@ -370,8 +370,6 @@ export const ARM_FROM = 0.42
 /** Out in the dark beyond your light, only this faint a trace of the arm shows (it's in full once in
  * your light). */
 export const ARM_SEEN_IN_DARK = 0.18
-/** Turning to face it counts if you face within this of its way (cosine: 0.5 is ±60°). */
-export const FACE_DOT = 0.5
 /** Its steps fall this long (s) after yours, and it takes this many more after you stop. */
 export const STALK_LAG = 0.22
 export const STALK_EXTRA_STEPS = 1
@@ -574,3 +572,58 @@ export const ENERGY_SIT = 0.004
 export const ENERGY_LOW = 0.2
 /** Eating a meal from your pocket in the forest gives back this much energy. */
 export const MEAL_ENERGY = 0.4
+
+// --- your lantern, turned down (game.ts toggleLantern; FOREST.md "Your lantern") ----------------
+
+/** With the lantern off, your light is only this (tiles): enough to see your feet. */
+export const LANTERN_OFF_LIGHT = 1.4
+/** How fast the light goes down or comes back up (0–1 a second). */
+export const LANTERN_FADE = 4
+/** The thing notices you only this close in the dark (THING_NOTICE with the lantern lit)... */
+export const THING_NOTICE_DARK = 3.5
+/** ...this much further if you're hurrying (it hears you)... */
+export const THING_NOTICE_LOUD = 1.5
+/** ...loses you this close (THING_LOSE lit), and hunts this much more slowly... */
+export const THING_LOSE_DARK = 7
+export const THING_DARK_SLOW = 0.75
+/**
+ * ...and can only guess where you are: it searches round where it last saw your light, a spot
+ * THING_GUESS tiles from there at a time, and each new guess (every THING_GUESS_MS, or on reaching
+ * the last) moves that centre only THING_GUESS_DRIFT of the way towards you. Hurrying, it hears
+ * you: the centre jumps to you. Standing still, it notices you only THING_NOTICE_STILL as far.
+ */
+export const THING_GUESS: [number, number] = [2, 8]
+export const THING_GUESS_DRIFT = 0.3
+export const THING_GUESS_MS = 6000
+export const THING_NOTICE_STILL = 0.7
+/** In the dark the threats come this much sooner, and they're always the eyes. */
+export const THREAT_DARK_FASTER = 2.5
+/**
+ * Eyes in the dark around you (only cues): the first opens this long (ms) after the light goes
+ * down, then one every EYES_DARK_EVERY ms, up to EYES_DARK_MAX open at once (more the longer
+ * you're dark: one more every EYES_DARK_GROW ms), each EYES_DARK_FAR tiles away, open for
+ * EYES_DARK_LIFE ms. They close if you come within EYES_DARK_NEAR.
+ */
+export const EYES_DARK_FIRST = 2500
+export const EYES_DARK_EVERY: [number, number] = [1200, 3500]
+export const EYES_DARK_MAX = 9
+export const EYES_DARK_GROW = 5000
+export const EYES_DARK_FAR: [number, number] = [3.5, 9]
+export const EYES_DARK_LIFE: [number, number] = [2500, 7000]
+export const EYES_DARK_NEAR = 2.5
+/** Your unease in the dark, from the eyes watching (at most). */
+export const EYES_DARK_UNEASE = 0.35
+
+// --- your lantern's beam (game.ts updateAim; FOREST.md "Your lantern") --------------------------
+
+/** The beam reaches this many times your light's old radius, BEAM_SPREAD radians either side. */
+export const BEAM_REACH = 1.7
+export const BEAM_SPREAD = 0.42
+/** Round you, lit, only this much light spills (tiles): enough to see what's next to you. */
+export const BEAM_SPILL = 1.9
+/** The left and right arrows turn it this fast (radians a second). */
+export const BEAM_TURN = 2.8
+/** With neither mouse nor arrows, it swings round to the way you're walking this fast (1/s). */
+export const BEAM_FOLLOW = 7
+/** Hold the beam on the arm this long (s) and it pulls back into the dark. */
+export const STALK_SHINE_S = 0.45

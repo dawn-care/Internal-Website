@@ -1059,6 +1059,67 @@ const PROP_ART: Record<
       f('#2a3a26', 30, 19, 8, 4)
     },
   },
+  // --- Nora at the ravine (E_NORA_DEATH: nothing until then, v 1 once she's there) ---
+  norabody: {
+    // Lying on her side under the edge, half in the ferns: dark hair across her face, her green
+    // jacket, the scarf. Nothing more than that (STORY.md: no gore).
+    w: 32,
+    h: 14,
+    outline: false,
+    draw: (f, v) => {
+      if (!v) return
+      f('rgba(0,0,0,0.3)', 1, 10, 30, 3)
+      // Legs, in dark trousers, one bent.
+      f('#2e3236', 18, 6, 11, 4)
+      f('#2e3236', 25, 9, 5, 3)
+      f('#1e1c1a', 29, 9, 2, 3)
+      // The green jacket.
+      f('#3f5a3c', 7, 4, 13, 7)
+      f('#334a31', 8, 9, 11, 2)
+      // An arm out on the needles.
+      f('#3f5a3c', 4, 9, 5, 2)
+      f('#c8a68a', 2, 9, 3, 2)
+      // The scarf.
+      f('#8a3a3a', 6, 3, 4, 3)
+      // Her head, dark hair over the face.
+      f('#c8a68a', 2, 3, 4, 4)
+      f('#2a1e18', 1, 2, 6, 3)
+      f('#2a1e18', 1, 5, 3, 4)
+      // Ferns over her feet.
+      f('#2a3a26', 22, 2, 4, 3)
+      f('#2a3a26', 26, 4, 5, 2)
+    },
+  },
+  norakettle: {
+    // Her kettle, on its side in the needles.
+    w: 14,
+    h: 12,
+    outline: false,
+    draw: (f, v) => {
+      if (!v) return
+      f('#8a8f8a', 2, 4, 9, 6)
+      f('#a8aca6', 3, 4, 7, 1)
+      f('#6a706c', 8, 6, 2, 2)
+      f('#2a2c2c', 1, 9, 10, 2)
+      f('#6a706c', 11, 5, 2, 2)
+      f('#4a4f4c', 4, 2, 5, 2)
+    },
+  },
+  noranotebook: {
+    // Her notebook, fallen open, the pages swollen.
+    w: 12,
+    h: 10,
+    outline: false,
+    draw: (f, v) => {
+      if (!v) return
+      f('#3a2c22', 1, 3, 10, 6)
+      f('#cfc6ae', 2, 3, 4, 5)
+      f('#c2b89e', 6, 3, 4, 5)
+      f('#7a7260', 3, 5, 2, 1)
+      f('#7a7260', 7, 4, 2, 1)
+      f('#7a7260', 7, 6, 2, 1)
+    },
+  },
   rail: {
     w: 16,
     h: 16,
@@ -1206,7 +1267,10 @@ export function flatStory(o: ForestObj): boolean {
         o.id === 'chair' ||
         o.id === 'doormat' ||
         o.id === 'drop' ||
-        o.id === 'culvert')) ||
+        o.id === 'culvert' ||
+        o.id === 'norabody' ||
+        o.id === 'norakettle' ||
+        o.id === 'noranotebook')) ||
     (o.k === 'find' && o.id !== 'drawing' && o.id !== 'arrow')
   )
 }

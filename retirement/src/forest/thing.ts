@@ -8,8 +8,16 @@ import {
   THING_DOOR,
   THING_HEAR,
   THING_LOSE,
+  THING_DARK_SLOW,
+  THING_GUESS,
+  THING_GUESS_DRIFT,
+  THING_GUESS_MS,
+  THING_LOSE_DARK,
   THING_LOSE_MS,
   THING_NOTICE,
+  THING_NOTICE_DARK,
+  THING_NOTICE_LOUD,
+  THING_NOTICE_STILL,
   THING_RETREAT,
   THING_RETURN_MS,
   THING_SOUTH,
@@ -29,7 +37,9 @@ import {
  * Fair, never random: you hear it before you see it (heavy, uneven steps that carry), your unease
  * climbs as it closes (never saying which way), it's slower than you hurrying, it loses you if you
  * break away out of sight, and it gives up after a while. On the map it never comes south of the
- * creek. It never comes through a door: it waits outside, then drifts off.
+ * creek. It never comes through a door: it waits outside, then drifts off. With your lantern out
+ * it can't see you: it notices you only close up (hurrying, a little further), homes in loosely and
+ * loses you sooner, so you can creep past it.
  *
  * Plain state and movement; the game draws it, plays its sounds and ends the trip (ThingHost).
  */
@@ -39,6 +49,10 @@ export interface ThingHost {
   me(): { x: number; y: number; moving: boolean }
   /** You're inside a building: it can't reach you. */
   indoors(): boolean
+  /** Your lantern is out: it sees you only close up, and homes in loosely (FOREST.md). */
+  dark(): boolean
+  /** You're hurrying: it hears you from further off. */
+  loud(): boolean
   lost(): boolean
   blocked(x: number, y: number): boolean
   /** How far you can see from where you stand (half the view, tiles). */
@@ -69,6 +83,11 @@ export class Thing {
   private side = 1
   private sway = Math.random() * Math.PI * 2
   private nextStep = 0
+  /** In the dark: where it guesses you are, and how long since it guessed (ms). */
+  private guess: { x: number; y: number } | null = null
+  private guessed = 0
+  /** ...and where it's searching round (where it last saw your light, drifting towards you). */
+  private search: { x: number; y: number } | null = null
 
   constructor(
     private host: ThingHost,
@@ -134,12 +153,27 @@ export class Thing {
         if (this.host.indoors()) {
           // You went in: it comes to the door.
           if (d < THING_DOOR) return this.to('wait')
-        } else if (d < THING_NOTICE) {
+        } else if (d < this.noticeAt()) {
           this.to('chase')
           this.host.sound('notice', this.x, this.y)
           return
         }
-        const speed = Math.min(THING_SPEED_MAX, THING_SPEED + (THING_SPEED_RISE * this.t) / 60_000)
+        const dark = this.host.dark()
+        const speed =
+          Math.min(THING_SPEED_MAX, THING_SPEED + (THING_SPEED_RISE * this.t) / 60_000) *
+          (dark ? THING_DARK_SLOW : 1)
+        if (dark && !this.host.indoors()) {
+          // Your lantern's out: it can't see where you are, only guess. It goes to where it thinks
+          // you are, searches there, and guesses again (closer if it can hear you hurrying).
+          this.guessed += ms
+          const g = this.guess
+          if (!g || this.guessed > THING_GUESS_MS || Math.hypot(g.x - this.x, g.y - this.y) < 1.5)
+            this.guessAgain()
+          this.walk(this.guess!.x, this.guess!.y, speed, dt)
+          return
+        }
+        this.guess = null
+        this.search = null
         // Never straight at you: its way in sways from side to side, less as it gets close.
         this.sway += dt * 0.35
         const off = Math.sin(this.sway) * Math.min(d * 0.35, 9)
@@ -159,7 +193,7 @@ export class Thing {
           return
         }
         // Lost you: you're far enough off for long enough. Or it gives up after a while.
-        this.lostFor = d > THING_LOSE ? this.lostFor + ms : 0
+        this.lostFor = d > (this.host.dark() ? THING_LOSE_DARK : THING_LOSE) ? this.lostFor + ms : 0
         if (this.lostFor > THING_LOSE_MS || this.inPhase > THING_CHASE_MAX_MS) {
           this.host.sound('lost', this.x, this.y)
           return this.retreat()
@@ -168,6 +202,41 @@ export class Thing {
         return
       }
     }
+  }
+
+  /**
+   * In the dark: a new guess at where you are. It searches round where it last saw your light,
+   * that centre creeping towards you a little each time (or jumping to you if it hears you hurry).
+   */
+  private guessAgain() {
+    const me = this.host.me()
+    const c = (this.search ??= { x: me.x, y: me.y })
+    const k = this.host.loud() ? 1 : THING_GUESS_DRIFT
+    c.x += (me.x - c.x) * k
+    c.y += (me.y - c.y) * k
+    const [a, b] = THING_GUESS
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2
+      const r = a + Math.random() * (b - a)
+      const x = c.x + Math.cos(ang) * r
+      const y = c.y + Math.sin(ang) * r
+      if (this.allowed(x, y)) {
+        this.guess = { x, y }
+        break
+      }
+    }
+    this.guess ??= { x: c.x, y: c.y }
+    this.guessed = 0
+  }
+
+  /** How close it notices you: in your light from further off, in the dark only close up. */
+  private noticeAt(): number {
+    const me = this.host.me()
+    if (!this.host.dark()) return THING_NOTICE * (this.host.loud() ? THING_NOTICE_LOUD : 1)
+    return (
+      THING_NOTICE_DARK *
+      (this.host.loud() ? THING_NOTICE_LOUD : me.moving ? 1 : THING_NOTICE_STILL)
+    )
   }
 
   private to(phase: ThingPhase) {

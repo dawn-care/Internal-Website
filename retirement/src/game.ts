@@ -73,7 +73,8 @@ import {
   plotFrame,
   renderGround,
 } from './art'
-import { sfx } from './audio'
+import { sfx, voice } from './audio'
+import type { Mood } from './portraits'
 import {
   footstep,
   hasClip,
@@ -115,6 +116,29 @@ import { Encounters, type Host, type Person } from './forest/encounter'
 import { prepareScare, showScare, type Scare } from './forest/scare'
 import { Threats, drawArm, drawFace, warmFace, type ThreatHost } from './forest/threats'
 import { Thing, thingFrame, warmThing, type ThingHost } from './forest/thing'
+import {
+  DOOR_AFTER_LOOK,
+  DOOR_AFTER_MS,
+  DOOR_AGAIN,
+  DOOR_AGAIN_MOODS,
+  DOOR_AGAIN_MS,
+  DOOR_ASKS,
+  DOOR_BLOCKED,
+  DOOR_CALL,
+  DOOR_CALL_MOODS,
+  DOOR_CAUGHT,
+  DOOR_IN,
+  DOOR_IN_MOODS,
+  DOOR_INSIDE,
+  DOOR_STAY,
+  DOOR_STAY_MOODS,
+  DOOR_WINDOW,
+  DOUBLE_LOOK_S,
+  DOUBLE_SAYS,
+  DOUBLE_SPOTS,
+  DOUBLE_THOUGHT,
+  DOUBLE_THOUGHT_AFTER,
+} from './forest/story/deep'
 import { StoryPlan } from './forest/story/plan'
 import { Bus, untilCrew } from './forest/story/bus'
 import { Ride, crewLook, warmRide } from './forest/story/ride'
@@ -218,6 +242,21 @@ import {
   UNEASE_FALL,
   UNEASE_RISE,
   UNEASY,
+  LANTERN_FADE,
+  BEAM_FOLLOW,
+  BEAM_REACH,
+  BEAM_SPILL,
+  BEAM_SPREAD,
+  BEAM_TURN,
+  LANTERN_OFF_LIGHT,
+  EYES_DARK_EVERY,
+  EYES_DARK_FAR,
+  EYES_DARK_FIRST,
+  EYES_DARK_GROW,
+  EYES_DARK_LIFE,
+  EYES_DARK_MAX,
+  EYES_DARK_NEAR,
+  EYES_DARK_UNEASE,
   EXIT_BACK,
   HOME_GLOW_UNTIL,
   MUSIC_SILENT_FROM,
@@ -394,6 +433,20 @@ export class Game {
     threats: Threats
     /** How much of your light is left after things have taken some (1 is all of it). */
     lightLeft: number
+    /** Your lantern is lit (E turns it down to almost nothing, and back up). */
+    lantern: boolean
+    /**
+     * Which way its beam points (radians, 0 = east), and what's aiming it: the mouse (once you
+     * move it), the left and right arrows, or, with neither, the way you're walking.
+     */
+    aim: number
+    aimBy: 'walk' | 'mouse' | 'keys'
+    /** 0–1: how lit it is now (it goes down and comes back up over a moment). */
+    lanternLevel: number
+    /** How long it's been out (ms), and the eyes that open in the dark round you meanwhile. */
+    darkFor: number
+    darkEyes: DarkEye[]
+    nextDarkEye: number
     /** The jumpscare this trip will use if something catches you (loaded up front). */
     scare: Scare
     /** 0–1: hurrying drains it, walking refills it. */
@@ -441,6 +494,13 @@ export class Game {
     campTime: number
     /** A meeting happened this trip (the second needs a later trip). */
     noraMetNow: boolean
+    /** The knock at the watchman's shelter (E_NORA_DOOR), while it's going on. */
+    door: DoorScene | null
+    /** Your double at the logging fork (E_PLAYER_DOUBLE), while it's there. */
+    double: DoubleFig | null
+    /** In the watchman's shelter: when you last looked at something there, and how long you've been in. */
+    shelterLookAt: number
+    shelterTime: number
     /**
      * Where you got lost, and how long you've been heading back that way (ms), looking for the
      * path, with where you were last frame.
@@ -589,6 +649,11 @@ export class Game {
         if (this.decor.active) this.endDecorate()
         return
       }
+      // In the forest E is your lantern (Space uses things there).
+      if (k === 'e' && this.trip) {
+        if (!e.repeat) this.toggleLantern()
+        return
+      }
       if (k === 'e' || k === ' ') {
         e.preventDefault()
         if (!e.repeat) this.interact()
@@ -617,6 +682,7 @@ export class Game {
         return
       }
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault()
+      if ((k === 'arrowleft' || k === 'arrowright') && this.trip) this.trip.aimBy = 'keys'
       // Keys still held from walking in through the gap don't count until they're let go.
       if (this.heldThrough.has(k)) return
       this.keys.add(k)
@@ -631,6 +697,8 @@ export class Game {
     })
     this.overlay.addEventListener('mousemove', (e) => {
       this.decor.mouse = { x: e.clientX, y: e.clientY }
+      // In the forest, moving the mouse aims your lantern (until you use the arrows).
+      if (this.trip) this.trip.aimBy = 'mouse'
     })
     // Right-click a tile of your plot next to you to dig up what's growing there.
     this.overlay.addEventListener('contextmenu', (e) => {
@@ -828,10 +896,12 @@ export class Game {
       dx = led.x
       dy = led.y
     } else if (!this.typing() && !this.ui.panelOpen() && !this.ui.dialogueOpen() && !collapsing) {
-      if (this.keys.has('arrowleft') || this.keys.has('a')) dx -= 1
-      if (this.keys.has('arrowright') || this.keys.has('d')) dx += 1
-      if (this.keys.has('arrowup') || this.keys.has('w')) dy -= 1
-      if (this.keys.has('arrowdown') || this.keys.has('s')) dy += 1
+      // (In the forest the arrows turn your lantern instead: WASD walks.)
+      const arrows = !this.forest
+      if ((arrows && this.keys.has('arrowleft')) || this.keys.has('a')) dx -= 1
+      if ((arrows && this.keys.has('arrowright')) || this.keys.has('d')) dx += 1
+      if ((arrows && this.keys.has('arrowup')) || this.keys.has('w')) dy -= 1
+      if ((arrows && this.keys.has('arrowdown')) || this.keys.has('s')) dy += 1
     }
     if (this.trip?.ride) {
       // On the bus: you walk the aisle instead (story/ride.ts), not the forest.
@@ -883,6 +953,7 @@ export class Game {
       this.me.moving = moving
       if (!moving) this.scheduleSync(80)
     }
+    this.updateAim(dt, dx, dy, !!led)
     this.updateStamina(dt, moving)
 
     for (const r of this.others.values()) {
@@ -3601,6 +3672,13 @@ export class Game {
       enc: new Encounters(this.encounterHost()),
       threats: new Threats(this.threatHost()),
       lightLeft: 1,
+      lantern: true,
+      aim: -Math.PI / 2,
+      aimBy: 'walk',
+      lanternLevel: 1,
+      darkFor: 0,
+      darkEyes: [],
+      nextDarkEye: 0,
       scare: prepareScare(),
       stamina: 1,
       tired: false,
@@ -3625,7 +3703,14 @@ export class Game {
       yardLooked: false,
       campTime: 0,
       noraMetNow: false,
+      door: null,
+      double: null,
+      shelterLookAt: -1,
+      shelterTime: 0,
     }
+    // What's happened so far (some spots only appear after something: Nora's things at the ravine).
+    for (const e of this.save.story?.events ?? []) this.trip.story.events.add(e)
+    if (this.hasEvent('E_NORA_DEATH')) this.noraAtRavine()
     // It lives up the deep road: it hunts once the service gate is open.
     if (solvedBefore.includes('P05')) this.wakeThing('start')
     this.ui.refresh()
@@ -3675,6 +3760,7 @@ export class Game {
     if (t.end) return
     this.updateStory(dt, wait)
     this.updateNora(dt)
+    this.updateDeep(dt)
     // (Inside a building, as dark as it is at its door.)
     const room = roomAt(Math.floor(this.me.x), Math.floor(this.me.y))
     const depth = room ? f.depth(room.out.x, room.out.y) : f.depth(this.me.x, this.me.y)
@@ -4205,7 +4291,140 @@ export class Game {
   /** Your light's radius now, in tiles (depth, a fake changing, the photo held up, what's been taken). */
   private lightTiles(): number {
     const t = this.trip!
+    const lit = this.reachTiles()
+    // With the lantern turned down, only enough to see your feet by.
+    const l = t.lanternLevel
+    return lit * l + Math.min(lit, LANTERN_OFF_LIGHT) * (1 - l)
+  }
+
+  /** How far your lit lantern reaches (depth, a fake changing, the photo, what's been taken). */
+  private reachTiles(): number {
+    const t = this.trip!
     return lightRadius(t.deep) * t.enc.lightScale(this.time) * t.lightLeft
+  }
+
+  /** The light that spills round you (tiles): a little lit, less still turned down. */
+  private spillTiles(): number {
+    const t = this.trip!
+    const r = this.reachTiles()
+    const l = t.lanternLevel
+    return Math.min(r, BEAM_SPILL) * l + Math.min(r, LANTERN_OFF_LIGHT) * (1 - l)
+  }
+
+  /** How far the beam reaches (tiles). */
+  private beamTiles(): number {
+    return this.reachTiles() * BEAM_REACH
+  }
+
+  /** Whether (x, y) is in your lantern's beam (lit, and not too far out). */
+  beamOn(x: number, y: number): boolean {
+    const t = this.trip
+    if (!t || t.lanternLevel < 0.5) return false
+    const dx = x - this.me.x
+    const dy = y - (this.me.y - 0.6)
+    if (Math.hypot(dx, dy) > this.beamTiles()) return false
+    let a = Math.atan2(dy, dx) - t.aim
+    a = Math.atan2(Math.sin(a), Math.cos(a))
+    return Math.abs(a) <= BEAM_SPREAD + 0.08
+  }
+
+  /**
+   * Aims your lantern (the mouse, the arrows, or the way you walk) and turns you to face it, so
+   * what you examine is what you're lighting; you can still walk any way.
+   */
+  private updateAim(dt: number, dx: number, dy: number, led: boolean) {
+    const t = this.trip
+    if (!t || !this.forest || t.ride) return
+    const left = this.keys.has('arrowleft')
+    const right = this.keys.has('arrowright')
+    if (left || right) {
+      t.aimBy = 'keys'
+      t.aim += (right ? 1 : -1) * BEAM_TURN * dt
+    } else if (t.aimBy === 'mouse' && this.decor.mouse) {
+      const mx = this.decor.mouse.x / this.scale + this.cam.x
+      const my = this.decor.mouse.y / this.scale + this.cam.y
+      t.aim = Math.atan2(my - (this.me.y - 0.6) * TS, mx - this.me.x * TS)
+    } else if (t.aimBy === 'walk' && (dx || dy)) {
+      let d = Math.atan2(dy, dx) - t.aim
+      d = Math.atan2(Math.sin(d), Math.cos(d))
+      t.aim += d * Math.min(1, dt * BEAM_FOLLOW)
+    }
+    t.aim = Math.atan2(Math.sin(t.aim), Math.cos(t.aim))
+    // Face the light (not while something is leading you away).
+    if (!led) {
+      const c = Math.cos(t.aim)
+      const sn = Math.sin(t.aim)
+      this.me.dir = (Math.abs(c) > Math.abs(sn) ? (c < 0 ? 1 : 2) : sn < 0 ? 3 : 0) as Dir
+    }
+  }
+
+  /** Your lantern going down or up, and the eyes that open in the dark while it's out. */
+  private updateLantern(dt: number) {
+    const t = this.trip!
+    const ms = dt * 1000
+    const gap = (t.lantern ? 1 : 0) - t.lanternLevel
+    t.lanternLevel += Math.sign(gap) * Math.min(Math.abs(gap), dt * LANTERN_FADE)
+    t.darkFor = this.dark() && !this.indoors() ? t.darkFor + ms : 0
+    // Eyes close as you come near them, or once your light's back (or you're inside).
+    for (const e of t.darkEyes) {
+      e.age += ms
+      const near = Math.hypot(e.x - this.me.x, e.y - this.me.y) < EYES_DARK_NEAR
+      if (!e.closing && (near || !t.darkFor || e.age > e.life)) e.closing = 1
+      else if (e.closing) e.closing += ms
+    }
+    t.darkEyes = t.darkEyes.filter((e) => e.closing < 400)
+    if (t.darkFor < EYES_DARK_FIRST || this.ui.dialogueOpen()) return
+    t.nextDarkEye -= ms
+    const most = Math.min(
+      EYES_DARK_MAX,
+      1 + Math.floor((t.darkFor - EYES_DARK_FIRST) / EYES_DARK_GROW),
+    )
+    if (t.nextDarkEye > 0 || t.darkEyes.length >= most) return
+    const between = (r: [number, number]) => r[0] + Math.random() * (r[1] - r[0])
+    t.nextDarkEye = between(EYES_DARK_EVERY)
+    const a = Math.random() * Math.PI * 2
+    const r = between(EYES_DARK_FAR)
+    t.darkEyes.push({
+      x: this.me.x + Math.cos(a) * r,
+      y: this.me.y + Math.sin(a) * r,
+      age: 0,
+      life: between(EYES_DARK_LIFE),
+      closing: 0,
+      blink: Math.random() * 4000,
+      wide: Math.random() < 0.5 ? 3 : 4,
+    })
+  }
+
+  /** The eyes in the dark round you: two small pale points each, opening, blinking, closing. */
+  private drawDarkEyes(ox: number, oy: number) {
+    const t = this.trip!
+    const c = this.ctx
+    c.fillStyle = '#c9c3b2'
+    for (const e of t.darkEyes) {
+      const open = Math.min(1, e.age / 500) * (e.closing ? Math.max(0, 1 - e.closing / 400) : 1)
+      // A blink now and then.
+      if (open <= 0 || (this.time + e.blink) % 4000 < 130) continue
+      c.globalAlpha = 0.55 * open
+      const px = Math.round(e.x * TS + ox)
+      const py = Math.round(e.y * TS + oy)
+      c.fillRect(px, py, 1, 1)
+      c.fillRect(px + e.wide, py, 1, 1)
+    }
+    c.globalAlpha = 1
+  }
+
+  /** Your lantern is out (or as good as): the thing can hardly see you, the eyes come. */
+  private dark(): boolean {
+    return !!this.trip && this.trip.lanternLevel < 0.5
+  }
+
+  /** E: turns your lantern down to almost nothing, or back up (FOREST.md "Your lantern"). */
+  toggleLantern() {
+    const t = this.trip
+    if (!t || t.end || t.ride) return
+    t.lantern = !t.lantern
+    sfx('clack')
+    this.ui.refresh()
   }
 
   /** The threats' cues, drawn over the darkness so you see them out in the dark. */
@@ -4483,6 +4702,13 @@ export class Game {
    */
   private useForestDoor(d: Door, side: 'out' | 'in') {
     const t = this.trip!
+    // She's in the shelter with you (E_NORA_DOOR): she stands between you and the front door, so
+    // the way out is the back. Out that way, she's gone when you look again.
+    const her = t.door && (t.door.phase === 'inside' || t.door.phase === 'stay')
+    if (her && side === 'in' && d === DOORS.find((o) => o.room === d.room)) {
+      return this.ui.look(DOOR_BLOCKED)
+    }
+    if (her && side === 'in') t.door = null
     if (side === 'out' && d.lock && !this.solved(d.lock)) {
       if (!d.key || !this.pocketKeys().includes(d.key)) {
         lockSound('rattle', 0.7)
@@ -4644,6 +4870,7 @@ export class Game {
     if (this.hasEvent(id)) return
     const s = (this.save.story ??= {})
     s.events = [...(s.events ?? []), id]
+    this.trip?.story.events.add(id)
     this.markDirty()
   }
 
@@ -4779,6 +5006,238 @@ export class Game {
     })
   }
 
+  // --- the deep road's beats (story/deep.ts: E_NORA_DEATH, E_NORA_DOOR, E_PLAYER_DOUBLE) --------
+
+  /** Nora's things at the ravine, from her death on (drawn: `Forest.open`). */
+  private noraAtRavine() {
+    for (const id of ['norabody', 'norakettle', 'noranotebook']) this.forest?.open(id)
+  }
+
+  private updateDeep(dt: number) {
+    const t = this.trip!
+    const f = this.forest!
+    if (t.end) return
+    // Her death: offscreen, the first time you go through the service gate on a trip after the
+    // second meeting (not the same trip: she's only just set off).
+    if (
+      !f.lost &&
+      this.me.y < -158.5 &&
+      !this.indoors() &&
+      this.hasEvent('E_NORA_MEET_2') &&
+      !this.hasEvent('E_NORA_DEATH') &&
+      !t.noraMetNow
+    ) {
+      this.addEvent('E_NORA_DEATH')
+      this.noraAtRavine()
+    }
+    this.updateDoor(dt)
+    this.updateDouble(dt)
+  }
+
+  /** Whether you're inside the watchman's shelter. */
+  private inShelter(): boolean {
+    return roomAt(Math.floor(this.me.x), Math.floor(this.me.y))?.room === 'IN_WATCH_SHELTER'
+  }
+
+  /** One pound on the shelter's door (her fists, the door shaking in its frame). */
+  private pound(volume = 1) {
+    uncanny('knock', 0, volume)
+    window.setTimeout(() => lockSound('rattle', 0.9 * volume), 90)
+  }
+
+  /** E_NORA_DOOR: the knock, her asking, and what you do (PUZZLES.md). */
+  private updateDoor(dt: number) {
+    const t = this.trip!
+    const inside = this.inShelter()
+    t.shelterTime = inside ? t.shelterTime + dt * 1000 : 0
+    const sc = t.door
+    if (!sc) {
+      if (!inside || this.hasEvent('E_NORA_DOOR') || !this.hasEvent('E_NORA_DEATH')) return
+      if (this.ui.dialogueOpen() || this.ui.panelOpen() || t.thing?.phase === 'chase') return
+      const looked = t.shelterLookAt >= 0 && this.time - t.shelterLookAt > DOOR_AFTER_LOOK
+      if (!looked && t.shelterTime < DOOR_AFTER_MS) return
+      // Kept at once (PUZZLES.md: a safe repeat isn't needed; what's left outside is the record).
+      this.addEvent('E_NORA_DOOR')
+      t.door = { phase: 'knock', t: 0, asks: 0, a: 0, dir: 0 }
+      return
+    }
+    sc.t += dt * 1000
+    if (sc.phase === 'knock') {
+      // Three hard blows, then her voice.
+      for (const at of [0, 520, 1000]) if (sc.t - dt * 1000 <= at && sc.t > at) this.pound(1)
+      if (sc.t > 1700) this.doorAsk(DOOR_CALL, DOOR_CALL_MOODS)
+      return
+    }
+    if (sc.phase === 'away') {
+      // At the window, or reading your notepad: she keeps on at the door, then asks again.
+      if (this.ui.panelOpen()) return
+      if (Math.floor(sc.t / 900) !== Math.floor((sc.t - dt * 1000) / 900)) this.pound(0.8)
+      if (sc.t > DOOR_AGAIN_MS) {
+        sc.asks++
+        if (sc.asks >= DOOR_ASKS) return this.doorShut()
+        const i = Math.min(DOOR_AGAIN.length - 1, sc.asks - 1)
+        this.doorAsk([DOOR_AGAIN[i]], [DOOR_AGAIN_MOODS[i]])
+      }
+      return
+    }
+    if (sc.phase === 'shut') {
+      // A few more blows, weaker, and then nothing at all.
+      for (const at of [700, 1500, 2600])
+        if (sc.t - dt * 1000 <= at && sc.t > at) this.pound(at > 2000 ? 0.6 : 0.9)
+      if (sc.t > 2600) t.door = null
+      return
+    }
+    if (sc.phase === 'inside' || sc.phase === 'stay') {
+      sc.a = Math.min(1, sc.a + dt / 0.5)
+      const dx = this.me.x - DOOR_INSIDE.x
+      const dy = this.me.y - DOOR_INSIDE.y
+      sc.dir = (Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0) as Dir
+      // Out of the shelter (the back way), she's gone.
+      if (!inside) t.door = null
+    }
+  }
+
+  /** Her voice at the door, and what you can do about it. */
+  private doorAsk(lines: string[], moods: (Mood | undefined)[]) {
+    const t = this.trip!
+    const sc = t.door!
+    sc.phase = 'asking'
+    const opts = { look: NORA_LOOK, old: false, mole: false, pitch: NORA_PITCH }
+    this.ui.dialogue('Nora', lines, {
+      ...opts,
+      moods,
+      choices: [
+        {
+          label: 'Open the door',
+          onPick: () => {
+            lockSound('door', 0.9)
+            sc.phase = 'inside'
+            sc.a = 0
+            window.setTimeout(() => {
+              if (this.trip !== t) return
+              this.ui.dialogue('Nora', DOOR_IN, {
+                ...opts,
+                moods: DOOR_IN_MOODS,
+                choices: [
+                  {
+                    label: 'Go with her',
+                    onPick: () => this.endTrip('caught', DOOR_CAUGHT),
+                  },
+                  {
+                    label: 'Stay here',
+                    onPick: () => {
+                      sc.phase = 'stay'
+                      this.ui.dialogue('Nora', DOOR_STAY, { ...opts, moods: DOOR_STAY_MOODS })
+                    },
+                  },
+                ],
+              })
+            }, 700)
+          },
+        },
+        {
+          label: 'Look out of the window',
+          onPick: () => {
+            sc.phase = 'away'
+            sc.t = 0
+            this.ui.look(DOOR_WINDOW)
+          },
+        },
+        {
+          label: 'Read your notepad',
+          onPick: () => {
+            sc.phase = 'away'
+            sc.t = 0
+            this.ui.openNotepad()
+          },
+        },
+        { label: 'Keep it shut', onPick: () => this.doorShut() },
+      ],
+    })
+  }
+
+  /** You keep the door shut (or never answer): she pounds a little longer, then stops. */
+  private doorShut() {
+    const sc = this.trip?.door
+    if (!sc) return
+    sc.phase = 'shut'
+    sc.t = 0
+  }
+
+  /** E_PLAYER_DOUBLE: at the logging fork, after the door, someone with your face. */
+  private updateDouble(dt: number) {
+    const t = this.trip!
+    const fig = t.double
+    if (!fig) {
+      if (
+        this.forest!.lost ||
+        !this.hasEvent('E_NORA_DOOR') ||
+        this.hasEvent('E_PLAYER_DOUBLE') ||
+        t.door ||
+        this.ui.dialogueOpen() ||
+        t.thing?.phase === 'chase' ||
+        Math.hypot(this.me.x - THING_START.x, this.me.y - THING_START.y) > 4.5
+      )
+        return
+      // Up whichever way on is furthest from you.
+      const at = [...DOUBLE_SPOTS].sort(
+        (a, b) =>
+          Math.hypot(b.stand.x - this.me.x, b.stand.y - this.me.y) -
+          Math.hypot(a.stand.x - this.me.x, a.stand.y - this.me.y),
+      )[0]
+      this.addEvent('E_PLAYER_DOUBLE')
+      t.double = {
+        x: at.stand.x,
+        y: at.stand.y,
+        to: at.to,
+        phase: 'look',
+        t: 0,
+        a: 0,
+        anim: 0,
+        dir: 0,
+        said: 0,
+      }
+      return
+    }
+    fig.t += dt
+    const dx = this.me.x - fig.x
+    const dy = this.me.y - fig.y
+    if (fig.phase === 'look') {
+      // It's seen you: it stands and looks, says something in your voice, and goes.
+      fig.a = Math.min(1, fig.a + dt / 0.6)
+      fig.dir = (Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : dy < 0 ? 3 : 0) as Dir
+      if (fig.t > DOUBLE_LOOK_S && !fig.said) {
+        fig.said = this.time
+        const pitch = this.save.look.body === 'female' ? 300 : 185
+        for (let i = 0; i < 2; i++) window.setTimeout(() => voice(pitch * (1 + i * 0.06)), i * 110)
+      }
+      if (fig.said && this.time - fig.said > 1600) {
+        fig.phase = 'go'
+        fig.t = 0
+      }
+      return
+    }
+    const ox = fig.to.x - fig.x
+    const oy = fig.to.y - fig.y
+    const left = Math.hypot(ox, oy)
+    if (left > 0.1) {
+      const step = Math.min(left, 2.2 * dt)
+      fig.x += (ox / left) * step
+      fig.y += (oy / left) * step
+      fig.dir = (Math.abs(ox) > Math.abs(oy) ? (ox < 0 ? 1 : 2) : oy < 0 ? 3 : 0) as Dir
+      fig.anim += dt * 6
+    }
+    if (fig.t > 1.6 || left <= 0.1) fig.a = Math.max(0, fig.a - dt / 1.2)
+    if (fig.a <= 0) {
+      t.double = null
+      const after = this.hasEvent('E_NORA_BODY')
+      window.setTimeout(
+        () => this.trip === t && this.ui.thought(after ? DOUBLE_THOUGHT_AFTER : DOUBLE_THOUGHT),
+        700,
+      )
+    }
+  }
+
   /** The protagonist writes her down (STORY.md "Memory"): her note goes in your notepad. */
   private writeDownNora() {
     const t = this.trip
@@ -4868,6 +5327,11 @@ export class Game {
     }
     if (!t || !thing || t.end) return
     if (this.inYard()) t.yardLooked = true
+    if (
+      thing.kind !== 'door' &&
+      roomAt(Math.floor(this.me.x), Math.floor(this.me.y))?.room === 'IN_WATCH_SHELTER'
+    )
+      t.shelterLookAt = this.time
     const first = (key: string) => {
       if (t.story.looked.has(key)) return false
       t.story.looked.add(key)
@@ -4942,6 +5406,7 @@ export class Game {
   /** A clue goes in your notepad (unbanked until you're home). */
   private takeClue(id: ClueId) {
     const t = this.trip
+    if (id === 'nora_body_evidence') this.addEvent('E_NORA_BODY')
     if (!t || t.story.found.has(id)) return
     t.story.found.set(id, { note: '' })
     paperRustle()
@@ -5003,6 +5468,8 @@ export class Game {
         !this.thingNear() &&
         !this.indoors(),
       deepness: () => this.trip?.deep ?? 0,
+      beamOn: (x, y) => this.beamOn(x, y),
+      dark: () => this.dark(),
       lost: () => !!this.forest?.lost,
       danger: () => (this.trip?.danger ?? 0) > 0,
       spendDanger: () => {
@@ -5064,6 +5531,8 @@ export class Game {
           : { x: this.me.x, y: this.me.y, moving: this.me.moving }
       },
       indoors: () => this.indoors(),
+      dark: () => this.dark(),
+      loud: () => this.me.moving && this.hurrying(),
       lost: () => !!this.forest?.lost,
       blocked: (x, y) => this.blocked(x, y),
       view: () => ({ w: this.vw / TS / 2, h: this.vh / TS / 2 }),
@@ -5085,6 +5554,7 @@ export class Game {
   /** The thing, your unease and your energy, each frame. */
   private updateThing(dt: number, wait: number) {
     const t = this.trip!
+    this.updateLantern(dt)
     // It hunts once the gate is open (solved on this trip too), and whenever you're lost.
     if (!t.thing && this.solved('P05')) this.wakeThing('start')
     const th = t.thing
@@ -5093,7 +5563,13 @@ export class Game {
     if (th && !held) th.update(th.phase === 'hunt' ? dt * wait : dt)
     if (t.end) return
     // Unease: the thing above all, or a fake beginning to change, or something real starting.
-    const want = Math.max(th?.closeness() ?? 0, t.enc.chaseLevel(), t.threats.now?.real ? 0.45 : 0)
+    const want = Math.max(
+      th?.closeness() ?? 0,
+      t.enc.chaseLevel(),
+      t.threats.now?.real ? 0.45 : 0,
+      // The eyes in the dark round you, watching.
+      Math.min(EYES_DARK_UNEASE, t.darkEyes.length * 0.07),
+    )
     t.unease +=
       (want - t.unease) * Math.min(1, dt * (want > t.unease ? UNEASE_RISE : UNEASE_FALL) * 4)
     this.ui.setGauge('unease', t.unease)
@@ -5386,6 +5862,39 @@ export class Game {
           c.globalAlpha = 1
         },
       })
+    // Her copy in the shelter, once you've let her in (E_NORA_DOOR), and your double at the fork
+    // (E_PLAYER_DOUBLE): people like the rest, faded in and out.
+    const fig = [
+      t.door && (t.door.phase === 'inside' || t.door.phase === 'stay')
+        ? {
+            look: NORA_LOOK,
+            x: DOOR_INSIDE.x,
+            y: DOOR_INSIDE.y,
+            dir: t.door.dir,
+            anim: 0,
+            a: t.door.a,
+          }
+        : null,
+      t.double ? { look: this.save.look, ...t.double } : null,
+    ]
+    for (const p of fig)
+      if (p && p.a > 0)
+        list.push({
+          y: p.y * TS,
+          draw: () => {
+            const px = Math.round(p.x * TS + ox)
+            const py = Math.round(p.y * TS + oy)
+            c.globalAlpha = p.a
+            c.fillStyle = 'rgba(0,0,0,0.2)'
+            c.fillRect(px - 5, py - 1, 10, 2)
+            c.drawImage(
+              personSprite(p.look, p.dir, p.anim > 0 ? Math.floor(p.anim) % 4 : 0),
+              px - SPR_W / 2,
+              py - SPR_H + 1,
+            )
+            c.globalAlpha = 1
+          },
+        })
     perf?.mark('draw')
     list.sort((a, b) => a.y - b.y)
     for (const d of list) d.draw()
@@ -5465,8 +5974,9 @@ export class Game {
       this.vh,
       this.me.x * TS + ox,
       (this.me.y - 0.6) * TS + oy,
-      // (Caught: your light collapses to nothing over the grab.)
-      this.lightTiles() * TS * flicker * (1 - grab),
+      // (Caught: your light collapses to nothing over the grab.) Round you, only a little light
+      // spills: the rest is your lantern's beam, wherever you point it.
+      this.spillTiles() * TS * flicker * (1 - grab),
       darknessAt(t.deep, night),
       glowsAt,
       // The road and paths stay faintly pale in the dark, so you can see where they go.
@@ -5482,6 +5992,12 @@ export class Game {
               CHUNK * TS,
               CHUNK * TS,
             )
+      },
+      {
+        angle: t.aim,
+        len: this.beamTiles() * TS * flicker * (1 - grab),
+        half: BEAM_SPREAD,
+        a: t.lanternLevel,
       },
     )
     // The chase: you can make it out even in the dark, a pale shape coming, and the edge of the
@@ -5502,6 +6018,7 @@ export class Game {
     }
     this.drawThreats(t.threats, ox, oy, 'over')
     this.drawThing(ox, oy, 'over')
+    if (!t.end) this.drawDarkEyes(ox, oy)
     if (!t.end) this.drawGlints(t.story, ox, oy)
     // Caught by someone: it stays there in front of you as the light goes, drawn over the dark.
     if (t.end?.kind === 'caught' && t.end.who && grab < 1) {
@@ -5653,6 +6170,19 @@ export class Game {
       } else if (!p.me) {
         tag(c, p.name, sp.x, sp.y - 2, fontPx * 0.9, '#fff8ef', 'rgba(30,33,64,0.7)')
       }
+    }
+    // Your double says something, in your voice (E_PLAYER_DOUBLE).
+    const dbl = this.trip?.double
+    if (dbl?.said && this.time - dbl.said < 2200) {
+      const sp = toScreen(dbl.x, dbl.y - SPR_H / TS - 0.15)
+      bubble(
+        c,
+        DOUBLE_SAYS,
+        sp.x,
+        sp.y - 6,
+        fontPx,
+        Math.min(1, (2200 - (this.time - dbl.said)) / 600) * dbl.a,
+      )
     }
     // The end of a trip: on the black screen, one line, fading in.
     const end = this.trip?.end
@@ -6112,4 +6642,43 @@ function roundRect(
 ) {
   c.beginPath()
   c.roundRect(x, y, w, h, r)
+}
+
+/** The knock at the watchman's shelter (E_NORA_DOOR), while it's going on. */
+interface DoorScene {
+  /** knock: the first blows; asking: her voice, your choice; away: at the window or your notepad
+   * while she keeps on; shut: you kept it shut, she stops; inside / stay: you let her in. */
+  phase: 'knock' | 'asking' | 'away' | 'shut' | 'inside' | 'stay'
+  t: number
+  asks: number
+  /** Once she's inside: how faded in, and which way she faces. */
+  a: number
+  dir: Dir
+}
+
+/** Your double at the logging fork (E_PLAYER_DOUBLE). */
+interface DoubleFig {
+  x: number
+  y: number
+  to: { x: number; y: number }
+  phase: 'look' | 'go'
+  t: number
+  a: number
+  anim: number
+  dir: Dir
+  /** When it spoke (game time, ms), or 0. */
+  said: number
+}
+
+/** A pair of eyes in the dark round you while your lantern is out (only a cue). */
+interface DarkEye {
+  x: number
+  y: number
+  /** ms since they opened, how long they stay, ms since they began to close (0: open). */
+  age: number
+  life: number
+  closing: number
+  /** Their blink's place in its cycle, and how far apart they are (px). */
+  blink: number
+  wide: number
 }
