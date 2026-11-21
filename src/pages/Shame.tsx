@@ -28,12 +28,10 @@ export default function Shame() {
           <h1 className="text-4xl font-semibold">Shame</h1>
           <div aria-hidden="true" className="mt-6 horizon-line w-24" />
           <p className="mt-6 max-w-2xl text-ink-muted">
-            Every shame the Discord shame bot has handed out: the ones it catches on its own (huge
-            PRs, overdue reviews, late nights) and the ones teammates give with{' '}
-            <code className="font-mono text-sm">/shame</code> once two others endorse them.
+            EVERYONE HERE sHOULD BE ASHAMED 🙂‍↔️🙂‍↔️🙂‍↔️🙂‍↔️🙂‍↔️
           </p>
           <div className="mt-8 grid grid-cols-1 gap-6">
-            <ShameByCategory />
+            <ShameByCategory />``
             <ShameByPerson />
             <ShameOverTime />
             <RecentShames />
