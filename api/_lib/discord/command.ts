@@ -3,7 +3,7 @@
  * No imports, so the plain-Node registration script can load it with type stripping.
  *
  * The categories, reason limit and endorsement count mirror CATEGORIES, REASON_MAX and
- * ENDORSEMENTS_NEEDED in dawn-care/DAWN's .github/scripts/shame/rules.mjs, which re-checks
+ * ENDORSEMENTS_NEEDED in dawn-care/Internal-Tools' shame-bot/rules.mjs, which re-checks
  * every manual-shame dispatch. Ids are stored in metrics/shame.json: never rename one.
  */
 
@@ -25,7 +25,7 @@ export function isShameCategory(value: unknown): value is ShameCategory {
   return typeof value === 'string' && Object.hasOwn(SHAME_CATEGORIES, value)
 }
 
-/** Longest reason DAWN accepts. */
+/** Longest reason the shame bot accepts. */
 export const REASON_MAX = 300
 
 /** Endorsements needed from teammates other than the shamer and the person shamed. */

@@ -12,7 +12,7 @@ const SIGN_IN = `/tasks?returnTo=${encodeURIComponent('/shame')}`
 
 /**
  * The shame board (signed-in only, like /metrics): who gets shamed for what, from the
- * DAWN shame bot's log. The cards share one public fetch, see src/lib/shame.
+ * shame bot's log (dawn-care/Internal-Tools). The cards share one public fetch, see src/lib/shame.
  */
 export default function Shame() {
   const { user, loading } = useAuth()

@@ -71,7 +71,7 @@ describe('parseTeamMap', () => {
 })
 
 describe('the command definition', () => {
-  it('offers exactly the DAWN category ids', () => {
+  it('offers exactly the shame bot category ids', () => {
     const category = SHAME_COMMAND.options.find((o) => o.name === 'category')!
     expect(category.choices?.map((c) => c.value)).toEqual([
       'reviews',

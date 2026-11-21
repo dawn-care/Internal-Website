@@ -13,7 +13,7 @@ export class ShameError extends Error {
 }
 
 /**
- * Fetches metrics/shame.json from dawn-care/DAWN's metrics branch (public, no auth). Null
+ * Fetches metrics/shame.json from dawn-care/Internal-Tools' metrics branch (public, no auth). Null
  * means the shame bot hasn't logged anything yet — a 404, not an error.
  */
 export async function fetchShames(url = SHAME_URL): Promise<ShameFile | null> {

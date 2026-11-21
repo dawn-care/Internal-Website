@@ -1,11 +1,11 @@
 /**
- * The shame log: metrics/shame.json on the `metrics` branch of dawn-care/DAWN, written by
- * that repo's Discord shame bot (discord-shame.yml; format in its
- * .github/scripts/shame/README.md). It holds one fact per shame and computes nothing; the
+ * The shame log: metrics/shame.json on the `metrics` branch of dawn-care/Internal-Tools,
+ * written by that repo's Discord shame bot (shame-bot.yml; format in its
+ * shame-bot/README.md). It holds one fact per shame and computes nothing; the
  * counting happens here, in the browser (src/lib/shame/selectors.ts). The repo is public,
  * so the site fetches it directly, like the PR metrics.
  */
-export const SHAME_REPO = 'dawn-care/DAWN'
+export const SHAME_REPO = 'dawn-care/Internal-Tools'
 
 const PUBLISHED_URL = `https://raw.githubusercontent.com/${SHAME_REPO}/metrics/metrics/shame.json`
 

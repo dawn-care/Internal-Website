@@ -20,7 +20,7 @@ import { firstHeader } from './_lib/request.js'
 /**
  * POST /api/discord: the Discord application's Interactions Endpoint URL. Runs the /shame
  * slash command and its Endorse button (see api/_lib/discord/shame.ts); at 2 endorsements
- * it hands the shame to dawn-care/DAWN as a manual-shame repository_dispatch.
+ * it hands the shame to dawn-care/Internal-Tools as a manual-shame repository_dispatch.
  *
  * Not a site endpoint: there's no session or Origin check. Instead every request must carry
  * Discord's Ed25519 signature, and anything unsigned gets 401 (Discord tests for that when

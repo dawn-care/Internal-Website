@@ -1,4 +1,4 @@
-/** metrics/shame.json, as documented in dawn-care/DAWN's .github/scripts/shame/README.md. */
+/** metrics/shame.json, as documented in dawn-care/Internal-Tools' shame-bot/README.md. */
 export interface ShameFile {
   /** Category id → label. Group by the id (ids never change), show the label. */
   categories: Record<string, string>

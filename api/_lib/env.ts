@@ -158,9 +158,9 @@ export function getDiscordPublicKey(): string {
 }
 
 export interface ShameBotConfig {
-  /** DISCORD_USER_MAP: JSON of GitHub login → Discord user ID (the same as DAWN's secret). */
+  /** DISCORD_USER_MAP: JSON of GitHub login → Discord user ID (the same as the shame bot's secret). */
   userMap: string
-  /** SHAME_DISPATCH_TOKEN: fine-grained token with Contents: write on dawn-care/DAWN only. */
+  /** SHAME_DISPATCH_TOKEN: fine-grained token with Contents: write on dawn-care/Internal-Tools only. */
   dispatchToken: string
 }
 

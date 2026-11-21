@@ -147,20 +147,21 @@ options (e.g. another Status) is fine: unknown statuses count as "open".
 
 ## Shame bot: `/shame` in Discord and the `/shame` page
 
-The DAWN repo's shame bot (`dawn-care/DAWN`, `.github/workflows/discord-shame.yml`) shames
-people automatically and logs every shame in `metrics/shame.json` on its public `metrics`
-branch. This site adds two things:
+The shame bot lives in `dawn-care/Internal-Tools` (`shame-bot/`, run by
+`.github/workflows/shame-bot.yml`). DAWN forwards its PR events there
+(`internal-tools-forwarder.yml`). The bot shames people automatically and logs every shame in
+`metrics/shame.json` on Internal-Tools' public `metrics` branch. This site adds two things:
 
 - **`/shame @person category reason`** in Discord. It posts a message with an **Endorse**
   button, and it counts once 2 teammates other than the shamer and the person shamed endorse
-  it within 24 hours. Then `/api/discord` sends it to DAWN as a `manual-shame`
-  repository_dispatch, and DAWN re-checks it, logs it and posts its own message.
+  it within 24 hours. Then `/api/discord` sends it to Internal-Tools as a `manual-shame`
+  repository_dispatch, and the shame bot re-checks it, logs it and posts its own message.
 - **The `/shame` page** (signed in, nav "Shame"), which reads `metrics/shame.json` in the
   browser and shows shames per category, per person (and what each person is shamed for
   most), per week, and the recent ones with their reasons, shamers and endorsers.
 
 The page needs no setup. The Discord command needs the steps below, done once by someone with
-admin rights on the team's Discord server, the Vercel project, and `dawn-care/DAWN`.
+admin rights on the team's Discord server, the Vercel project, and `dawn-care/Internal-Tools`.
 
 ### 1. Create the Discord application
 
@@ -173,15 +174,15 @@ admin rights on the team's Discord server, the Vercel project, and `dawn-care/DA
    (no `bot` scope and no permissions needed). Copy the install link, open it, and add the
    app to the team's server.
 
-### 2. Create the GitHub token for DAWN
+### 2. Create the GitHub token for the shame bot
 
 On GitHub: **Settings → Developer settings → Personal access tokens → Fine-grained tokens →
 Generate new token**.
 
 - **Resource owner**: `dawn-care` (an org owner may have to approve the request).
-- **Repository access**: _Only select repositories_ → `dawn-care/DAWN` only.
+- **Repository access**: _Only select repositories_ → `dawn-care/Internal-Tools` only.
 - **Permissions**: Repository → **Contents: Read and write** (that's what repository_dispatch
-  needs; Metadata: read comes with it). Nothing else.
+  needs; Metadata: read comes with it). Nothing else. DAWN's `TOOLS_DISPATCH_TOKEN` secret (for its forwarder) can be this same token.
 - Pick an expiry and put a reminder in the calendar to rotate it before then.
 
 ### 3. Set the environment variables on Vercel
@@ -189,14 +190,14 @@ Generate new token**.
 **Vercel → Project → Settings → Environment Variables**, for **Production** (add them to
 Development too if you want to try it with `vercel dev` and a tunnel):
 
-| Variable               | Value                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| `DISCORD_PUBLIC_KEY`   | The application's **Public Key** (64 hex characters).                                       |
-| `DISCORD_USER_MAP`     | The same JSON as DAWN's `DISCORD_USER_MAP` secret: `{"githubLogin": "discordUserId", ...}`. |
-| `SHAME_DISPATCH_TOKEN` | The fine-grained token from step 2. Secret.                                                 |
+| Variable               | Value                                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| `DISCORD_PUBLIC_KEY`   | The application's **Public Key** (64 hex characters).                                                |
+| `DISCORD_USER_MAP`     | The same JSON as the shame bot's `DISCORD_USER_MAP` secret: `{"githubLogin": "discordUserId", ...}`. |
+| `SHAME_DISPATCH_TOKEN` | The fine-grained token from step 2. Secret.                                                          |
 
 `DISCORD_USER_MAP` decides who's on the team: only people in it can use `/shame`, be shamed,
-or endorse (DAWN checks its own copy again). Keep the two copies in sync when someone joins or
+or endorse (the shame bot checks its own copy again). Keep the two copies in sync when someone joins or
 leaves. To get a Discord user ID, turn on **Developer Mode** in Discord's settings, then
 right-click a person → **Copy User ID**. Redeploy after changing any of these.
 
@@ -280,7 +281,7 @@ domains. To rotate, create a new key in Google Cloud with the same restrictions,
 redeploy, then delete the old key.
 
 **`SHAME_DISPATCH_TOKEN`**: generate a new fine-grained token (same settings), update it in
-Vercel, redeploy, then delete the old one on GitHub. **Discord bot token / public key**: the bot
+Vercel and in DAWN's `TOOLS_DISPATCH_TOKEN` secret, redeploy, then delete the old one on GitHub. **Discord bot token / public key**: the bot
 token isn't stored anywhere (only used to register the command); reset it in the Developer
 Portal if it leaked. The public key isn't secret.
 

@@ -16,7 +16,7 @@ import {
  * by this bot and Discord only accepts clicks on components the message really has), the
  * reason is read back from the message text this bot wrote, and the posting time comes
  * from the message ID (a snowflake). Nothing to store, clean up or keep in sync, and the
- * 2-endorsement dispatch is idempotent on DAWN's side (one log entry per messageId).
+ * 2-endorsement dispatch is idempotent on the shame bot's side (one log entry per messageId).
  */
 
 // Discord interaction / response types we use.
@@ -57,7 +57,7 @@ export interface InteractionResponse {
   }
 }
 
-/** The client_payload of DAWN's manual-shame repository_dispatch (its shame README). */
+/** The client_payload of the shame bot's manual-shame repository_dispatch (its shame README). */
 export interface ManualShamePayload {
   messageId: string
   target: string
@@ -260,7 +260,7 @@ export function startShame(
 export type EndorseOutcome =
   /** Refused or still pending: answer with this and do nothing else. */
   | { kind: 'reply'; response: InteractionResponse }
-  /** The deciding endorsement: dispatch to DAWN, then answer with `response`. */
+  /** The deciding endorsement: dispatch to the shame bot, then answer with `response`. */
   | { kind: 'counted'; payload: ManualShamePayload; response: InteractionResponse }
 
 /** One click on a /shame's Endorse button, judged at `now` (ms). */
@@ -325,7 +325,7 @@ export function endorse(interaction: Interaction, team: TeamMap, now: number): E
   }
 }
 
-/** The refusal shown when DAWN couldn't be told (the message keeps its button). */
+/** The refusal shown when the shame bot couldn't be told (the message keeps its button). */
 export function dispatchFailedReply(): InteractionResponse {
   return ephemeral("Couldn't record the shame on GitHub just now. Click Endorse again in a minute.")
 }

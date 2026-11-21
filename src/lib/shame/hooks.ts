@@ -19,7 +19,7 @@ interface Settled {
 /** Every mounted hook: a retry in one card reloads all of them (they share one fetch). */
 const retryListeners = new Set<() => void>()
 
-/** metrics/shame.json from dawn-care/DAWN, fetched once and shared by every card. */
+/** metrics/shame.json from dawn-care/Internal-Tools, fetched once and shared by every card. */
 export function useShames(): ShamesQuery {
   const [attempt, setAttempt] = useState(0)
   const [settled, setSettled] = useState<Settled | null>(null)

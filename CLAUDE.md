@@ -301,19 +301,20 @@ GitHub Project; the site reads and writes them through GitHub's API.
   npm run dev` (the URL override beats mock data).
 
 ## Shame (Discord /shame + /shame page)
-- dawn-care/DAWN's shame bot logs every shame in metrics/shame.json on its `metrics` branch
-  (format and the manual-shame dispatch: DAWN's .github/scripts/shame/README.md). This site
-  never writes that file.
+- The shame bot lives in dawn-care/Internal-Tools (shame-bot/; DAWN only forwards its PR
+  events there). It logs every shame in metrics/shame.json on Internal-Tools' `metrics` branch
+  (format and the manual-shame dispatch: its shame-bot/README.md). This site never writes
+  that file.
 - /api/discord.ts is the Discord app's Interactions Endpoint: verifies the Ed25519 signature
   (DISCORD_PUBLIC_KEY; unsigned → 401), answers PING, runs `/shame user category reason` and
   its Endorse button (api/_lib/discord/shame.ts, pure and tested). Stateless: the button's
   custom_id carries target/shamer/category/endorsers, the reason is read back from the
   message, the 24h window comes from the message snowflake. Team = DISCORD_USER_MAP (JSON
-  GitHub login → Discord ID, same as DAWN's secret). At 2 endorsements (not the shamer or the
-  target) it POSTs the manual-shame repository_dispatch to dawn-care/DAWN with
-  SHAME_DISPATCH_TOKEN, then edits the message; if GitHub refuses, the button stays. Only the
+  GitHub login → Discord ID, same as the shame bot's secret). At 2 endorsements (not the shamer or the
+  target) it POSTs the manual-shame repository_dispatch to dawn-care/Internal-Tools
+  with SHAME_DISPATCH_TOKEN, then edits the message; if GitHub refuses, the button stays. Only the
   target is ever pinged (allowed_mentions). Categories, reason limit and endorsement count in
-  api/_lib/discord/command.ts mirror DAWN's rules.mjs; register the command with
+  api/_lib/discord/command.ts mirror the shame bot's rules.mjs; register the command with
   `npm run discord:register`.
 - /shame page (signed-in only, nav after Metrics): src/lib/shame (same pattern as
   src/lib/prMetrics; 404 = no shames yet; VITE_SHAME_URL override; mock data with

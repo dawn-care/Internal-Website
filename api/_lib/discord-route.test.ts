@@ -149,7 +149,7 @@ describe('POST /api/discord', () => {
     expect(second.body.data?.components).toEqual([])
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('https://api.github.com/repos/dawn-care/DAWN/dispatches')
+    expect(url).toBe('https://api.github.com/repos/dawn-care/Internal-Tools/dispatches')
     expect(init?.method).toBe('POST')
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer github_pat_test')
     expect(JSON.parse(init?.body as string)).toEqual({
