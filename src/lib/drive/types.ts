@@ -22,14 +22,3 @@ export interface Meeting {
   agenda?: FeedItem
   fourUp?: FeedItem
 }
-
-export interface ArtifactCategory {
-  /** Drive folder ID. */
-  id: string
-  slug: string
-  /** Folder name with the "NN " prefix stripped. */
-  displayName: string
-  /** The numeric "NN" prefix; categories without one sort last. */
-  order: number
-  files: DriveFile[]
-}

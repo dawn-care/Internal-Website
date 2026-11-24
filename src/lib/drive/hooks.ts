@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FeedKey } from '../../config/sources'
-import {
-  clearDriveCache,
-  loadFeed,
-  loadMeetings,
-  loadPublishedCategories,
-  loadPublishedCategory,
-} from './data'
-import type { ArtifactCategory, FeedItem, Meeting } from './types'
+import { clearDriveCache, loadFeed, loadMeetings } from './data'
+import type { FeedItem, Meeting } from './types'
 
 export interface DriveQuery<T> {
   data: T | undefined
@@ -74,16 +68,4 @@ export function useFeed(sourceKey: FeedKey): DriveQuery<FeedItem[]> {
 /** Agendas and 4Ups paired by date, newest first. */
 export function useMeetings(): DriveQuery<Meeting[]> {
   return useDriveQuery(loadMeetings)
-}
-
-const loadDefaultLibrary = () => loadPublishedCategories()
-
-export function usePublishedCategories(): DriveQuery<ArtifactCategory[]> {
-  return useDriveQuery(loadDefaultLibrary)
-}
-
-/** `data` is null when no category has this slug. */
-export function usePublishedCategory(slug: string): DriveQuery<ArtifactCategory | null> {
-  const load = useCallback(() => loadPublishedCategory(slug), [slug])
-  return useDriveQuery(load)
 }

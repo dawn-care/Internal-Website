@@ -25,7 +25,6 @@ vi.mock('../../config/sources', async (importOriginal) => {
         suffix: 'Sprint Review',
         folderId: 'working-folder',
       },
-      publishedArtifacts: { ...actual.SOURCES.publishedArtifacts, folderId: undefined },
     },
   }
 })

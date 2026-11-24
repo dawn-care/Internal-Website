@@ -178,3 +178,12 @@ export function getShameBotConfig(): ShameBotConfig | { missing: string[] } {
     ),
   }
 }
+
+/**
+ * ARTIFACTS_GITHUB_TOKEN (optional): a fine-grained token with read-only "Contents" access to
+ * dawn-care/Artifacts. The repo is public, so /api/artifacts works without it; the token adds
+ * each document's "Updated" date and lifts GitHub's 60-calls-an-hour anonymous limit.
+ */
+export function getArtifactsToken(): string | null {
+  return read('ARTIFACTS_GITHUB_TOKEN') ?? null
+}

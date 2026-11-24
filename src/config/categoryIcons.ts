@@ -10,8 +10,9 @@ import {
 } from 'lucide-react'
 
 /**
- * Icons for published-artifact categories, keyed by slug (the folder name without its
- * "NN " prefix, lowercased and hyphenated: "03 Architecture & Design" → "architecture-design").
+ * Icons for Artifacts folders (shown as groups on /artifacts), keyed by slug (the folder name
+ * without its "NN " prefix, lowercased and hyphenated: "03 Architecture & Design" →
+ * "architecture-design").
  * Unlisted categories get DEFAULT_CATEGORY_ICON.
  */
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {

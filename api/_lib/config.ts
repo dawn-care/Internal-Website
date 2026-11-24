@@ -45,3 +45,13 @@ export const PROJECT_META_TTL_MS = 5 * 60 * 1000
 
 /** Fields the site can't work without. Estimate is the burndown's unit, so it's required. */
 export const REQUIRED_FIELDS: readonly FieldKey[] = ['status', 'iteration', 'doneBy', 'estimate']
+
+/**
+ * The /artifacts pages show the Markdown files in this public repository's branch. The site
+ * only reads it; documents link back to it for files the site doesn't show.
+ */
+export const ARTIFACTS_REPOSITORY = {
+  owner: 'dawn-care',
+  name: 'Artifacts',
+  branch: 'main',
+} as const

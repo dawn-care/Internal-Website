@@ -1,6 +1,6 @@
-import { MOCK_AGENDAS_FOLDER_ID, MOCK_PUBLISHED_FOLDER_ID } from '../../config/sources'
+import { MOCK_AGENDAS_FOLDER_ID } from '../../config/sources'
 import { FOLDER_MIME_TYPE, type ListFolderOptions } from './client'
-import { slugify, toDateKey } from './parse'
+import { toDateKey } from './parse'
 import type { DriveFile } from './types'
 
 /*
@@ -10,7 +10,6 @@ import type { DriveFile } from './types'
 
 const DOC = 'application/vnd.google-apps.document'
 const SLIDES = 'application/vnd.google-apps.presentation'
-const PDF = 'application/pdf'
 
 const MEETING_WEEKDAY = 2 // Tuesday
 
@@ -35,10 +34,6 @@ function mockFile(id: string, name: string, mimeType: string, modified: Date): D
     webViewLink: `https://drive.google.com/file/d/mock-${id}/view`,
     iconLink: `https://drive-thirdparty.googleusercontent.com/16/type/${mimeType}`,
   }
-}
-
-function mockFolder(id: string, name: string): DriveFile {
-  return { ...mockFile(id, name, FOLDER_MIME_TYPE, daysFromToday(-60)), iconLink: '' }
 }
 
 function agendasFolder(): DriveFile[] {
@@ -69,64 +64,8 @@ function agendasFolder(): DriveFile[] {
   return files
 }
 
-// Each subfolder of the Artifacts folder is a category; every artifact is a PDF. Folders
-// and files use an optional "NN " prefix for ordering ("Usability Study Results" has none,
-// so it sorts last in its folder).
-const CATEGORIES: { id: string; name: string; files: [string, number][] }[] = [
-  {
-    id: 'cat-pm',
-    name: '01 Project Management',
-    files: [
-      ['01 Team Charter.pdf', -40],
-      ['02 Project Plan.pdf', -9],
-      ['03 Risk Register.pdf', -12],
-    ],
-  },
-  {
-    id: 'cat-req',
-    name: '02 Requirements',
-    files: [
-      ['01 Software Requirements Specification.pdf', -2],
-      ['02 User Personas.pdf', -21],
-    ],
-  },
-  {
-    id: 'cat-design',
-    name: '03 Architecture & Design',
-    files: [
-      ['01 Architecture Overview.pdf', -5],
-      ['03 UI Mockups.pdf', -16],
-      ['02 Data Model.pdf', -24],
-    ],
-  },
-  {
-    id: 'cat-test',
-    name: '04 Testing',
-    files: [
-      ['01 Test Plan.pdf', -14],
-      ['Usability Study Results.pdf', -30],
-    ],
-  },
-  {
-    id: 'cat-pres',
-    name: '05 Presentations',
-    files: [
-      ['01 Kickoff Presentation.pdf', -45],
-      ['02 Midterm Review.pdf', -7],
-    ],
-  },
-]
-
 function folderContents(folderId: string): DriveFile[] {
-  if (folderId === MOCK_AGENDAS_FOLDER_ID) return agendasFolder()
-  if (folderId === MOCK_PUBLISHED_FOLDER_ID) {
-    return CATEGORIES.map((c) => mockFolder(c.id, c.name))
-  }
-  const category = CATEGORIES.find((c) => `mock-${c.id}` === folderId)
-  if (!category) return []
-  return category.files.map(([name, days]) =>
-    mockFile(`${category.id}-${slugify(name)}`, name, PDF, daysFromToday(days)),
-  )
+  return folderId === MOCK_AGENDAS_FOLDER_ID ? agendasFolder() : []
 }
 
 /** Same contract as client.listFolder, backed by the fake listings above. */

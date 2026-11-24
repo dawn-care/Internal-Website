@@ -1,27 +1,25 @@
 import { ArrowRight, FileText } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { formatShortDate } from '../../lib/dates'
-import type { ArtifactCategory, DriveQuery } from '../../lib/drive'
-import { artifactDisplayName } from '../../lib/files'
-import { selectRecentlyPublished } from '../../lib/selectors'
+import { recentArtifacts, type ArtifactsQuery } from '../../lib/artifacts'
+import LastUpdated from '../artifacts/LastUpdated'
 import EmptyState from '../EmptyState'
 import ErrorState from '../ErrorState'
-import ExternalLinkLabel from '../ExternalLinkLabel'
 import LoadingState from '../LoadingState'
 import Skeleton from '../Skeleton'
 
 const RECENT_COUNT = 3
 
-export default function RecentlyPublished({
-  categories,
-}: {
-  categories: DriveQuery<ArtifactCategory[]>
-}) {
+/**
+ * The most recently updated Artifacts documents. Hidden if GitHub reported no dates at all,
+ * since "recent" would mean nothing.
+ */
+export default function RecentlyPublished({ artifacts }: { artifacts: ArtifactsQuery }) {
+  if (artifacts.data && !artifacts.data.documents.some((doc) => doc.updatedAt)) return null
   return (
     <section aria-labelledby="recent-title">
       <div className="flex items-baseline justify-between gap-4">
         <h2 id="recent-title" className="text-2xl font-semibold">
-          Recently published
+          Recently updated
         </h2>
         <Link
           to="/artifacts"
@@ -32,14 +30,14 @@ export default function RecentlyPublished({
         </Link>
       </div>
       <div className="mt-6">
-        <RecentlyPublishedBody categories={categories} />
+        <RecentlyPublishedBody artifacts={artifacts} />
       </div>
     </section>
   )
 }
 
-function RecentlyPublishedBody({ categories }: { categories: DriveQuery<ArtifactCategory[]> }) {
-  if (categories.loading) {
+function RecentlyPublishedBody({ artifacts }: { artifacts: ArtifactsQuery }) {
+  if (artifacts.loading) {
     return (
       <LoadingState>
         <div className="grid gap-6 sm:grid-cols-3">
@@ -54,41 +52,37 @@ function RecentlyPublishedBody({ categories }: { categories: DriveQuery<Artifact
       </LoadingState>
     )
   }
-  if (categories.error) {
+  if (artifacts.error || !artifacts.data) {
     return (
-      <ErrorState
-        message="We couldn't load published artifacts right now."
-        onRetry={categories.refetch}
-      />
+      <ErrorState message="We couldn't load the artifacts right now." onRetry={artifacts.refetch} />
     )
   }
-  const recent = selectRecentlyPublished(categories.data ?? [], RECENT_COUNT)
+  const recent = recentArtifacts(artifacts.data.documents, RECENT_COUNT)
   if (recent.length === 0) {
-    return <EmptyState>Nothing published yet. Final artifacts will appear here.</EmptyState>
+    return <EmptyState>Nothing published yet. Project documents will appear here.</EmptyState>
   }
 
   return (
     <ul className="grid gap-6 sm:grid-cols-3">
-      {recent.map(({ file, category }) => (
-        <li key={file.id}>
-          <a
-            href={file.webViewLink}
-            target="_blank"
-            rel="noreferrer"
+      {recent.map((doc) => (
+        <li key={doc.slug}>
+          <Link
+            to={`/artifacts/${doc.slug}`}
             className="group shadow-card hover:shadow-card-hover flex h-full card-hover flex-col rounded-2xl bg-surface p-6"
           >
             <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wider text-ink-muted uppercase">
               <FileText aria-hidden="true" className="size-3.5" />
-              {category.displayName}
+              {doc.folder ?? 'Document'}
             </span>
             <span className="mt-2 font-heading text-lg leading-snug font-semibold group-hover:text-link">
-              {artifactDisplayName(file.name)}
+              {doc.title}
             </span>
-            <span className="mt-auto flex items-center gap-1.5 pt-4 text-sm text-ink-muted">
-              Updated {formatShortDate(file.modifiedTime)}
-              <ExternalLinkLabel />
-            </span>
-          </a>
+            {doc.updatedAt && (
+              <span className="mt-auto pt-4 text-sm text-ink-muted">
+                <LastUpdated iso={doc.updatedAt} />
+              </span>
+            )}
+          </Link>
         </li>
       ))}
     </ul>

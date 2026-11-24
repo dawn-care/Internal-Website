@@ -1,14 +1,8 @@
-import {
-  SOURCES,
-  USE_MOCK_DATA,
-  type DatedFeedSource,
-  type LibraryKey,
-  type Source,
-} from '../../config/sources'
+import { SOURCES, USE_MOCK_DATA, type DatedFeedSource, type Source } from '../../config/sources'
 import { listFolder, type ListFolderOptions } from './client'
 import { mockListFolder } from './mock'
-import { classifyFeedFile, compareOrderedNames, groupMeetings, parseCategory } from './parse'
-import type { ArtifactCategory, DriveFile, FeedItem, Meeting } from './types'
+import { classifyFeedFile, groupMeetings } from './parse'
+import type { DriveFile, FeedItem, Meeting } from './types'
 
 /*
  * Non-React loaders behind the hooks. Every folder listing goes through one cache keyed
@@ -83,30 +77,4 @@ export async function loadFeed(sourceKey: string): Promise<FeedItem[]> {
 export async function loadMeetings(): Promise<Meeting[]> {
   const [agendas, fourUps] = await Promise.all([loadFeed('agendas'), loadFeed('fourUps')])
   return groupMeetings(agendas, fourUps)
-}
-
-/** Categories in "NN" order, each with its files in "NN" order too. */
-export async function loadPublishedCategories(
-  sourceKey: LibraryKey = 'publishedArtifacts',
-): Promise<ArtifactCategory[]> {
-  const source = getSource(sourceKey)
-  if (!source.folderId) return []
-
-  const folders = await listFolderCached(source.folderId, { foldersOnly: true })
-  const categories = await Promise.all(
-    folders.map(async (folder) => {
-      const files = await listFolderCached(folder.id, { filesOnly: true })
-      return parseCategory(
-        folder,
-        [...files].sort((a, b) => compareOrderedNames(a.name, b.name)),
-      )
-    }),
-  )
-  return categories.sort((a, b) => a.order - b.order || a.displayName.localeCompare(b.displayName))
-}
-
-/** One category by slug, or null if there's no such category. */
-export async function loadPublishedCategory(slug: string): Promise<ArtifactCategory | null> {
-  const categories = await loadPublishedCategories()
-  return categories.find((c) => c.slug === slug) ?? null
 }

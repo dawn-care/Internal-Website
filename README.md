@@ -4,7 +4,9 @@ Internal hub for the RIT SWEN 561/562 team building D.A.W.N. (Daily Awareness & 
 Navigator): meeting agendas and 4Ups, published project artifacts, and (for the team) tasks and
 the sprint burndown.
 
-- **Agendas and artifacts** are read from Google Drive in the browser (API key, read-only).
+- **Agendas** are read from Google Drive in the browser (API key, read-only).
+- **Artifacts** are the Markdown files in the public `dawn-care/Artifacts` repo, read and cached
+  by `/api/artifacts` so anyone can view them on the site.
 - **Tasks** live in the team's GitHub Project and are read/written through `/api` with each
   person's own GitHub sign-in.
 - **Burndown history** is a small daily-totals file per sprint in a private Vercel Blob store.
@@ -81,17 +83,25 @@ titles or assignees, and the server never sends blob URLs to the browser.
 Set these in **Vercel → Project → Settings → Environment Variables**. Server variables are
 never prefixed `VITE_` and never reach the browser.
 
-| Variable                   | Production        | Preview | Development     | Notes                                                       |
-| -------------------------- | ----------------- | ------- | --------------- | ----------------------------------------------------------- |
-| `GITHUB_CLIENT_ID`         | prod app          | unset   | local-dev app   | Unset = sign-in off (sample data). Required in production.  |
-| `GITHUB_CLIENT_SECRET`     | prod app          | unset   | local-dev app   | Secret.                                                     |
-| `SESSION_SECRET`           | random ≥ 32 chars | unset   | a different one | Encrypts the session cookie. `openssl rand -base64 48`      |
-| `GITHUB_ORG`               | org login         | unset   | org login       | e.g. `dawn-team`; sign-in requires active membership.       |
-| `GITHUB_PROJECT_NUMBER`    | number            | unset   | number          | From the project URL: `/orgs/<org>/projects/<number>`.      |
-| `BLOB_READ_WRITE_TOKEN`    | from Blob store   | unset   | from Blob store | Added by connecting the store.                              |
-| `VITE_GOOGLE_API_KEY`      | key               | key     | key             | Browser key; restrict it to the Drive API and your domains. |
-| `VITE_AGENDAS_FOLDER_ID`   | folder id         | same    | same            | Missing = hide agendas/4Ups.                                |
-| `VITE_PUBLISHED_FOLDER_ID` | folder id         | same    | same            | Missing = hide the artifacts library.                       |
+| Variable                 | Production        | Preview | Development     | Notes                                                       |
+| ------------------------ | ----------------- | ------- | --------------- | ----------------------------------------------------------- |
+| `GITHUB_CLIENT_ID`       | prod app          | unset   | local-dev app   | Unset = sign-in off (sample data). Required in production.  |
+| `GITHUB_CLIENT_SECRET`   | prod app          | unset   | local-dev app   | Secret.                                                     |
+| `SESSION_SECRET`         | random ≥ 32 chars | unset   | a different one | Encrypts the session cookie. `openssl rand -base64 48`      |
+| `GITHUB_ORG`             | org login         | unset   | org login       | e.g. `dawn-team`; sign-in requires active membership.       |
+| `GITHUB_PROJECT_NUMBER`  | number            | unset   | number          | From the project URL: `/orgs/<org>/projects/<number>`.      |
+| `BLOB_READ_WRITE_TOKEN`  | from Blob store   | unset   | from Blob store | Added by connecting the store.                              |
+| `VITE_GOOGLE_API_KEY`    | key               | key     | key             | Browser key; restrict it to the Drive API and your domains. |
+| `VITE_AGENDAS_FOLDER_ID` | folder id         | same    | same            | Missing = hide agendas/4Ups.                                |
+| `ARTIFACTS_GITHUB_TOKEN` | token (optional)  | same    | same            | Lifts GitHub's anonymous rate limit (see below).            |
+
+`ARTIFACTS_GITHUB_TOKEN` is optional: `dawn-care/Artifacts` is public, so `/artifacts` (including
+each document's "Last updated" date) works without it. Without a token the site makes about one
+GitHub API call per refresh (plus one per changed file), well under GitHub's limit of 60
+anonymous calls an hour; set a token if that limit is ever hit (dates would go missing).
+Use a **fine-grained personal access token** with resource owner `dawn-care`, repository
+access **Only select repositories → Artifacts**, and permission **Contents: Read-only**
+(nothing else). If it expires, `/artifacts` shows an error until it's replaced or removed.
 
 If sign-in is partly configured (e.g. a client ID without `SESSION_SECRET`), the API fails with
 an error naming exactly what's missing. On production, missing OAuth vars are an error rather

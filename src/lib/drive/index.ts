@@ -1,10 +1,4 @@
 export { DriveApiError } from './client'
-export {
-  useFeed,
-  useMeetings,
-  usePublishedCategories,
-  usePublishedCategory,
-  type DriveQuery,
-} from './hooks'
+export { useFeed, useMeetings, type DriveQuery } from './hooks'
 export { getEmbedUrl } from './preview'
-export type { ArtifactCategory, DriveFile, FeedItem, Meeting } from './types'
+export type { DriveFile, FeedItem, Meeting } from './types'

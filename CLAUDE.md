@@ -9,7 +9,8 @@ Faculty coach: Drew Saur.
 A lightweight hub for the team, sponsor, and coach: see upcoming/past meeting agendas,
 browse project artifacts, and (team only) manage tasks, track sprint progress, see a
 personal developer dashboard, and view the team's meeting calendar.
-Agendas and artifacts live in Google Drive; the site only reads them. Meetings live in
+Agendas live in Google Drive and artifacts in the public dawn-care/Artifacts repo (Markdown);
+the site only reads them. Meetings live in
 the shared "DAWN Team" Google Calendar; the site only reads it. Tasks live in our
 GitHub Project; the site reads and writes them through GitHub's API.
 
@@ -27,16 +28,13 @@ GitHub Project; the site reads and writes them through GitHub's API.
 
 ## Public data: Google Drive
 - Google Drive API v3, called from the browser with an API key.
-- Content comes from *sources*, declared in src/config/sources.ts. Two source kinds:
+- Content comes from *sources*, declared in src/config/sources.ts. One source kind:
   - "dated-feed": recurring files named "YYYY-MM-DD <Suffix>" in a working folder,
     pulled automatically. A feed is defined by { folderId, suffix }, and several feeds
     can share one folder. Current: agendas (suffix "Agenda") and fourUps (suffix
     "4Up"), both in the Agendas folder. Planned later: sprintArtifacts (do NOT build
     yet, but adding it must only require a new config entry).
-  - "published-library": a curated folder whose subfolders are categories; the team
-    manually uploads final artifacts into them. Current: publishedArtifacts. The
-    Artifacts pages show only this library (agendas and 4Ups live on /agendas).
-- Env vars (Vite): VITE_GOOGLE_API_KEY, VITE_AGENDAS_FOLDER_ID, VITE_PUBLISHED_FOLDER_ID
+- Env vars (Vite): VITE_GOOGLE_API_KEY, VITE_AGENDAS_FOLDER_ID
 - If VITE_GOOGLE_API_KEY is missing, use mock data from src/lib/drive/mock.ts so the
   site runs locally without credentials. If one source's folder ID is missing, hide
   that source's UI rather than erroring.
@@ -48,12 +46,48 @@ GitHub Project; the site reads and writes them through GitHub's API.
 - Agenda docs for official meetings are auto-created in Drive by a Google Apps Script
   outside this repo (it reads the DAWN Team calendar and copies a template). The site
   never creates, edits, or deletes Drive files.
-- Published library: each subfolder is a category; files directly in the root folder are
-  ignored. Subfolders and files both use an optional "NN " prefix for ordering (e.g.
-  "02 Requirements", "01 Project Plan.pdf"): sort by the number, strip it for display.
-  Unprefixed items sort after prefixed ones, by name.
-- Every published artifact is a PDF, so artifact names are displayed without ".pdf".
-  This applies only to artifacts: agendas and 4Ups are not PDFs and keep their names.
+- Artifacts are NOT in Drive any more (see "Artifacts" below).
+
+## Public data: Artifacts (dawn-care/Artifacts repo)
+- The /artifacts pages (public: signed in or not) show the Markdown (.md) files on the `main`
+  branch of the PUBLIC dawn-care/Artifacts repo (ARTIFACTS_REPOSITORY in
+  /api/_lib/config.ts). The site never writes to that repo.
+- The browser doesn't call GitHub itself (anonymous API calls are limited to 60/hour per IP):
+  GET /api/artifacts (public, no session) reads the repo once and caches it — 5 minutes per
+  function instance (the last good copy is served if a refresh fails) and on the CDN
+  (s-maxage=300). It returns every document with its Markdown, title, folder and
+  last-commit date, plus `source` (the repo URL and branch) (ArtifactsResponse in
+  src/lib/artifacts/types.ts). One API call lists the files (git tree), then:
+  - with the optional ARTIFACTS_GITHUB_TOKEN (fine-grained, read-only Contents on
+    dawn-care/Artifacts): batched GraphQL returns text + last-commit dates, and the token lifts
+    the anonymous rate limit;
+  - without it: text comes from raw.githubusercontent.com (no rate limit) and each date
+    from an anonymous REST commits call per file, remembered by the file's blob SHA (from the
+    tree) so a date is only looked up again when that file changes. A failed lookup keeps
+    the last known date, or null (the UI then omits it).
+  Every card, search result and document page shows "Last updated <date>"
+  (src/components/artifacts/LastUpdated.tsx; the page adds the relative age).
+  Server code: /api/_lib/artifacts.ts, deliberately separate from /api/_lib/github (a failure
+  here is never a signed-in user's session-expired).
+- GET /api/artifacts?asset=<path> proxies an image (png/jpg/gif/webp/svg ≤ 4 MB) that's in the
+  repo's tree from raw.githubusercontent.com, with a sandboxing CSP (GitHub serves SVGs there
+  as text/plain, which <img> won't show). Links to other repo files (e.g. .drawio) open them
+  on GitHub; each document page has "View on GitHub".
+- Paths: hidden/underscore folders are skipped. Folders and files may use an optional "NN "
+  prefix for ordering (e.g. "02 Design/01 Architecture.md"): sort by the number, strip it for
+  display. Root files are listed first, then each top-level folder (shown as a group). The
+  title is the file name without prefix and ".md"; the URL is /artifacts/<slug>, where the
+  slug is the slugified path ("design/architecture"). Shared rules: src/lib/artifacts/paths.ts.
+- Rendering: src/lib/artifacts/markdown.ts is our own small GFM parser (no markdown library;
+  headings, lists incl. tasks, tables, code, quotes, links, images, entities) producing a tree
+  that src/components/artifacts/Markdown.tsx renders as React elements. Never inject HTML
+  strings; raw HTML in a document shows as text. Relative links to other .md files become site
+  links (with #heading anchors); links to other repo files open on GitHub; only
+  http(s)/mailto links go external, anything else renders as text.
+- Frontend: src/lib/artifacts (client, data with fetch-once cache, hooks, selectors, mock.ts
+  for VITE_TASKS_MOCK=true). VITE_ARTIFACTS_URL (dev only) points the site at a saved
+  response in public/*.local.json to preview real documents with `npm run dev`. The Home
+  page's "Recently updated" uses the same data.
 
 ## Backend: /api (Vercel functions)
 - Route files live in /api. Shared server code lives in /api/_lib (underscore = not a
@@ -68,12 +102,14 @@ GitHub Project; the site reads and writes them through GitHub's API.
 - Server env vars (never prefixed VITE_, never sent to the browser):
   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET, GITHUB_ORG,
   GITHUB_PROJECT_NUMBER, BLOB_READ_WRITE_TOKEN, GOOGLE_CALENDAR_ID, GOOGLE_SA_EMAIL,
-  GOOGLE_SA_PRIVATE_KEY, DISCORD_PUBLIC_KEY, DISCORD_USER_MAP, SHAME_DISPATCH_TOKEN.
+  GOOGLE_SA_PRIVATE_KEY, DISCORD_PUBLIC_KEY, DISCORD_USER_MAP, SHAME_DISPATCH_TOKEN,
+  ARTIFACTS_GITHUB_TOKEN.
   (GITHUB_SNAPSHOT_TOKEN and CRON_SECRET are reserved for an
   optional future scheduled snapshot job; don't require them.)
 - Server code must fail with a clear error naming any missing required env var, except:
-  missing GitHub App vars mean "auth unavailable" (preview deployments), and missing
-  Google calendar vars mean "calendar not connected". Neither is a crash.
+  missing GitHub App vars mean "auth unavailable" (preview deployments), missing
+  Google calendar vars mean "calendar not connected", and ARTIFACTS_GITHUB_TOKEN is optional
+  (it only lifts GitHub's anonymous rate limit). None is a crash.
 - Every endpoint returns JSON { error: { code, message } } on failure with a correct
   status code. Never return raw GitHub/Google error bodies or tokens to the client.
 - Local dev with the API: `npx vercel dev` (port 3000). `npm run dev` runs the frontend only.
@@ -437,7 +473,7 @@ Rules (both themes):
 ## Conventions
 - src/pages/* for routes, src/components/* for shared UI, src/lib/* for non-UI logic.
 - Keep Drive API code isolated in src/lib/drive so it can be swapped for a build-time
-  manifest later without touching pages.
+  manifest later without touching pages. Artifacts code lives in src/lib/artifacts.
 - Keep all GitHub API code server-side in /api/_lib/github and all Google Calendar code
   in /api/_lib/google. The browser only talks to /api (and the public Drive API).
 - Every data view handles loading (skeletons), error (friendly message + retry), and empty.

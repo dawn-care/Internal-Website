@@ -2,15 +2,11 @@ import Hero from '../components/home/Hero'
 import QuickLinks from '../components/home/QuickLinks'
 import RecentlyPublished from '../components/home/RecentlyPublished'
 import TeamStrip from '../components/home/TeamStrip'
-import { isSourceConfigured } from '../config/sources'
-import { usePublishedCategories } from '../lib/drive'
+import { useArtifacts } from '../lib/artifacts'
 import { ABOUT, CURRENT_STATE } from '../../CONTENT'
 import PageTitle from '../components/PageTitle'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-
-// Sources without a folder ID are hidden rather than shown as errors.
-const SHOW_PUBLISHED = isSourceConfigured('publishedArtifacts')
 
 /**
  * A signed-in visitor who *arrives* on / (typing the URL, a bookmark, a reload) goes to the
@@ -28,7 +24,7 @@ export default function Home() {
 }
 
 function HomeContent() {
-  const published = usePublishedCategories()
+  const artifacts = useArtifacts()
 
   return (
     <>
@@ -47,7 +43,7 @@ function HomeContent() {
           ))}
           {CURRENT_STATE && <p className="mt-4 max-w-prose text-ink-muted">{CURRENT_STATE}</p>}
         </section>
-        {SHOW_PUBLISHED && <RecentlyPublished categories={published} />}
+        <RecentlyPublished artifacts={artifacts} />
         <QuickLinks />
         <TeamStrip />
       </div>

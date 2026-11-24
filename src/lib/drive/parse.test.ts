@@ -3,11 +3,8 @@ import { MOCK_AGENDAS_FOLDER_ID } from '../../config/sources'
 import { mockListFolder } from './mock'
 import {
   classifyFeedFile,
-  compareOrderedNames,
   groupMeetings,
-  parseCategory,
   parseLocalDate,
-  parseOrderedName,
   toDateKey,
   type FeedMatcher,
 } from './parse'
@@ -166,74 +163,5 @@ describe('groupMeetings', () => {
     const newer = item('2026-09-29', 'agendas', '2026-09-28T00:00:00.000Z')
     expect(groupMeetings([newer, older], [])[0].agenda).toBe(newer)
     expect(groupMeetings([older, newer], [])[0].agenda).toBe(newer)
-  })
-})
-
-describe('parseCategory', () => {
-  it('strips the numeric prefix, slugifies, and keeps the order', () => {
-    expect(parseCategory({ id: 'f1', name: '02 Requirements' })).toEqual({
-      id: 'f1',
-      slug: 'requirements',
-      displayName: 'Requirements',
-      order: 2,
-      files: [],
-    })
-  })
-
-  it('handles multi-word names, punctuation, and extra spaces', () => {
-    const category = parseCategory({ id: 'f2', name: ' 10   Test & QA Reports ' })
-    expect(category.displayName).toBe('Test & QA Reports')
-    expect(category.slug).toBe('test-qa-reports')
-    expect(category.order).toBe(10)
-  })
-
-  it('sorts folders without a prefix last', () => {
-    const category = parseCategory({ id: 'f3', name: 'Misc' })
-    expect(category.displayName).toBe('Misc')
-    expect(category.order).toBe(Number.POSITIVE_INFINITY)
-  })
-
-  it('attaches the given files', () => {
-    const files = [file('Test Plan')]
-    expect(parseCategory({ id: 'f4', name: '04 Testing' }, files).files).toBe(files)
-  })
-})
-
-describe('parseOrderedName', () => {
-  it('splits off the "NN " prefix as the order', () => {
-    expect(parseOrderedName('02 Requirements')).toEqual({ order: 2, name: 'Requirements' })
-    expect(parseOrderedName(' 10   Final Report.pdf ')).toEqual({
-      order: 10,
-      name: 'Final Report.pdf',
-    })
-  })
-
-  it('gives unprefixed names order Infinity', () => {
-    expect(parseOrderedName('Misc')).toEqual({ order: Number.POSITIVE_INFINITY, name: 'Misc' })
-  })
-
-  it('needs whitespace after the number', () => {
-    expect(parseOrderedName('3D Models').order).toBe(Number.POSITIVE_INFINITY)
-  })
-})
-
-describe('compareOrderedNames', () => {
-  it('orders by prefix number (numerically), then name, with unprefixed names last', () => {
-    const names = [
-      'Zeta.pdf',
-      '10 Ten.pdf',
-      '02 Two.pdf',
-      'Alpha.pdf',
-      '01 One.pdf',
-      '02 Also Two.pdf',
-    ]
-    expect([...names].sort(compareOrderedNames)).toEqual([
-      '01 One.pdf',
-      '02 Also Two.pdf',
-      '02 Two.pdf',
-      '10 Ten.pdf',
-      'Alpha.pdf',
-      'Zeta.pdf',
-    ])
   })
 })

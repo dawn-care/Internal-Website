@@ -3,7 +3,7 @@ import Layout from './components/Layout'
 import { AuthProvider } from './lib/auth'
 import { ThemeProvider } from './lib/theme'
 import Agendas from './pages/Agendas'
-import ArtifactCategory from './pages/ArtifactCategory'
+import ArtifactDocument from './pages/ArtifactDocument'
 import Artifacts from './pages/Artifacts'
 import Dashboard from './pages/Dashboard'
 import Home from './pages/Home'
@@ -24,7 +24,7 @@ export default function App() {
             <Route path="/artifacts" element={<Artifacts />} />
             {/* 4Ups moved out of Artifacts; keep old links working. */}
             <Route path="/artifacts/4ups" element={<Navigate to="/agendas?show=4ups" replace />} />
-            <Route path="/artifacts/:category" element={<ArtifactCategory />} />
+            <Route path="/artifacts/*" element={<ArtifactDocument />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/meetings" element={<Meetings />} />
