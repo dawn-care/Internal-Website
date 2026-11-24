@@ -1,11 +1,21 @@
-import { REQUIRED_REVIEWERS } from '../../../src/config/process.js'
 import { isPastSla } from '../../../src/lib/businessTime.js'
-import { hasDemoVideo, targetsCorrectBase } from '../../../src/lib/prRules.js'
+import {
+  changesUi,
+  hasFocusAreaLabel,
+  hasPrMedia,
+  isOverSize,
+  isReleasePr,
+  prSize,
+  requiredApprovals,
+  targetsCorrectBase,
+  ticketFromBranch,
+} from '../../../src/lib/prRules.js'
 import { graphql } from './graphql.js'
 
 /*
- * Open pull requests for the Developer dashboard, from GitHub's search (type: ISSUE) scoped
- * to the org. PR bodies are read only to detect a demo video; they're never sent to the client.
+ * Pull requests for the Developer dashboard, from GitHub's search (type: ISSUE) scoped to the
+ * org, checked against the Development Methodology (src/config/process.ts, src/lib/prRules).
+ * PR bodies are read only to detect a photo or video; they're never sent to the client.
  */
 
 export type CiState = 'SUCCESS' | 'FAILURE' | 'PENDING'
@@ -37,12 +47,30 @@ export interface DashboardPr {
   reviews: PrReview[]
   /** Distinct reviewers: requested plus those who already reviewed (never the author). */
   reviewerCount: number
-  requiredReviewers: number
-  hasDemoVideo: boolean
+  /** Latest reviews that approve (never the author's). */
+  approvals: number
+  /** 1 for feature → canary, 2 for canary → main. */
+  requiredApprovals: number
+  /** canary → main. */
+  isRelease: boolean
   /** The head commit's combined checks; null when it has none. */
   ciState: CiState | null
   /** Feature → canary, canary → main. */
   targetsCorrectBase: boolean
+  /**
+   * The PR's ticket: the first issue it closes ("Closes #121"), else the issue number its
+   * branch starts with. `labels` is null when only the branch names it (labels unknown).
+   * Null for a feature PR with neither; release PRs have no ticket.
+   */
+  ticket: { number: number; linked: boolean; labels: string[] | null } | null
+  /** The ticket's labels are known and include no focus-area label. */
+  missingFocusLabel: boolean
+  /** Counted like the PR Size metric (no docs, tests, lockfiles or images). */
+  size: { lines: number; files: number; over: boolean }
+  /** It changes the UI (UI label on the ticket, or UI files), so it needs a photo or video. */
+  needsMedia: boolean
+  /** The description has a photo or video. */
+  hasMedia: boolean
 }
 
 export interface ReviewQueuePr extends DashboardPr {
@@ -53,8 +81,28 @@ export interface ReviewQueuePr extends DashboardPr {
 }
 
 export interface MyPr extends DashboardPr {
-  reviewsApproved: number
   changesRequested: number
+}
+
+/** A canary → main merge (release), open or merged. */
+export interface ReleasePr {
+  title: string
+  url: string
+  repo: string
+  number: number
+  isDraft: boolean
+  approvals: number
+  requiredApprovals: number
+  ciState: CiState | null
+  /** Null while open. */
+  mergedAt: string | null
+}
+
+export interface ReleaseStatus {
+  /** Open canary → main PRs in the org. */
+  open: ReleasePr[]
+  /** canary → main merges since the deadline started, newest first. */
+  merged: ReleasePr[]
 }
 
 // ─── Raw GraphQL shapes ──────────────────────────────────────────────────────
@@ -73,9 +121,16 @@ export interface RawPullRequest {
   number: number
   isDraft: boolean
   createdAt: string
+  mergedAt?: string | null
   baseRefName: string
   headRefName: string
   body: string | null
+  changedFiles?: number
+  files?: { nodes: ({ path: string; additions: number; deletions: number } | null)[] } | null
+  labels?: { nodes: ({ name: string } | null)[] } | null
+  closingIssuesReferences?: {
+    nodes: ({ number: number; labels: { nodes: ({ name: string } | null)[] } | null } | null)[]
+  } | null
   repository: { nameWithOwner: string }
   author: { login: string; avatarUrl?: string | null } | null
   reviewRequests: { nodes: ({ requestedReviewer: RawReviewer } | null)[] } | null
@@ -103,9 +158,16 @@ const PR_FIELDS = `
     number
     isDraft
     createdAt
+    mergedAt
     baseRefName
     headRefName
     body
+    changedFiles
+    files(first: 100) { nodes { path additions deletions } }
+    labels(first: 20) { nodes { name } }
+    closingIssuesReferences(first: 5) {
+      nodes { number labels(first: 20) { nodes { name } } }
+    }
     repository { nameWithOwner }
     author { login avatarUrl(size: 64) }
     reviewRequests(first: 20) {
@@ -209,6 +271,14 @@ export function normalizePr(raw: RawPullRequest): DashboardPr {
       .map((name) => name.toLowerCase()),
   )
   const rollup = raw.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state
+  const release = isReleasePr(raw.headRefName, raw.baseRefName)
+  const ticket = release ? null : ticketOf(raw)
+  // The PR's own labels count too, as in the PR metrics.
+  const labels = [...names(raw.labels?.nodes), ...(ticket?.labels ?? [])]
+  const files = (raw.files?.nodes ?? []).filter((f): f is NonNullable<typeof f> => !!f)
+  const counted = prSize(files)
+  // More files than GitHub listed: the PR is over the file limit whatever they are.
+  const unlisted = (raw.changedFiles ?? files.length) > files.length
   return {
     id: raw.id,
     title: raw.title,
@@ -224,11 +294,40 @@ export function normalizePr(raw: RawPullRequest): DashboardPr {
     requestedReviewers,
     reviews,
     reviewerCount: reviewers.size,
-    requiredReviewers: REQUIRED_REVIEWERS,
-    hasDemoVideo: hasDemoVideo(raw.body),
+    approvals: approvalsOf(reviews, author),
+    requiredApprovals: requiredApprovals(raw.headRefName, raw.baseRefName),
+    isRelease: release,
     ciState: ciStateOf(rollup),
     targetsCorrectBase: targetsCorrectBase(raw.headRefName, raw.baseRefName),
+    ticket,
+    missingFocusLabel: !!ticket && ticket.labels !== null && !hasFocusAreaLabel(labels),
+    size: { ...counted, over: unlisted || isOverSize(counted) },
+    needsMedia:
+      !release &&
+      changesUi(
+        labels,
+        files.map((f) => f.path),
+      ),
+    hasMedia: hasPrMedia(raw.body),
   }
+}
+
+function names(nodes: ({ name: string } | null)[] | undefined): string[] {
+  return (nodes ?? []).flatMap((n) => (n?.name ? [n.name] : []))
+}
+
+function approvalsOf(reviews: PrReview[], author: string | null): number {
+  return reviews.filter((r) => r.state === 'APPROVED' && (!author || !same(r.author, author)))
+    .length
+}
+
+function ticketOf(raw: RawPullRequest): DashboardPr['ticket'] {
+  const linked = (raw.closingIssuesReferences?.nodes ?? []).find((n) => n !== null)
+  if (linked) {
+    return { number: linked.number, linked: true, labels: names(linked.labels?.nodes) }
+  }
+  const fromBranch = ticketFromBranch(raw.headRefName)
+  return fromBranch === null ? null : { number: fromBranch, linked: false, labels: null }
 }
 
 /** When `login`'s review was last requested (by user, not via a team); else the PR's createdAt. */
@@ -255,8 +354,45 @@ export function toMyPr(raw: RawPullRequest): MyPr {
   const pr = normalizePr(raw)
   return {
     ...pr,
-    reviewsApproved: pr.reviews.filter((r) => r.state === 'APPROVED').length,
     changesRequested: pr.reviews.filter((r) => r.state === 'CHANGES_REQUESTED').length,
+  }
+}
+
+export function toReleasePr(raw: RawPullRequest): ReleasePr {
+  const pr = normalizePr(raw)
+  return {
+    title: pr.title,
+    url: pr.url,
+    repo: pr.repo,
+    number: pr.number,
+    isDraft: pr.isDraft,
+    approvals: pr.approvals,
+    requiredApprovals: pr.requiredApprovals,
+    ciState: pr.ciState,
+    mergedAt: raw.mergedAt ?? null,
+  }
+}
+
+/**
+ * The deadline's release: open canary → main PRs in the org, and those merged since
+ * `sinceKey` ("YYYY-MM-DD", the deadline's start). Development Methodology: "A merge from
+ * canary to main should be performed" by each deadline.
+ */
+export async function listReleaseStatus(
+  token: string,
+  org: string,
+  sinceKey: string,
+): Promise<ReleaseStatus> {
+  const scope = `is:pr archived:false head:canary base:main org:${org}`
+  const [open, merged] = await Promise.all([
+    searchPullRequests(token, `${scope} is:open`),
+    searchPullRequests(token, `${scope} is:merged merged:>=${sinceKey}`),
+  ])
+  return {
+    open: open.map(toReleasePr),
+    merged: merged
+      .map(toReleasePr)
+      .sort((a, b) => (b.mergedAt ?? '').localeCompare(a.mergedAt ?? '')),
   }
 }
 

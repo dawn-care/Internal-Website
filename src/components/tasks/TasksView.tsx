@@ -20,21 +20,17 @@ import NewTaskDialog from './NewTaskDialog'
 import PreviewBanner from './PreviewBanner'
 import { listNames, savedMessage } from './saveTask'
 import SignInPanel from './SignInPanel'
-import SprintView from './sprint/SprintView'
 import TaskFilters from './TaskFilters'
 import TeamTasks from './TeamTasks'
-import TodosView from '../todos/TodosView'
 
 const TABS = [
   { id: 'mine', label: 'My tasks' },
   { id: 'team', label: 'Team' },
-  { id: 'sprint', label: 'Sprint' },
-  { id: 'todos', label: 'To-dos' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
 
-/** The signed-in Tasks page: tabs, filters, and the unscheduled-items notice. */
+/** The signed-in Tasks page: tabs and filters. */
 export default function TasksView({ login }: { login: string }) {
   const { data, loading, error, refetch } = useTasks()
   const [params, setParams] = useSearchParams()
@@ -50,7 +46,7 @@ export default function TasksView({ login }: { login: string }) {
 
   // "n" opens New task, unless the user is typing or another dialog is open.
   useEffect(() => {
-    if (!ready || tab === 'todos') return
+    if (!ready) return
     function onKeyDown(e: globalThis.KeyboardEvent) {
       if (e.key !== 'n' || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
       if (isTypingTarget(e.target) || document.querySelector('dialog[open]')) return
@@ -60,31 +56,6 @@ export default function TasksView({ login }: { login: string }) {
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [ready, tab])
-
-  // To-dos don't come from GitHub: the tab works even while tasks load or fail.
-  if (tab === 'todos') {
-    return (
-      <div className="space-y-8">
-        <PreviewBanner />
-        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 border-b border-border">
-          <Tabs selected={tab} onSelect={selectTab} />
-        </div>
-        <div
-          id="panel-todos"
-          role="tabpanel"
-          aria-labelledby="tab-todos"
-          tabIndex={0}
-          className="focus-visible:outline-offset-8"
-        >
-          <TodosView
-            login={login}
-            team={data?.team ?? []}
-            autoFocusAdd={params.get('add') === '1'}
-          />
-        </div>
-      </div>
-    )
-  }
 
   if (loading) return <TasksSkeleton />
   if (error) {
@@ -97,10 +68,8 @@ export default function TasksView({ login }: { login: string }) {
   if (!data) return null
 
   const { tasks, meta, team } = data
-  const filtered = applyFilters(tasks, filters, meta)
-  // Inside one sprint, every row would repeat its name.
-  const showIteration = !(filters.currentSprintOnly && meta.currentIterationId)
-  // Filters (including the default "current sprint only") hid every one of the user's tasks.
+  const filtered = applyFilters(tasks, filters)
+  // Filters hid every one of the user's tasks.
   const hasAnyOfMine = selectMine(tasks, login).length > 0
 
   function onCreated(task: Task | null, failedFields: string[]) {
@@ -112,10 +81,10 @@ export default function TasksView({ login }: { login: string }) {
       )
       return
     }
-    // A new task can land outside the current view (e.g. no sprint, "current sprint only").
+    // A new task can land outside the current view (e.g. a Status filter).
     const visible =
       !task ||
-      (applyFilters([task], filters, meta).length > 0 &&
+      (applyFilters([task], filters).length > 0 &&
         (tab !== 'mine' || selectMine([task], login).length > 0))
     showToast(
       'success',
@@ -127,10 +96,6 @@ export default function TasksView({ login }: { login: string }) {
     <div className="space-y-8">
       <PreviewBanner />
       {/* <HiddenItemsNotice count={hiddenCount} /> */}
-      {/* <UnscheduledNotice
-        tasks={selectSprintBacklogWithoutIteration(tasks)}
-        projectUrl={meta.projectUrl}
-      /> */}
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 border-b border-border">
         <Tabs selected={tab} onSelect={selectTab} />
         <button
@@ -168,32 +133,27 @@ export default function TasksView({ login }: { login: string }) {
         tabIndex={0}
         className="space-y-8 focus-visible:outline-offset-8"
       >
-        {tab !== 'sprint' && (
-          <TaskFilters
-            filters={filters}
-            onChange={setFilters}
-            meta={meta}
-            showDoneToggle={tab === 'mine'}
-          />
-        )}
+        <TaskFilters
+          filters={filters}
+          onChange={setFilters}
+          meta={meta}
+          showDoneToggle={tab === 'mine'}
+        />
         {tab === 'mine' && (
           <MyTasks
             tasks={selectMine(filtered, login)}
             meta={meta}
             team={team}
             filtered={hasAnyOfMine}
-            showIteration={showIteration}
           />
         )}
         {tab === 'team' && (
           <TeamTasks
-            tasks={applyFilters(tasks, { ...filters, showDone: false }, meta).filter(isOpen)}
+            tasks={applyFilters(tasks, { ...filters, showDone: false }).filter(isOpen)}
             team={team}
             meta={meta}
-            showIteration={showIteration}
           />
         )}
-        {tab === 'sprint' && <SprintView meta={meta} tasks={tasks} />}
       </div>
     </div>
   )

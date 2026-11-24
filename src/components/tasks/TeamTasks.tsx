@@ -16,11 +16,10 @@ interface TeamTasksProps {
   tasks: Task[]
   team: TeamMember[]
   meta: TaskMeta
-  showIteration: boolean
 }
 
 /** One section per member: their open tasks (Blocked first) and open estimated hours. */
-export default function TeamTasks({ tasks, team, meta, showIteration }: TeamTasksProps) {
+export default function TeamTasks({ tasks, team, meta }: TeamTasksProps) {
   const groups = groupByAssignee(tasks, team)
   return (
     <div className="space-y-10">
@@ -30,7 +29,6 @@ export default function TeamTasks({ tasks, team, meta, showIteration }: TeamTask
           group={group}
           meta={meta}
           team={team}
-          showIteration={showIteration}
         />
       ))}
     </div>
@@ -41,17 +39,18 @@ function MemberSection({
   group,
   meta,
   team,
-  showIteration,
 }: {
   group: AssigneeGroup
   meta: TaskMeta
   team: TeamMember[]
-  showIteration: boolean
 }) {
   const headingId = useId()
   const { member, tasks } = group
   const totals = sumTotals(tasks)
-  const summary = [`${tasks.length} open`, `${totals.estimateHours}h estimated`].filter(Boolean)
+  const summary = [
+    `${tasks.length} open`,
+    meta.hasEstimate && `${totals.estimateHours}h estimated`,
+  ].filter(Boolean)
 
   return (
     <section aria-labelledby={headingId}>
@@ -78,13 +77,7 @@ function MemberSection({
       ) : (
         <ul className="mt-4 space-y-3">
           {tasks.map((task) => (
-            <TaskRow
-              key={task.itemId}
-              task={task}
-              meta={meta}
-              team={team}
-              showIteration={showIteration}
-            />
+            <TaskRow key={task.itemId} task={task} meta={meta} team={team} />
           ))}
         </ul>
       )}

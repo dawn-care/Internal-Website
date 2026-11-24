@@ -1,5 +1,5 @@
 import { parseLocalDate, toDateKey } from '../drive/parse'
-import type { Task, TaskMeta, TeamMember } from './types'
+import type { Task, TeamMember } from './types'
 
 /*
  * Pure task selectors. Dates are compared as "YYYY-MM-DD" keys in local time, so a GitHub
@@ -42,10 +42,6 @@ export const selectDueSoon = (tasks: Task[], today = new Date()) =>
 
 export const selectBlocked = (tasks: Task[]) => tasks.filter(isBlocked)
 
-/** In "Sprint Backlog" with no iteration set: invisible to the burndown. */
-export const selectSprintBacklogWithoutIteration = (tasks: Task[]) =>
-  tasks.filter((t) => t.statusKey === 'sprintBacklog' && !t.iteration)
-
 export function isAssignedTo(task: Task, login: string): boolean {
   const lower = login.toLowerCase()
   return task.assignees.some((a) => a.login.toLowerCase() === lower)
@@ -53,12 +49,6 @@ export function isAssignedTo(task: Task, login: string): boolean {
 
 export const selectMine = (tasks: Task[], login: string) =>
   tasks.filter((t) => isAssignedTo(t, login))
-
-/** Tasks in the current iteration; none when no sprint is running. */
-export function selectCurrentIteration(tasks: Task[], meta: Pick<TaskMeta, 'currentIterationId'>) {
-  const id = meta.currentIterationId
-  return id ? tasks.filter((t) => t.iteration?.id === id) : []
-}
 
 /** P0 before P1 before P2; no priority last. */
 export function comparePriority(a: Task, b: Task): number {
@@ -165,7 +155,6 @@ export interface TaskFilters {
   type: string
   status: string
   priority: string
-  currentSprintOnly: boolean
   showDone: boolean
 }
 
@@ -173,26 +162,19 @@ export const DEFAULT_FILTERS: TaskFilters = {
   type: '',
   status: '',
   priority: '',
-  currentSprintOnly: true,
   showDone: false,
 }
 
 /**
- * Applies the Tasks page filters. "Current sprint only" is ignored when no sprint is running.
- * Done tasks are hidden unless "Show Done" is on or the Status filter asks for them.
+ * Applies the Tasks page filters. Done tasks are hidden unless "Show Done" is on or the
+ * Status filter asks for them.
  */
-export function applyFilters(
-  tasks: Task[],
-  filters: TaskFilters,
-  meta: Pick<TaskMeta, 'currentIterationId'>,
-): Task[] {
-  const sprintId = filters.currentSprintOnly ? meta.currentIterationId : null
+export function applyFilters(tasks: Task[], filters: TaskFilters): Task[] {
   return tasks.filter(
     (t) =>
       (!filters.type || t.type === filters.type) &&
       (!filters.status || t.status === filters.status) &&
       (!filters.priority || t.priority === filters.priority) &&
-      (!sprintId || t.iteration?.id === sprintId) &&
       (filters.showDone || filters.status !== '' || isOpen(t)),
   )
 }

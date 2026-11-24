@@ -1,15 +1,16 @@
 # D.A.W.N. Team Site
 
 Internal hub for the RIT SWEN 561/562 team building D.A.W.N. (Daily Awareness & Well-being
-Navigator): meeting agendas and 4Ups, published project artifacts, and (for the team) tasks and
-the sprint burndown.
+Navigator): meeting agendas and 4Ups, published project artifacts, and (for the team) tasks, a
+developer dashboard built around the team's deadlines, and PR metrics.
 
 - **Agendas** are read from Google Drive in the browser (API key, read-only).
 - **Artifacts** are the Markdown files in the public `dawn-care/Artifacts` repo, read and cached
   by `/api/artifacts` so anyone can view them on the site.
 - **Tasks** live in the team's GitHub Project and are read/written through `/api` with each
   person's own GitHub sign-in.
-- **Burndown history** is a small daily-totals file per sprint in a private Vercel Blob store.
+- **Deadlines** (the team's iterations) are one list in `src/config/deadlines.ts`; there are no
+  sprints or burndown charts. The site stores nothing of its own.
 
 See `CLAUDE.md` for the full design and conventions.
 
@@ -36,7 +37,7 @@ the sample tasks with a fake signed-in user (never active in production builds).
 
 ## Phase 2 setup
 
-Phase 2 adds GitHub sign-in, tasks, and the burndown. Everything secret stays server-side in the
+Phase 2 adds GitHub sign-in, tasks, and the dashboard. Everything secret stays server-side in the
 `/api` functions.
 
 ### 1. Create the GitHub OAuth Apps
@@ -71,14 +72,7 @@ Until then, sign-in works but tasks fail with "the organization hasn't approved 
 this for both apps. Only **active** org members can sign in; pending invitees see a message
 asking them to accept the invitation first.
 
-### 3. Create the private Blob store
-
-In the Vercel project: **Storage → Create → Blob**, choose **Private** access, and connect it
-to the Production and Development environments. That adds `BLOB_READ_WRITE_TOKEN`. The store
-holds only daily totals per sprint (`burndown/<iterationId>.estimateHours.json`), never task
-titles or assignees, and the server never sends blob URLs to the browser.
-
-### 4. Set the environment variables
+### 3. Set the environment variables
 
 Set these in **Vercel → Project → Settings → Environment Variables**. Server variables are
 never prefixed `VITE_` and never reach the browser.
@@ -90,7 +84,6 @@ never prefixed `VITE_` and never reach the browser.
 | `SESSION_SECRET`         | random ≥ 32 chars | unset   | a different one | Encrypts the session cookie. `openssl rand -base64 48`      |
 | `GITHUB_ORG`             | org login         | unset   | org login       | e.g. `dawn-team`; sign-in requires active membership.       |
 | `GITHUB_PROJECT_NUMBER`  | number            | unset   | number          | From the project URL: `/orgs/<org>/projects/<number>`.      |
-| `BLOB_READ_WRITE_TOKEN`  | from Blob store   | unset   | from Blob store | Added by connecting the store.                              |
 | `VITE_GOOGLE_API_KEY`    | key               | key     | key             | Browser key; restrict it to the Drive API and your domains. |
 | `VITE_AGENDAS_FOLDER_ID` | folder id         | same    | same            | Missing = hide agendas/4Ups.                                |
 | `ARTIFACTS_GITHUB_TOKEN` | token (optional)  | same    | same            | Lifts GitHub's anonymous rate limit (see below).            |
@@ -107,7 +100,7 @@ If sign-in is partly configured (e.g. a client ID without `SESSION_SECRET`), the
 an error naming exactly what's missing. On production, missing OAuth vars are an error rather
 than "preview mode", so the real site can never show sample data.
 
-### 5. Run it locally with the API
+### 4. Run it locally with the API
 
 ```sh
 npx vercel link            # once: connect this folder to the Vercel project
@@ -129,11 +122,12 @@ each change and enforces their permissions. Edits made on the GitHub board show 
 - **New task** creates a real issue in the repository linked to the project, adds it to the
   project, then sets its fields. Draft issues can still be made on the board; the site can edit
   their title and notes.
-- **Sprints** are the project's **Iteration** field, and nothing else. The current sprint is
-  the iteration whose dates include today (America/New_York).
-- **The burndown** is measured in **Estimate** hours. There's no scheduled job: whenever a
-  signed-in teammate opens the Sprint tab for the current sprint, today's totals are recorded.
-  Days nobody opens it are gaps.
+- **Deadlines, not sprints.** Iterations are the deadlines in `src/config/deadlines.ts` (add one
+  entry per new deadline); the board's Iteration field isn't used. A deadline is done when
+  Active Backlog, In progress and In review are empty and canary is merged into main: the
+  dashboard's Deadline card tracks exactly that.
+- New tasks start in **Product Backlog**; move them to Active Backlog when the next deadline
+  needs them.
 - Issues your token can't read are skipped and counted, never shown redacted.
 
 ### Don't rename project fields
@@ -142,15 +136,17 @@ The site finds fields and options **by name** at runtime:
 
 | Field                 | Type          | Options / notes                                                        |
 | --------------------- | ------------- | ---------------------------------------------------------------------- |
-| `Status`              | single select | Product Backlog, Sprint Backlog, In progress, In review, Done, Blocked |
-| `Iteration`           | iteration     | Sprint membership                                                      |
-| `Estimate`            | number        | Hours; the burndown's unit                                             |
+| `Status`              | single select | Product Backlog, Active Backlog, In progress, In review, Done, Blocked |
+| `Estimate`            | number        | Hours (optional, display only)                                         |
 | `Estimated done date` | date          | Shown as "Done by"; drives overdue                                     |
 | `Priority`            | single select | P0, P1, P2 (optional)                                                  |
 | `Size`                | single select | XS, S, M, L, XL (optional, display only)                               |
 | `Type`                | single select | Dev, Docs, Admin (optional)                                            |
 
-Renaming a required field (Status, Iteration, Estimate, Estimated done date) breaks `/tasks`
+Status options are matched by how their name **starts**, so "Active Backlog (DEADLINE 12-16-26)"
+is fine. When the column name has a date, the dashboard warns if it differs from
+`src/config/deadlines.ts`, so update that file whenever the column's deadline changes. Renaming a required field (Status, Estimated
+done date) breaks `/tasks`
 with an error naming the missing field; renaming an optional one silently hides it. If a rename
 is really needed, change the name in `api/_lib/config.ts` in the same step. Adding new
 options (e.g. another Status) is fine: unknown statuses count as "open".
@@ -282,9 +278,6 @@ re-approves the app on their next sign-in. A single person can revoke their own 
 **GitHub → Settings → Applications → Authorized OAuth Apps**; signing out on the site does
 this too.
 
-**`BLOB_READ_WRITE_TOKEN`**: in **Vercel → Storage → the Blob store**, rotate the token (or
-disconnect and reconnect the store), then redeploy. The burndown history is kept.
-
 **`VITE_GOOGLE_API_KEY`**: this key is public by design (it ships in the browser bundle), so
 its protection is its restrictions: Drive API only, HTTP referrers limited to the site's
 domains. To rotate, create a new key in Google Cloud with the same restrictions, update Vercel,
@@ -295,4 +288,4 @@ Vercel and in DAWN's `TOOLS_DISPATCH_TOKEN` secret, redeploy, then delete the ol
 token isn't stored anywhere (only used to register the command); reset it in the Developer
 Portal if it leaked. The public key isn't secret.
 
-After any rotation, check the deployment: sign in, open `/tasks`, and open the Sprint tab.
+After any rotation, check the deployment: sign in, open `/tasks`, and open `/dashboard`.

@@ -15,7 +15,6 @@ const SELECT = 'rounded-full border border-border bg-surface py-1.5 pr-8 pl-3.5 
 export default function TaskFilters({ filters, onChange, meta, showDoneToggle }: TaskFiltersProps) {
   const set = <K extends keyof Filters>(key: K, value: Filters[K]) =>
     onChange({ ...filters, [key]: value })
-  const noSprint = meta.currentIterationId === null
   const isDefault = (Object.keys(DEFAULT_FILTERS) as (keyof Filters)[]).every(
     (k) => filters[k] === DEFAULT_FILTERS[k],
   )
@@ -52,13 +51,6 @@ export default function TaskFilters({ filters, onChange, meta, showDoneToggle }:
           onChange={(v) => set('priority', v)}
         />
       )}
-      <Checkbox
-        label="Current sprint only"
-        checked={filters.currentSprintOnly && !noSprint}
-        disabled={noSprint}
-        hint={noSprint ? 'No sprint is running right now' : undefined}
-        onChange={(v) => set('currentSprintOnly', v)}
-      />
       {showDoneToggle && (
         <Checkbox
           label="Show Done"

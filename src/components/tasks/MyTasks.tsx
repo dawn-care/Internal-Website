@@ -10,11 +10,10 @@ interface MyTasksProps {
   team: TeamMember[]
   /** Filters narrowed the list (for a more helpful empty message). */
   filtered: boolean
-  showIteration: boolean
 }
 
 /** The signed-in user's tasks: Overdue / Due this week / Later / No date, then Done. */
-export default function MyTasks({ tasks, meta, team, filtered, showIteration }: MyTasksProps) {
+export default function MyTasks({ tasks, meta, team, filtered }: MyTasksProps) {
   if (tasks.length === 0) {
     return (
       <EmptyState>
@@ -26,7 +25,7 @@ export default function MyTasks({ tasks, meta, team, filtered, showIteration }: 
   }
 
   const groups = groupByDue(tasks)
-  const rowProps = { meta, team, showIteration }
+  const rowProps = { meta, team }
   return (
     <div className="space-y-10">
       <Group title="Overdue" tasks={groups.overdue} icon={CircleAlert} accent {...rowProps} />
@@ -62,7 +61,6 @@ function Group({
   accent?: boolean
   meta: TaskMeta
   team: TeamMember[]
-  showIteration: boolean
 }) {
   const headingId = useId()
   if (tasks.length === 0) return null

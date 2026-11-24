@@ -48,16 +48,16 @@ export function formatDateKey(key: string): string {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
-/** "Ends Mon, Oct 12 · 4 business days left" (or "Ends today"). */
-export function sprintEndLabel(endDate: string, daysLeft: number, now = new Date()): string {
+/** "Due Mon, Oct 12 · 4 business days left" (or "Due today"). */
+export function deadlineDueLabel(endDate: string, daysLeft: number, now = new Date()): string {
   const today = zonedDateKey(now)
-  if (endDate === today) return 'Ends today'
+  if (endDate === today) return 'Due today'
   const left = daysLeft === 0 ? 'no business days left' : `${plural(daysLeft, 'business day')} left`
-  return `Ends ${formatDateKey(endDate)} · ${left}`
+  return `Due ${formatDateKey(endDate)} · ${left}`
 }
 
-/** How far into the sprint today is: day number (1-based) and the elapsed fraction. */
-export function sprintProgress(
+/** How far into the deadline today is: day number (1-based) and the elapsed fraction. */
+export function deadlineProgress(
   startDate: string,
   endDate: string,
   now = new Date(),

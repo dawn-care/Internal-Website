@@ -2,7 +2,6 @@ import { MOCK_USER } from '../auth/mock'
 import { toDateKey } from '../drive/parse'
 import type {
   Assignee,
-  IterationOption,
   StatusKey,
   StatusOption,
   Task,
@@ -13,9 +12,8 @@ import type {
 
 /*
  * Fake /api/tasks data for VITE_TASKS_MOCK=true. Dates are relative to today, so there's
- * always a running sprint, an overdue task, and something due soon. Covers: drafts, issues
- * and a PR; a Blocked item; an item with no Estimate; a "Sprint Backlog" item with no
- * iteration; and items across two iterations.
+ * always an overdue task and something due soon. Covers: drafts, issues and a PR; every board
+ * column; a Blocked item; and an item with no Estimate.
  */
 
 const PROJECT_URL = 'https://github.com/orgs/dawn-team/projects/1'
@@ -28,7 +26,8 @@ function dayKey(today: Date, offset: number): string {
 /** Name, key, and the color each option has on the real board. */
 const STATUSES: [string, StatusKey, string][] = [
   ['Product Backlog', 'productBacklog', 'GREEN'],
-  ['Sprint Backlog', 'sprintBacklog', 'BLUE'],
+  // The real board puts the deadline in the column name.
+  ['Active Backlog (DEADLINE 12-16-26)', 'activeBacklog', 'BLUE'],
   ['In progress', 'inProgress', 'YELLOW'],
   ['In review', 'inReview', 'PURPLE'],
   ['Done', 'done', 'ORANGE'],
@@ -53,23 +52,10 @@ const person = (login: string): Assignee => ({
 const ME = MOCK_USER.login
 
 export function createMockTasks(today = new Date()): TasksResponse {
-  // Two-week sprints; the current one started 4 days ago.
-  const iterations: IterationOption[] = [
-    { id: 'IT_3', title: 'Sprint 3', startDate: dayKey(today, -18), duration: 14, completed: true },
-    { id: 'IT_4', title: 'Sprint 4', startDate: dayKey(today, -4), duration: 14, completed: false },
-    { id: 'IT_5', title: 'Sprint 5', startDate: dayKey(today, 10), duration: 14, completed: false },
-  ]
-  const [previous, current, next] = iterations.map(({ id, title, startDate, duration }) => ({
-    id,
-    title,
-    startDate,
-    duration,
-  }))
-
   let n = 0
   const task = (fields: Partial<Task> & Pick<Task, 'title'> & { key?: StatusKey }): Task => {
     n += 1
-    const { key = 'sprintBacklog', ...rest } = fields
+    const { key = 'activeBacklog', ...rest } = fields
     const kind = rest.kind ?? 'draft'
     const number = 40 + n
     return {
@@ -92,7 +78,7 @@ export function createMockTasks(today = new Date()): TasksResponse {
   }
 
   const tasks: Task[] = [
-    // Mine, current sprint
+    // Mine
     task({
       title: 'Wire the morning greeting to the caregiver schedule',
       kind: 'issue',
@@ -107,7 +93,6 @@ export function createMockTasks(today = new Date()): TasksResponse {
       size: 'M',
       estimateHours: 6,
       doneBy: dayKey(today, -2),
-      iteration: current,
     }),
     task({
       title: 'Large-print weather card: contrast pass',
@@ -123,7 +108,6 @@ export function createMockTasks(today = new Date()): TasksResponse {
       size: 'S',
       estimateHours: 4,
       doneBy: dayKey(today, 1),
-      iteration: current,
     }),
     task({
       title: 'Draft usability test script for St. Ann’s visit',
@@ -134,26 +118,23 @@ export function createMockTasks(today = new Date()): TasksResponse {
       size: 'S',
       estimateHours: 3,
       doneBy: dayKey(today, 3),
-      iteration: current,
     }),
     task({
-      title: 'Update the sprint 4 retrospective notes',
-      key: 'sprintBacklog',
+      title: 'Update the Deadline 2 retrospective notes',
+      key: 'activeBacklog',
       assignees: [person(ME)],
       type: 'Admin',
       priority: 'P2',
       size: 'XS',
       estimateHours: 1,
       doneBy: dayKey(today, 9),
-      iteration: current,
     }),
     task({
       title: 'Research tablet kiosk mode options',
-      key: 'sprintBacklog',
+      key: 'activeBacklog',
       assignees: [person(ME)],
       type: 'Dev',
       size: 'M',
-      iteration: current,
     }),
     task({
       title: 'Add “today is” date banner',
@@ -166,9 +147,8 @@ export function createMockTasks(today = new Date()): TasksResponse {
       size: 'S',
       estimateHours: 2,
       doneBy: dayKey(today, -1),
-      iteration: current,
     }),
-    // Teammates, current sprint
+    // Teammates
     task({
       title: 'Caregiver photo upload: resize on device',
       kind: 'issue',
@@ -179,7 +159,6 @@ export function createMockTasks(today = new Date()): TasksResponse {
       size: 'L',
       estimateHours: 10,
       doneBy: dayKey(today, 2),
-      iteration: current,
     }),
     task({
       title: 'Offline cache for the daily schedule',
@@ -191,18 +170,16 @@ export function createMockTasks(today = new Date()): TasksResponse {
       size: 'M',
       estimateHours: 8,
       doneBy: dayKey(today, 5),
-      iteration: current,
     }),
     task({
       title: 'Write the accessibility section of the design doc',
-      key: 'sprintBacklog',
+      key: 'activeBacklog',
       assignees: [person('priya-n')],
       type: 'Docs',
       priority: 'P2',
       size: 'S',
       estimateHours: 4,
       doneBy: dayKey(today, 8),
-      iteration: current,
     }),
     task({
       title: 'Schedule the sponsor demo',
@@ -213,26 +190,24 @@ export function createMockTasks(today = new Date()): TasksResponse {
       size: 'XS',
       estimateHours: 1,
       doneBy: dayKey(today, -3),
-      iteration: current,
     }),
     task({
       title: 'Spike: text-to-speech voices on the beta tablets',
-      key: 'sprintBacklog',
+      key: 'activeBacklog',
       type: 'Dev',
       size: 'S',
       doneBy: dayKey(today, 6),
-      iteration: current,
     }),
-    // In "Sprint Backlog" but no iteration: won't count toward the burndown.
+    // Waiting in Active Backlog for someone to pick it up.
     task({
       title: 'Night-mode color tokens',
-      key: 'sprintBacklog',
+      key: 'activeBacklog',
       assignees: [person('river-b')],
       type: 'Dev',
       priority: 'P2',
       size: 'S',
     }),
-    // Previous sprint
+    // Finished earlier
     task({
       title: 'Set up CI for the tablet app',
       kind: 'issue',
@@ -243,7 +218,6 @@ export function createMockTasks(today = new Date()): TasksResponse {
       size: 'M',
       estimateHours: 6,
       doneBy: dayKey(today, -8),
-      iteration: previous,
     }),
     task({
       title: 'Requirements review with the coach',
@@ -253,9 +227,8 @@ export function createMockTasks(today = new Date()): TasksResponse {
       priority: 'P1',
       size: 'S',
       doneBy: dayKey(today, -10),
-      iteration: previous,
     }),
-    // Next sprint and backlog
+    // Later: Product Backlog
     task({
       title: 'Family message inbox',
       kind: 'issue',
@@ -265,7 +238,6 @@ export function createMockTasks(today = new Date()): TasksResponse {
       priority: 'P1',
       size: 'L',
       doneBy: dayKey(today, 20),
-      iteration: next,
     }),
     task({
       title: 'Explore medication reminders',
@@ -284,13 +256,11 @@ export function createMockTasks(today = new Date()): TasksResponse {
   const meta: TaskMeta = {
     projectUrl: PROJECT_URL,
     issueRepository: REPO,
-    burndownUnit: 'estimateHours',
+    hasEstimate: true,
     statuses,
     priorities: options(['P0', 'P1', 'P2'], 'PR'),
     sizes: options(['XS', 'S', 'M', 'L', 'XL'], 'SZ'),
     types: options(['Dev', 'Docs', 'Admin'], 'T'),
-    iterations,
-    currentIterationId: current.id,
   }
   return { tasks, hiddenCount: 0, meta, team: TEAM }
 }

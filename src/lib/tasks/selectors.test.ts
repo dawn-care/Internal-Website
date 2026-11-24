@@ -11,11 +11,9 @@ import {
   isDueSoon,
   isOverdue,
   selectBlocked,
-  selectCurrentIteration,
   selectDueSoon,
   selectMine,
   selectOverdue,
-  selectSprintBacklogWithoutIteration,
   sumTotals,
 } from './selectors'
 import type { StatusKey, Task } from './types'
@@ -114,27 +112,6 @@ describe('list selectors', () => {
     const mine = task({ assignees: [{ login: 'Ada', avatarUrl: '' }] })
     expect(ids(selectMine([mine, overdue], 'ada'))).toEqual([mine.itemId])
   })
-
-  it('selectCurrentIteration uses the current iteration id, and is empty with no sprint', () => {
-    const current = { id: 'IT_2', title: 'Sprint 2', startDate: '2026-09-22', duration: 14 }
-    const previous = { id: 'IT_1', title: 'Sprint 1', startDate: '2026-09-08', duration: 14 }
-    const a = task({ iteration: current })
-    const b = task({ iteration: previous })
-    expect(ids(selectCurrentIteration([a, b, task()], { currentIterationId: 'IT_2' }))).toEqual([
-      a.itemId,
-    ])
-    expect(selectCurrentIteration([a, b], { currentIterationId: null })).toEqual([])
-  })
-
-  it('selectSprintBacklogWithoutIteration', () => {
-    const iteration = { id: 'IT', title: 'S', startDate: '2026-09-22', duration: 14 }
-    const loose = task({ key: 'sprintBacklog' })
-    const planned = task({ key: 'sprintBacklog', iteration })
-    const backlog = task({ key: 'productBacklog' })
-    expect(ids(selectSprintBacklogWithoutIteration([loose, planned, backlog]))).toEqual([
-      loose.itemId,
-    ])
-  })
 })
 
 describe('compareByDoneBy', () => {
@@ -217,32 +194,28 @@ describe('sumTotals', () => {
 })
 
 describe('applyFilters', () => {
-  const current = { id: 'NOW', title: 'Now', startDate: '2026-09-22', duration: 14 }
-  const meta = { currentIterationId: 'NOW' }
-  const inSprint = task({ type: 'Dev', priority: 'P0', iteration: current })
-  const docs = task({ type: 'Docs', iteration: current })
-  const backlog = task({ type: 'Dev' })
-  const done = task({ key: 'done', type: 'Dev', iteration: current })
-  const all = [inSprint, docs, backlog, done]
+  const dev = task({ type: 'Dev', priority: 'P0' })
+  const docs = task({ type: 'Docs' })
+  const backlog = task({ type: 'Dev', key: 'productBacklog', status: 'Product Backlog' })
+  const done = task({ key: 'done', type: 'Dev' })
+  const all = [dev, docs, backlog, done]
 
-  it('defaults to open tasks in the current sprint', () => {
-    expect(ids(applyFilters(all, DEFAULT_FILTERS, meta))).toEqual([inSprint.itemId, docs.itemId])
-  })
-
-  it('ignores "current sprint only" when no sprint is running', () => {
-    expect(applyFilters(all, DEFAULT_FILTERS, { currentIterationId: null })).toHaveLength(3)
+  it('defaults to every open task', () => {
+    expect(ids(applyFilters(all, DEFAULT_FILTERS))).toEqual([
+      dev.itemId,
+      docs.itemId,
+      backlog.itemId,
+    ])
   })
 
   it('filters by type and priority, and shows Done on request', () => {
-    const f = { ...DEFAULT_FILTERS, type: 'Dev', showDone: true, currentSprintOnly: false }
-    expect(ids(applyFilters(all, f, meta))).toEqual([inSprint.itemId, backlog.itemId, done.itemId])
-    expect(ids(applyFilters(all, { ...f, priority: 'P0' }, meta))).toEqual([inSprint.itemId])
+    const f = { ...DEFAULT_FILTERS, type: 'Dev', showDone: true }
+    expect(ids(applyFilters(all, f))).toEqual([dev.itemId, backlog.itemId, done.itemId])
+    expect(ids(applyFilters(all, { ...f, priority: 'P0' }))).toEqual([dev.itemId])
   })
 
   it('shows Done tasks when the Status filter asks for them', () => {
-    expect(ids(applyFilters(all, { ...DEFAULT_FILTERS, status: 'done' }, meta))).toEqual([
-      done.itemId,
-    ])
+    expect(ids(applyFilters(all, { ...DEFAULT_FILTERS, status: 'done' }))).toEqual([done.itemId])
   })
 })
 
@@ -265,21 +238,21 @@ describe('mock data', () => {
     expect(selectOverdue(tasks, TODAY).length).toBeGreaterThan(0)
     expect(selectBlocked(tasks).length).toBeGreaterThan(0)
     expect(tasks.some((t) => t.estimateHours === undefined)).toBe(true)
-    expect(selectSprintBacklogWithoutIteration(tasks).length).toBeGreaterThan(0)
-    expect(
-      new Set(tasks.flatMap((t) => (t.iteration ? [t.iteration.id] : []))).size,
-    ).toBeGreaterThanOrEqual(2)
+    // Every board column a deadline cares about.
+    for (const key of ['activeBacklog', 'inProgress', 'inReview', 'blocked', 'productBacklog']) {
+      expect(tasks.some((t) => t.statusKey === key)).toBe(true)
+    }
   })
 
-  it('uses the real Status options and has a running sprint', () => {
-    expect(meta.statuses.map((s) => s.name)).toEqual([
-      'Product Backlog',
-      'Sprint Backlog',
-      'In progress',
-      'In review',
-      'Done',
-      'Blocked',
+  it('uses the real Status options, with the deadline in the Active Backlog name', () => {
+    expect(meta.statuses.map((s) => [s.name, s.key])).toEqual([
+      ['Product Backlog', 'productBacklog'],
+      ['Active Backlog (DEADLINE 12-16-26)', 'activeBacklog'],
+      ['In progress', 'inProgress'],
+      ['In review', 'inReview'],
+      ['Done', 'done'],
+      ['Blocked', 'blocked'],
     ])
-    expect(selectCurrentIteration(tasks, meta).length).toBeGreaterThan(0)
+    expect(meta.hasEstimate).toBe(true)
   })
 })

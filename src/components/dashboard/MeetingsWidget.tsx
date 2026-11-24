@@ -1,9 +1,10 @@
-import { ArrowRight, CalendarDays } from 'lucide-react'
+import { ArrowRight, CalendarDays, FilePen } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { CALENDAR_URL } from '../../config/meetings'
 import {
   isHappeningNow,
   meetingDayLabel,
+  meetingPrep,
   meetingTimeRange,
   type DashboardQuery,
   type MeetingsWidget as MeetingsData,
@@ -73,12 +74,26 @@ function MeetingList({ data, now }: { data: MeetingsData; now: Date }) {
   if (meetings.length === 0) {
     return <EmptyState>Nothing on the team calendar for the next two weeks.</EmptyState>
   }
+  const prep = meetingPrep(meetings, now)
   return (
-    <ul className="space-y-2">
-      {meetings.map((meeting, i) => (
-        <MeetingRow key={meeting.id} meeting={meeting} next={i === 0} now={now} />
-      ))}
-    </ul>
+    <>
+      {prep && (
+        <p className="mb-3 flex items-start gap-2 rounded-xl bg-page p-3 text-sm ring-1 ring-accent/60">
+          <FilePen aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-link" />
+          <span>
+            <span className="font-semibold">
+              {meetingDayLabel(prep.meeting, now)}&apos;s {prep.meeting.title}
+            </span>{' '}
+            still needs its {prep.missing.join(' and ')}.
+          </span>
+        </p>
+      )}
+      <ul className="space-y-2">
+        {meetings.map((meeting, i) => (
+          <MeetingRow key={meeting.id} meeting={meeting} next={i === 0} now={now} />
+        ))}
+      </ul>
+    </>
   )
 }
 

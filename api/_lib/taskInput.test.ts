@@ -9,7 +9,7 @@ const FIELDS: RawField[] = [
     dataType: 'SINGLE_SELECT',
     options: [
       { id: 'S_pb', name: 'Product Backlog' },
-      { id: 'S_sb', name: 'Sprint Backlog' },
+      { id: 'S_ab', name: 'Active Backlog (DEADLINE 12-16-26)' },
       { id: 'S_done', name: 'Done' },
     ],
   },
@@ -17,10 +17,6 @@ const FIELDS: RawField[] = [
     id: 'F_iter',
     name: 'Iteration',
     dataType: 'ITERATION',
-    configuration: {
-      iterations: [{ id: 'I_2', title: 'Sprint 2', startDate: '2026-09-15', duration: 14 }],
-      completedIterations: [],
-    },
   },
   { id: 'F_est', name: 'Estimate', dataType: 'NUMBER' },
   {
@@ -54,7 +50,6 @@ describe('parseCreateTask', () => {
         priorityOptionId: 'PR_0',
         doneBy: '2026-10-05',
         typeOptionId: 'T_dev',
-        iterationId: 'I_2',
         statusOptionId: 'S_done',
       }),
     ).toEqual({
@@ -63,7 +58,6 @@ describe('parseCreateTask', () => {
       assigneeIds: ['U1', 'U2'],
       fields: {
         status: { kind: 'singleSelect', optionId: 'S_done' },
-        iteration: { kind: 'iteration', iterationId: 'I_2' },
         estimate: { kind: 'number', number: 4.5 },
         priority: { kind: 'singleSelect', optionId: 'PR_0' },
         doneBy: { kind: 'date', date: '2026-10-05' },
@@ -72,11 +66,7 @@ describe('parseCreateTask', () => {
     })
   })
 
-  it('defaults status to Sprint Backlog with an iteration, Product Backlog without', () => {
-    expect(create({ title: 't', iterationId: 'I_2' }).fields.status).toEqual({
-      kind: 'singleSelect',
-      optionId: 'S_sb',
-    })
+  it('defaults status to Product Backlog', () => {
     expect(create({ title: 't' }).fields.status).toEqual({
       kind: 'singleSelect',
       optionId: 'S_pb',
@@ -96,7 +86,8 @@ describe('parseCreateTask', () => {
     [{ title: 't', doneBy: '10/05/2026' }, /must be a date/],
     [{ title: 't', priorityOptionId: 'nope' }, /Priority option is not one of/],
     [{ title: 't', statusOptionId: 'PR_0' }, /Status option is not one of/],
-    [{ title: 't', iterationId: 'I_9' }, /sprint is not one of/],
+    // Sprints are gone: the site no longer reads or writes the Iteration field.
+    [{ title: 't', iterationId: 'I_2' }, /Unknown field\(s\): iterationId/],
     [{ title: 't', sizeOptionId: 'SZ_m' }, /no "Size" field/],
     [{ title: 't', assigneeIds: 'U1' }, /list of GitHub user ids/],
     [{ title: 't', assigneeIds: [''] }, /list of GitHub user ids/],
@@ -135,7 +126,7 @@ describe('parsePatchTask', () => {
   })
 
   it('does not apply a default status', () => {
-    expect(patch({ iterationId: 'I_2' }).fields).not.toHaveProperty('status')
+    expect(patch({ estimateHours: 2 }).fields).not.toHaveProperty('status')
   })
 
   it.each([

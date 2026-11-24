@@ -67,7 +67,6 @@ const PROJECT_FIELDS = [
     id: 'F_iter',
     name: 'Iteration',
     dataType: 'ITERATION',
-    configuration: { iterations: [], completedIterations: [] },
   },
   { id: 'F_est', name: 'Estimate', dataType: 'NUMBER' },
   { id: 'F_done', name: 'Estimated done date', dataType: 'DATE' },
@@ -216,7 +215,7 @@ describe('GET /api/tasks', () => {
       projectUrl: 'https://github.com/orgs/dawn/projects/1',
       statuses: [{ id: 'S_done', name: 'Done', key: 'done' }],
       types: [{ id: 'T', name: 'Dev' }],
-      currentIterationId: null,
+      hasEstimate: true,
     })
     expect(body.team).toEqual([
       { id: 'U1', login: 'ada', name: 'ada', avatarUrl: 'https://a/ada.png' },
@@ -403,7 +402,9 @@ describe('GET /api/tasks', () => {
                 projectV2: {
                   id: 'PVT',
                   url: 'u',
-                  fields: { nodes: PROJECT_FIELDS.filter((f) => f.name !== 'Iteration') },
+                  fields: {
+                    nodes: PROJECT_FIELDS.filter((f) => f.name !== 'Estimated done date'),
+                  },
                 },
               },
             },
@@ -413,7 +414,10 @@ describe('GET /api/tasks', () => {
     const res = await call()
     expect(res.statusCode).toBe(500)
     expect(res.body).toMatchObject({
-      error: { code: 'project-misconfigured', message: expect.stringContaining('"Iteration"') },
+      error: {
+        code: 'project-misconfigured',
+        message: expect.stringContaining('"Estimated done date"'),
+      },
     })
   })
 

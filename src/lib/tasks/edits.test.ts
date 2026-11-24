@@ -205,7 +205,6 @@ describe('changeFromPatch', () => {
         {
           statusOptionId: 'S_blocked',
           priorityOptionId: null,
-          iterationId: 'IT_4',
           assigneeIds: [me.id, 'U_unknown'],
           estimateHours: null,
         },
@@ -215,7 +214,6 @@ describe('changeFromPatch', () => {
       status: 'Blocked',
       statusKey: 'blocked',
       priority: undefined,
-      iteration: expect.objectContaining({ id: 'IT_4', title: 'Sprint 4' }),
       assignees: [{ login: me.login, avatarUrl: me.avatarUrl }],
       estimateHours: undefined,
     })

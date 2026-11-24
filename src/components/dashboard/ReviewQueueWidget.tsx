@@ -9,7 +9,7 @@ import {
 import Avatar from '../Avatar'
 import EmptyState from '../EmptyState'
 import Skeleton from '../Skeleton'
-import { CiStatus, PrTitleLink, Warning } from './PrBits'
+import { PrChecks, PrTitleLink } from './PrBits'
 import { CountBadge, WidgetBody, WidgetCard } from './Widget'
 
 /** Past the SLA first, then the longest wait. */
@@ -76,17 +76,11 @@ function ReviewRow({ pr, now }: { pr: ReviewQueuePr; now: Date }) {
           </span>
           {late && (
             <span className="rounded-full bg-link px-2 py-0.5 font-semibold text-surface">
-              Overdue
+              Past 24 business hours
             </span>
           )}
-          <CiStatus state={pr.ciState} />
-          {pr.reviewerCount < pr.requiredReviewers && (
-            <Warning>
-              {pr.reviewerCount}/{pr.requiredReviewers} reviewers
-            </Warning>
-          )}
-          {!pr.hasDemoVideo && <Warning>No demo video</Warning>}
         </div>
+        <PrChecks pr={pr} />
       </div>
     </li>
   )

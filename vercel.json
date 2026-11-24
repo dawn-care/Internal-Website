@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/todos/:id", "destination": "/api/todos?id=:id" },
     { "source": "/game", "destination": "/api/game" },
     { "source": "/game/", "destination": "/api/game" },
     { "source": "/((?!api/|@|.*\\.).*)", "destination": "/index.html" }

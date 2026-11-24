@@ -4,6 +4,7 @@ import {
   ciStateOf,
   normalizePr,
   toMyPr,
+  toReleasePr,
   toReviewQueuePr,
   waitingSinceFor,
   type RawPullRequest,
@@ -48,10 +49,16 @@ describe('normalizePr', () => {
       requestedReviewers: [],
       reviews: [],
       reviewerCount: 0,
-      requiredReviewers: 2,
-      hasDemoVideo: false,
+      approvals: 0,
+      requiredApprovals: 1,
+      isRelease: false,
       ciState: null,
       targetsCorrectBase: true,
+      ticket: null,
+      missingFocusLabel: false,
+      size: { lines: 0, files: 0, over: false },
+      needsMedia: false,
+      hasMedia: false,
     })
   })
 
@@ -86,8 +93,100 @@ describe('normalizePr', () => {
     // grace (requested + commented), dawn/reviewers, linus. The author's own comment doesn't count.
     expect(pr.reviewerCount).toBe(3)
     expect(pr.reviews).toHaveLength(3)
-    expect(pr.hasDemoVideo).toBe(true)
+    expect(pr.approvals).toBe(1)
+    expect(pr.hasMedia).toBe(true)
     expect(pr.ciState).toBe('SUCCESS')
+  })
+
+  it('needs one approval into canary and two from canary into main', () => {
+    expect(normalizePr(rawPr()).requiredApprovals).toBe(1)
+    const release = normalizePr(rawPr({ headRefName: 'canary', baseRefName: 'main' }))
+    expect(release).toMatchObject({ requiredApprovals: 2, isRelease: true, ticket: null })
+  })
+
+  it('never counts the author approving their own PR', () => {
+    const pr = normalizePr(
+      rawPr({
+        latestReviews: {
+          nodes: [{ state: 'APPROVED', submittedAt: null, author: { login: 'ada' } }],
+        },
+      }),
+    )
+    expect(pr.approvals).toBe(0)
+  })
+
+  it('finds the ticket: a linked issue first, else the branch number', () => {
+    const linked = normalizePr(
+      rawPr({
+        headRefName: '121-clock-font',
+        closingIssuesReferences: {
+          nodes: [{ number: 120, labels: { nodes: [{ name: 'Carepartner' }] } }],
+        },
+      }),
+    )
+    expect(linked.ticket).toEqual({ number: 120, linked: true, labels: ['Carepartner'] })
+    expect(linked.missingFocusLabel).toBe(false)
+
+    const fromBranch = normalizePr(rawPr({ headRefName: '121-clock-font' }))
+    expect(fromBranch.ticket).toEqual({ number: 121, linked: false, labels: null })
+    // Labels unknown: never flagged.
+    expect(fromBranch.missingFocusLabel).toBe(false)
+  })
+
+  it('flags a linked ticket without a focus-area label (the PR’s own labels count too)', () => {
+    const ticket = (labels: string[], prLabels: string[] = []) =>
+      normalizePr(
+        rawPr({
+          labels: { nodes: prLabels.map((name) => ({ name })) },
+          closingIssuesReferences: {
+            nodes: [{ number: 7, labels: { nodes: labels.map((name) => ({ name })) } }],
+          },
+        }),
+      ).missingFocusLabel
+    expect(ticket(['bug'])).toBe(true)
+    expect(ticket(['bug'], ['Server'])).toBe(false)
+    expect(ticket(['ui/ux'])).toBe(false)
+  })
+
+  it('counts size like the PR Size metric, and flags PRs over it', () => {
+    const files = (list: [string, number][]) => ({
+      nodes: list.map(([path, additions]) => ({ path, additions, deletions: 0 })),
+    })
+    const small = normalizePr(
+      rawPr({
+        changedFiles: 3,
+        files: files([
+          ['app/Clock.tsx', 100],
+          ['app/Clock.test.tsx', 900],
+          ['README.md', 50],
+        ]),
+      }),
+    )
+    expect(small.size).toEqual({ lines: 100, files: 1, over: false })
+
+    const big = normalizePr(rawPr({ changedFiles: 1, files: files([['server/a.go', 751]]) }))
+    expect(big.size.over).toBe(true)
+    // More files than GitHub listed (it lists 100): over, whatever they are.
+    const many = normalizePr(rawPr({ changedFiles: 140, files: files([['a.go', 1]]) }))
+    expect(many.size.over).toBe(true)
+  })
+
+  it('needs a photo or video only for UI changes', () => {
+    const ui = rawPr({
+      files: { nodes: [{ path: 'caregiver/src/Clock.tsx', additions: 5, deletions: 1 }] },
+    })
+    expect(normalizePr(ui)).toMatchObject({ needsMedia: true, hasMedia: false })
+    expect(normalizePr({ ...ui, body: '![before](https://x.test/a.png)' }).hasMedia).toBe(true)
+
+    const server = rawPr({
+      files: { nodes: [{ path: 'server/clock.go', additions: 5, deletions: 1 }] },
+    })
+    expect(normalizePr(server).needsMedia).toBe(false)
+
+    const labeled = rawPr({
+      closingIssuesReferences: { nodes: [{ number: 3, labels: { nodes: [{ name: 'UI/UX' }] } }] },
+    })
+    expect(normalizePr(labeled).needsMedia).toBe(true)
   })
 
   it('flags a feature branch that targets main', () => {
@@ -165,7 +264,7 @@ describe('toMyPr', () => {
     )
     expect(pr).toMatchObject({
       isDraft: true,
-      reviewsApproved: 2,
+      approvals: 2,
       changesRequested: 1,
       reviewerCount: 3,
       ciState: 'FAILURE',
@@ -173,6 +272,32 @@ describe('toMyPr', () => {
   })
 
   it('has zero counts with no reviews', () => {
-    expect(toMyPr(rawPr())).toMatchObject({ reviewsApproved: 0, changesRequested: 0 })
+    expect(toMyPr(rawPr())).toMatchObject({ approvals: 0, changesRequested: 0 })
+  })
+})
+
+describe('toReleasePr', () => {
+  it('keeps what the Deadline card shows, with the merge time', () => {
+    const pr = toReleasePr(
+      rawPr({
+        headRefName: 'canary',
+        baseRefName: 'main',
+        mergedAt: '2026-10-20T21:00:00Z',
+        latestReviews: {
+          nodes: [{ state: 'APPROVED', submittedAt: null, author: { login: 'grace' } }],
+        },
+      }),
+    )
+    expect(pr).toEqual({
+      title: 'Bigger clock font',
+      url: 'https://github.com/dawn/app/pull/12',
+      repo: 'dawn/app',
+      number: 12,
+      isDraft: false,
+      approvals: 1,
+      requiredApprovals: 2,
+      ciState: null,
+      mergedAt: '2026-10-20T21:00:00Z',
+    })
   })
 })

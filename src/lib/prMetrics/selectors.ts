@@ -409,3 +409,52 @@ export function barTone(n: number, total: number, target: number): BarTone {
   if (r >= target) return 'good'
   return r >= target - 0.1 ? 'warn' : 'bad'
 }
+
+// ---- The dashboard's "My PR metrics" ----
+
+export interface MyPrMetrics {
+  /** The deadline: the one containing the data's run date, else the latest. */
+  iteration: { name: string; start: string; end: string; current: boolean }
+  /** The login as it appears in the file. */
+  login: string
+  authored: number
+  reviewed: number
+  /** The fair-share band (Author and Review Balance), not rounded. */
+  min: number
+  max: number
+  flags: BalanceFlag[]
+  /** My authored PRs within the size limits. */
+  sizeWithin: number
+  sizeTotal: number
+  /** Breadth of Knowledge: focus areas I've touched out of breadthLabels, and the target. */
+  areasCovered: string[]
+  areasMissing: string[]
+  areasTarget: number
+}
+
+/**
+ * One person's numbers for the current deadline, from the computed metrics. Null when the
+ * person isn't on the team list, or no deadline has data yet.
+ */
+export function myPrMetrics(file: PrMetricsFile, login: string): MyPrMetrics | null {
+  const it = file.iterations.find((i) => i.current) ?? file.iterations[file.iterations.length - 1]
+  const me = file.team.find((l) => l.toLowerCase() === login.toLowerCase())
+  if (!it || !me) return null
+  const balance = it.balance.people[me] ?? { authored: 0, reviewed: 0, flags: [] }
+  const size = it.size.byAuthor[me] ?? { within: 0, total: 0 }
+  const counts = it.breadth.people[me]?.counts ?? {}
+  return {
+    iteration: { name: it.name, start: it.start, end: it.end, current: it.current },
+    login: me,
+    authored: balance.authored,
+    reviewed: balance.reviewed,
+    min: it.balance.min,
+    max: it.balance.max,
+    flags: balance.flags,
+    sizeWithin: size.within,
+    sizeTotal: size.total,
+    areasCovered: file.breadthLabels.filter((label) => (counts[label] ?? 0) > 0),
+    areasMissing: file.breadthLabels.filter((label) => !(counts[label] ?? 0)),
+    areasTarget: file.targets.breadth.minLabels,
+  }
+}

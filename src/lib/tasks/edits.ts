@@ -30,7 +30,6 @@ export type TaskChange = Partial<
     | 'size'
     | 'doneBy'
     | 'type'
-    | 'iteration'
   >
 >
 
@@ -53,12 +52,6 @@ export function changeFromPatch(patch: TaskPatch, { meta, team }: Ctx): TaskChan
     const option = meta.statuses.find((s) => s.id === patch.statusOptionId)
     change.status = option?.name ?? null
     change.statusKey = option?.key ?? null
-  }
-  if (patch.iterationId !== undefined) {
-    const it = meta.iterations.find((i) => i.id === patch.iterationId)
-    change.iteration = it
-      ? { id: it.id, title: it.title, startDate: it.startDate, duration: it.duration }
-      : undefined
   }
   if (patch.estimateHours !== undefined) change.estimateHours = patch.estimateHours ?? undefined
   if (patch.priorityOptionId !== undefined) {
@@ -113,7 +106,7 @@ const mockWrites = {
     mockCount += 1
     const repo = data.meta.issueRepository ?? 'dawn-team/dawn-app'
     const number = 900 + mockCount
-    const statusKey: StatusKey = input.iterationId ? 'sprintBacklog' : 'productBacklog'
+    const statusKey: StatusKey = 'productBacklog'
     const statusOptionId =
       input.statusOptionId ?? data.meta.statuses.find((s) => s.key === statusKey)?.id
     const task: Task = {

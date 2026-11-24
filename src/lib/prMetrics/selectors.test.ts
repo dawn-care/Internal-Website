@@ -9,6 +9,7 @@ import {
   formatPercent,
   formatRange,
   heatLevel,
+  myPrMetrics,
   peopleIn,
   selectScope,
   combineIterations,
@@ -217,5 +218,43 @@ describe('breadthRows', () => {
 describe('peopleIn', () => {
   it('keeps team order and appends unknown logins by name', () => {
     expect(peopleIn(['b', 'a', 'z'], { a: 1, b: 1, y: 1, x: 1 })).toEqual(['b', 'a', 'x', 'y'])
+  })
+})
+
+describe('myPrMetrics (the dashboard widget)', () => {
+  it('picks the current deadline and one person’s numbers, login case-insensitively', () => {
+    const it = file.iterations.find((i) => i.current)!
+    const login = file.team[0]
+    const mine = myPrMetrics(file, login.toUpperCase())!
+    expect(mine.login).toBe(login)
+    expect(mine.iteration).toEqual({ name: it.name, start: it.start, end: it.end, current: true })
+    expect(mine).toMatchObject({
+      authored: it.balance.people[login].authored,
+      reviewed: it.balance.people[login].reviewed,
+      min: it.balance.min,
+      max: it.balance.max,
+      flags: it.balance.people[login].flags,
+      sizeWithin: it.size.byAuthor[login].within,
+      sizeTotal: it.size.byAuthor[login].total,
+      areasTarget: file.targets.breadth.minLabels,
+    })
+    // Every breadth label is either covered or missing, in display order.
+    expect([...mine.areasCovered, ...mine.areasMissing].sort()).toEqual(
+      [...file.breadthLabels].sort(),
+    )
+    for (const label of mine.areasCovered) {
+      expect(it.breadth.people[login].counts[label]).toBeGreaterThan(0)
+    }
+  })
+
+  it('is null for someone not on the team', () => {
+    expect(myPrMetrics(file, 'not-a-member')).toBeNull()
+  })
+
+  it('falls back to the latest deadline when none is current', () => {
+    const past = { ...file, iterations: file.iterations.map((i) => ({ ...i, current: false })) }
+    expect(myPrMetrics(past, file.team[0])?.iteration.name).toBe(
+      file.iterations[file.iterations.length - 1].name,
+    )
   })
 })

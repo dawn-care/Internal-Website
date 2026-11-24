@@ -64,12 +64,12 @@ function WaitingOnYou({ query }: { query: DashboardQuery }) {
 
   const items = [
     { n: counts.reviews, text: (n: number) => `${plural(n, 'review')} waiting`, id: 'reviews' },
-    { n: counts.overdue, text: (n: number) => `${plural(n, 'overdue task')}`, id: 'my-tasks' },
-    { n: counts.blocked, text: (n: number) => `${plural(n, 'blocked task')}`, id: 'my-tasks' },
+    { n: counts.overdue, text: (n: number) => `${plural(n, 'overdue task')}`, id: 'my-work' },
+    { n: counts.blocked, text: (n: number) => `${plural(n, 'blocked task')}`, id: 'my-work' },
     {
-      n: counts.overdueTodos,
-      text: (n: number) => `${plural(n, 'overdue to-do')}`,
-      id: 'team-todos',
+      n: counts.prFixes,
+      text: (n: number) => `${plural(n, 'PR')} to fix up`,
+      id: 'my-prs',
     },
     {
       n: counts.failingCi,

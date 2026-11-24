@@ -23,7 +23,7 @@ const FIELDS: RawField[] = [
     dataType: 'SINGLE_SELECT',
     options: [
       { id: 'S_pb', name: 'Product Backlog' },
-      { id: 'S_sb', name: 'Sprint Backlog' },
+      { id: 'S_ab', name: 'Active Backlog (DEADLINE 12-16-26)' },
       { id: 'S_ip', name: 'In progress' },
       { id: 'S_done', name: 'Done', color: 'ORANGE' },
       { id: 'S_blk', name: 'Blocked', color: 'RED' },
@@ -32,16 +32,8 @@ const FIELDS: RawField[] = [
   {
     id: 'F_iter',
     name: 'Iteration',
+    // Still on the real board, but the site no longer reads it (no sprints).
     dataType: 'ITERATION',
-    configuration: {
-      completedIterations: [
-        { id: 'I_1', title: 'Sprint 1', startDate: '2026-09-01', duration: 14 },
-      ],
-      iterations: [
-        { id: 'I_3', title: 'Sprint 3', startDate: '2026-09-29', duration: 14 },
-        { id: 'I_2', title: 'Sprint 2', startDate: '2026-09-15', duration: 14 },
-      ],
-    },
   },
   { id: 'F_est', name: 'Estimate', dataType: 'NUMBER' },
   {
@@ -81,14 +73,6 @@ const ALL_VALUES: RawFieldValue[] = [
   select('F_size', 'M'),
   { __typename: 'ProjectV2ItemFieldDateValue', date: '2026-09-29', field: { id: 'F_done' } },
   select('F_type', 'Dev'),
-  {
-    __typename: 'ProjectV2ItemFieldIterationValue',
-    iterationId: 'I_2',
-    title: 'Sprint 2',
-    startDate: '2026-09-15',
-    duration: 14,
-    field: { id: 'F_iter' },
-  },
 ]
 
 const people = [{ login: 'ada', avatarUrl: 'https://a/ada.png' }, null]
@@ -150,7 +134,6 @@ describe('normalizeItem', () => {
       size: 'M',
       doneBy: '2026-09-29',
       type: 'Dev',
-      iteration: { id: 'I_2', title: 'Sprint 2', startDate: '2026-09-15', duration: 14 },
       // The later of the item's and the content's timestamps.
       updatedAt: '2026-09-21T10:00:00Z',
     })
@@ -192,7 +175,7 @@ describe('normalizeItem', () => {
     const task = normalizeItem(item(issue), META)!
     expect(task.status).toBeNull()
     expect(task.statusKey).toBeNull()
-    for (const key of ['estimateHours', 'priority', 'size', 'doneBy', 'type', 'iteration']) {
+    for (const key of ['estimateHours', 'priority', 'size', 'doneBy', 'type']) {
       expect(task).not.toHaveProperty(key)
     }
   })
@@ -242,25 +225,26 @@ describe('statusKeyOf', () => {
     expect(statusKeyOf('Icebox')).toBeNull()
     expect(statusKeyOf(null)).toBeNull()
   })
+
+  it('matches statuses by prefix, so the deadline can sit in the column name', () => {
+    expect(statusKeyOf('Active Backlog (DEADLINE TBD)')).toBe('activeBacklog')
+    expect(statusKeyOf('active  backlog')).toBe('activeBacklog')
+    // The sandbox project's older name.
+    expect(statusKeyOf('Sprint Backlog')).toBe('activeBacklog')
+    expect(statusKeyOf('Product Backlog')).toBe('productBacklog')
+    expect(statusKeyOf('Done (shipped)')).toBe('done')
+  })
 })
 
 describe('resolveFields', () => {
-  it('sorts completed and upcoming iterations together, oldest first', () => {
-    expect(META.iteration.iterations.map((i) => [i.id, i.completed])).toEqual([
-      ['I_1', true],
-      ['I_2', false],
-      ['I_3', false],
-    ])
-  })
-
   it('names every missing required field, and lists the fields the project has', () => {
-    const fields = FIELDS.filter((f) => f.name !== 'Iteration' && f.name !== 'Status')
+    const fields = FIELDS.filter((f) => f.name !== 'Estimated done date' && f.name !== 'Status')
     expect(() => resolveFields(PROJECT, fields)).toThrow(ProjectSetupError)
     expect(() => resolveFields(PROJECT, fields)).toThrow(
-      /"Status" \(single select\) is missing; "Iteration" \(iteration\) is missing/,
+      /"Status" \(single select\) is missing; "Estimated done date" \(date\) is missing/,
     )
     expect(() => resolveFields(PROJECT, fields)).toThrow(
-      /The project's fields are: "Title" \(title\), "Estimate" \(number\)/,
+      /The project's fields are: "Title" \(title\), "Iteration" \(iteration\), "Estimate" \(number\)/,
     )
   })
 
@@ -270,7 +254,7 @@ describe('resolveFields', () => {
       FIELDS.filter((f) => f.name !== 'Type'),
     )
     expect(meta.type).toBeUndefined()
-    expect(toClientMeta(meta, '2026-09-20')).not.toHaveProperty('types')
+    expect(toClientMeta(meta)).not.toHaveProperty('types')
     const task = normalizeItem(item(draft, ALL_VALUES), meta)!
     expect(task).not.toHaveProperty('type')
     expect(task.status).toBe('In progress')
@@ -289,14 +273,18 @@ describe('resolveFields', () => {
     const fields = FIELDS.filter((f) => !['Priority', 'Size'].includes(f.name!))
     const meta = resolveFields(PROJECT, fields)
     expect(meta.priority).toBeUndefined()
-    const client = toClientMeta(meta, '2026-09-20')
+    const client = toClientMeta(meta)
     expect(client).not.toHaveProperty('priorities')
     expect(client).not.toHaveProperty('sizes')
   })
 
-  it('requires Estimate, the burndown unit', () => {
-    const fields = FIELDS.filter((f) => f.name !== 'Estimate')
-    expect(() => resolveFields(PROJECT, fields)).toThrow(/"Estimate" \(number\) is missing/)
+  it('treats Estimate and Iteration as optional', () => {
+    const fields = FIELDS.filter((f) => f.name !== 'Estimate' && f.name !== 'Iteration')
+    const meta = resolveFields(PROJECT, fields)
+    expect(meta.estimate).toBeUndefined()
+    expect(toClientMeta(meta).hasEstimate).toBe(false)
+    expect(toClientMeta(META).hasEstimate).toBe(true)
+    expect(normalizeItem(item(draft, ALL_VALUES), meta)).not.toHaveProperty('estimateHours')
   })
 
   it('ignores a leftover Story Points field', () => {
@@ -310,7 +298,7 @@ describe('resolveFields', () => {
 
   it('finds fields regardless of name casing', () => {
     const fields = FIELDS.map((f) => (f.name === 'Estimate' ? { ...f, name: 'estimate' } : f))
-    expect(resolveFields(PROJECT, fields).estimate.id).toBe('F_est')
+    expect(resolveFields(PROJECT, fields).estimate?.id).toBe('F_est')
   })
 })
 
@@ -327,7 +315,7 @@ describe('issueRepository', () => {
   it('uses the only linked repository, and tells the browser which it is', () => {
     const meta = withRepos(['dawn/app'])
     expect(issueRepository(meta)).toEqual({ id: 'R_0', nameWithOwner: 'dawn/app' })
-    const client = toClientMeta(meta, '2026-09-20')
+    const client = toClientMeta(meta)
     expect(client.issueRepository).toBe('dawn/app')
     expect(client).not.toHaveProperty('issueSetupError')
   })
@@ -337,15 +325,15 @@ describe('issueRepository', () => {
     expect(() => issueRepository(withRepos(['dawn/app', 'dawn/docs']))).toThrow(
       /links several repositories \(dawn\/app, dawn\/docs\).*ISSUE_REPOSITORY/,
     )
-    const client = toClientMeta(withRepos([]), '2026-09-20')
+    const client = toClientMeta(withRepos([]))
     expect(client).not.toHaveProperty('issueRepository')
     expect(client.issueSetupError).toMatch(/isn't linked/)
   })
 })
 
 describe('toClientMeta', () => {
-  it('tags statuses with their keys and picks the current iteration', () => {
-    const client = toClientMeta(META, '2026-09-28')
+  it('tags statuses with their keys', () => {
+    const client = toClientMeta(META)
     expect(client.statuses.find((s) => s.name === 'Blocked')).toEqual({
       id: 'S_blk',
       name: 'Blocked',
@@ -354,8 +342,7 @@ describe('toClientMeta', () => {
     })
     // No color from GitHub: left out (the browser shows GRAY).
     expect(client.statuses.find((s) => s.name === 'In progress')).not.toHaveProperty('color')
-    expect(client.currentIterationId).toBe('I_2')
-    expect(toClientMeta(META, '2026-09-29').currentIterationId).toBe('I_3')
-    expect(toClientMeta(META, '2026-12-01').currentIterationId).toBeNull()
+    expect(client.statuses.find((s) => s.id === 'S_ab')?.key).toBe('activeBacklog')
+    expect(client).not.toHaveProperty('iterations')
   })
 })

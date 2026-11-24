@@ -16,16 +16,13 @@ const FIELDS: RawField[] = [
     dataType: 'SINGLE_SELECT',
     options: [
       { id: 'S_pb', name: 'Product Backlog' },
-      { id: 'S_sb', name: 'Sprint Backlog' },
+      { id: 'S_ab', name: 'Active Backlog (DEADLINE 12-16-26)' },
     ],
   },
   {
     id: 'F_iter',
     name: 'Iteration',
     dataType: 'ITERATION',
-    configuration: {
-      iterations: [{ id: 'I_2', title: 'Sprint 2', startDate: '2026-09-15', duration: 14 }],
-    },
   },
   {
     id: 'F_pri',
@@ -125,7 +122,6 @@ describe('createTask', () => {
       title: 'Plan',
       body: 'Notes',
       assigneeIds: ['U_ada'],
-      iterationId: 'I_2',
       estimateHours: 3,
       doneBy: '2026-10-01',
     },
@@ -142,7 +138,6 @@ describe('createTask', () => {
       'UpdateFieldValue',
       'UpdateFieldValue',
       'UpdateFieldValue',
-      'UpdateFieldValue',
       'ProjectItem',
     ])
     expect(inputsOf('CreateIssue')).toEqual([
@@ -150,15 +145,14 @@ describe('createTask', () => {
     ])
     expect(inputsOf('AddProjectItem')).toEqual([{ projectId: 'PVT', contentId: 'I_new' }])
     expect(inputsOf('UpdateFieldValue')).toEqual([
-      { projectId: 'PVT', itemId: 'PVTI_1', fieldId: 'F_iter', value: { iterationId: 'I_2' } },
       { projectId: 'PVT', itemId: 'PVTI_1', fieldId: 'F_est', value: { number: 3 } },
       { projectId: 'PVT', itemId: 'PVTI_1', fieldId: 'F_done', value: { date: '2026-10-01' } },
-      // The default status comes last: Sprint Backlog, since an iteration was set.
+      // The default status comes last: Product Backlog.
       {
         projectId: 'PVT',
         itemId: 'PVTI_1',
         fieldId: 'F_status',
-        value: { singleSelectOptionId: 'S_sb' },
+        value: { singleSelectOptionId: 'S_pb' },
       },
     ])
     for (const [token] of graphqlMock.mock.calls) expect(token).toBe('gho_test')
@@ -170,7 +164,7 @@ describe('createTask', () => {
     stub({ content: ISSUE, fail: ['F_est', 'F_done'] })
     const result = await createTask('t', META, input)
     // Every field was still attempted.
-    expect(inputsOf('UpdateFieldValue')).toHaveLength(4)
+    expect(inputsOf('UpdateFieldValue')).toHaveLength(3)
     expect(result.failedFields).toEqual(['Estimate', 'Estimated done date'])
     expect(result.task).not.toBeNull()
   })
@@ -189,7 +183,7 @@ describe('createTask', () => {
     const result = await createTask('t', META, input)
     // One field attempt, then the read-back (which fails quietly).
     expect(calls).toBe(2)
-    expect(result.failedFields).toEqual(['Iteration', 'Estimate', 'Estimated done date', 'Status'])
+    expect(result.failedFields).toEqual(['Estimate', 'Estimated done date', 'Status'])
     expect(result.task).toBeNull()
   })
 

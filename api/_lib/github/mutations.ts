@@ -135,8 +135,6 @@ function fieldValueInput(value: FieldValue): Record<string, unknown> {
       return { number: value.number }
     case 'date':
       return { date: value.date }
-    case 'iteration':
-      return { iterationId: value.iterationId }
   }
 }
 

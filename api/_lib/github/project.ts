@@ -1,5 +1,4 @@
 import {
-  BURNDOWN_UNIT,
   FIELD_NAMES,
   ISSUE_REPOSITORY,
   PROJECT_META_TTL_MS,
@@ -8,20 +7,11 @@ import {
   type FieldKey,
   type StatusKey,
 } from '../config.js'
-import { findCurrentIteration, parseDateKey, todayKey } from '../dates.js'
+import { parseDateKey } from '../dates.js'
 import { getProjectConfig } from '../env.js'
 import { GitHubApiError, ProjectSetupError } from './errors.js'
 import { graphql } from './graphql.js'
-import type {
-  Assignee,
-  IterationOption,
-  Label,
-  Option,
-  StatusOption,
-  Task,
-  TaskMeta,
-  TeamMember,
-} from './types.js'
+import type { Assignee, Label, Option, StatusOption, Task, TaskMeta, TeamMember } from './types.js'
 
 // ─── Project metadata ────────────────────────────────────────────────────────
 
@@ -33,11 +23,6 @@ interface RawOption extends Option {
 interface SelectField {
   id: string
   options: RawOption[]
-}
-
-interface IterationField {
-  id: string
-  iterations: IterationOption[]
 }
 
 interface PlainField {
@@ -57,17 +42,15 @@ export interface ProjectMeta {
   /** Repositories linked to the project (Project settings → Linked repositories). */
   repositories: LinkedRepository[]
   status: SelectField
-  iteration: IterationField
   doneBy: PlainField
   type?: SelectField
-  estimate: PlainField
+  estimate?: PlainField
   priority?: SelectField
   size?: SelectField
 }
 
 const FIELD_DATA_TYPES: Record<FieldKey, string> = {
   status: 'SINGLE_SELECT',
-  iteration: 'ITERATION',
   estimate: 'NUMBER',
   priority: 'SINGLE_SELECT',
   size: 'SINGLE_SELECT',
@@ -82,19 +65,11 @@ const FIELD_KIND_LABELS: Record<string, string> = {
   DATE: 'date',
 }
 
-interface RawIteration {
-  id: string
-  title: string
-  startDate: string
-  duration: number
-}
-
 export interface RawField {
   id?: string
   name?: string
   dataType?: string
   options?: RawOption[]
-  configuration?: { iterations?: RawIteration[]; completedIterations?: RawIteration[] }
 }
 
 const PROJECT_META_QUERY = /* GraphQL */ `
@@ -121,22 +96,6 @@ const PROJECT_META_QUERY = /* GraphQL */ `
                 id
                 name
                 color
-              }
-            }
-            ... on ProjectV2IterationField {
-              configuration {
-                iterations {
-                  id
-                  title
-                  startDate
-                  duration
-                }
-                completedIterations {
-                  id
-                  title
-                  startDate
-                  duration
-                }
               }
             }
           }
@@ -212,29 +171,12 @@ export function resolveFields(
       Boolean(r?.id && r.nameWithOwner),
     ),
     status: select(found.status!),
-    iteration: { id: found.iteration!.id!, iterations: iterationsOf(found.iteration!) },
     doneBy: plain(found.doneBy!),
     type: optional(found.type, select),
-    estimate: plain(found.estimate!),
+    estimate: optional(found.estimate, plain),
     priority: optional(found.priority, select),
     size: optional(found.size, select),
   }
-}
-
-function iterationsOf(field: RawField): IterationOption[] {
-  const config = field.configuration ?? {}
-  const toOption = (it: RawIteration, completed: boolean): IterationOption | null => {
-    const startDate = parseDateKey(it.startDate)
-    return startDate
-      ? { id: it.id, title: it.title, startDate, duration: it.duration, completed }
-      : null
-  }
-  return [
-    ...(config.completedIterations ?? []).map((it) => toOption(it, true)),
-    ...(config.iterations ?? []).map((it) => toOption(it, false)),
-  ]
-    .filter((it): it is IterationOption => it !== null)
-    .sort((a, b) => a.startDate.localeCompare(b.startDate))
 }
 
 interface CacheEntry {
@@ -296,8 +238,8 @@ export function issueRepository(meta: ProjectMeta): LinkedRepository {
   )
 }
 
-/** The browser's view of the metadata: option lists, iterations, and the current sprint. */
-export function toClientMeta(meta: ProjectMeta, today = todayKey()): TaskMeta {
+/** The browser's view of the metadata: the option lists and which optional fields exist. */
+export function toClientMeta(meta: ProjectMeta): TaskMeta {
   // Statuses carry GitHub's color so badges match the board; other options don't need it.
   const statuses: StatusOption[] = meta.status.options.map((o) =>
     dropUndefined({
@@ -309,7 +251,6 @@ export function toClientMeta(meta: ProjectMeta, today = todayKey()): TaskMeta {
   )
   const plain = (options: RawOption[] | undefined): Option[] | undefined =>
     options?.map(({ id, name }) => ({ id, name }))
-  const current = findCurrentIteration(meta.iteration.iterations, today)
   let repository: string | undefined
   let issueSetupError: string | undefined
   try {
@@ -321,25 +262,27 @@ export function toClientMeta(meta: ProjectMeta, today = todayKey()): TaskMeta {
     projectUrl: meta.projectUrl,
     issueRepository: repository,
     issueSetupError,
-    burndownUnit: BURNDOWN_UNIT,
+    hasEstimate: Boolean(meta.estimate),
     statuses,
     priorities: plain(meta.priority?.options),
     sizes: plain(meta.size?.options),
     types: plain(meta.type?.options),
-    iterations: meta.iteration.iterations,
-    currentIterationId: current?.id ?? null,
   })
 }
 
-const STATUS_KEYS_BY_NAME = new Map(
-  (Object.entries(STATUS_NAMES) as [StatusKey, string][]).map(([key, name]) => [
-    name.toLowerCase(),
-    key,
-  ]),
-)
+/**
+ * The site's key for a board status: the key whose name (or older name) the option's name
+ * STARTS WITH, case-insensitively, so "Active Backlog (DEADLINE 12-16-26)" is activeBacklog. Longer
+ * names are tried first, so one prefix can't shadow a more specific one.
+ */
+const STATUS_PREFIXES = (Object.entries(STATUS_NAMES) as [StatusKey, readonly string[]][])
+  .flatMap(([key, names]) => names.map((name) => [name.toLowerCase(), key] as const))
+  .sort((a, b) => b[0].length - a[0].length)
 
 export function statusKeyOf(name: string | null | undefined): StatusKey | null {
-  return (name && STATUS_KEYS_BY_NAME.get(name.trim().toLowerCase())) || null
+  const normalized = name?.trim().replace(/\s+/g, ' ').toLowerCase()
+  if (!normalized) return null
+  return STATUS_PREFIXES.find(([prefix]) => normalized.startsWith(prefix))?.[1] ?? null
 }
 
 // ─── Items ───────────────────────────────────────────────────────────────────
@@ -358,14 +301,6 @@ export type RawFieldValue =
     }
   | { __typename: 'ProjectV2ItemFieldNumberValue'; number: number | null; field: RawFieldRef }
   | { __typename: 'ProjectV2ItemFieldDateValue'; date: string | null; field: RawFieldRef }
-  | {
-      __typename: 'ProjectV2ItemFieldIterationValue'
-      iterationId: string
-      title: string
-      startDate: string
-      duration: number
-      field: RawFieldRef
-    }
   | { __typename: string; field?: RawFieldRef }
 
 /** The node id is only needed server-side (to diff assignees); it's not sent to the browser. */
@@ -448,13 +383,6 @@ const ITEM_SELECTION = /* GraphQL */ `
       ... on ProjectV2ItemFieldSingleSelectValue { optionId name ${FIELD_REF} }
       ... on ProjectV2ItemFieldNumberValue { number ${FIELD_REF} }
       ... on ProjectV2ItemFieldDateValue { date ${FIELD_REF} }
-      ... on ProjectV2ItemFieldIterationValue {
-        iterationId
-        title
-        startDate
-        duration
-        ${FIELD_REF}
-      }
     }
   }
 `
@@ -593,10 +521,6 @@ export function normalizeItem(item: RawItem, meta: ProjectMeta): Task | null {
     const value = values.get(field.id)
     return value && 'date' in value ? parseDateKey(value.date) : undefined
   }
-  const iterationValue = values.get(meta.iteration.id)
-  const iteration = iterationValue && 'iterationId' in iterationValue ? iterationValue : undefined
-  const iterationStart = iteration && parseDateKey(iteration.startDate)
-
   const status = selectName(meta.status) ?? null
   const task: Task = {
     itemId: item.id,
@@ -613,15 +537,6 @@ export function normalizeItem(item: RawItem, meta: ProjectMeta): Task | null {
     size: selectName(meta.size),
     doneBy: dateOf(meta.doneBy),
     type: selectName(meta.type),
-    iteration:
-      iteration && iterationStart
-        ? {
-            id: iteration.iterationId,
-            title: iteration.title,
-            startDate: iterationStart,
-            duration: iteration.duration,
-          }
-        : undefined,
     updatedAt: later(item.updatedAt, content.updatedAt),
   }
   if (content.__typename !== 'DraftIssue') {

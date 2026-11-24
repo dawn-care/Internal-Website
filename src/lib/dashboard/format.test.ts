@@ -9,8 +9,8 @@ import {
   meetingDayLabel,
   meetingTimeRange,
   repoRef,
-  sprintEndLabel,
-  sprintProgress,
+  deadlineDueLabel,
+  deadlineProgress,
   updatedAgo,
 } from './format'
 
@@ -52,20 +52,20 @@ describe('firstName', () => {
   })
 })
 
-describe('sprint labels', () => {
-  it('says when the sprint ends and how many business days are left', () => {
-    expect(sprintEndLabel('2026-10-12', 9, at(10))).toBe('Ends Mon, Oct 12 · 9 business days left')
-    expect(sprintEndLabel('2026-10-01', 1, at(10))).toBe('Ends Thu, Oct 1 · 1 business day left')
-    expect(sprintEndLabel('2026-09-30', 1, at(10))).toBe('Ends today')
+describe('deadline labels', () => {
+  it('says when the deadline is due and how many business days are left', () => {
+    expect(deadlineDueLabel('2026-10-12', 9, at(10))).toBe('Due Mon, Oct 12 · 9 business days left')
+    expect(deadlineDueLabel('2026-10-01', 1, at(10))).toBe('Due Thu, Oct 1 · 1 business day left')
+    expect(deadlineDueLabel('2026-09-30', 1, at(10))).toBe('Due today')
   })
 
-  it('counts the sprint day, clamped to the sprint', () => {
-    expect(sprintProgress('2026-09-28', '2026-10-11', at(10))).toEqual({
+  it('counts the deadline day, clamped to the deadline', () => {
+    expect(deadlineProgress('2026-09-28', '2026-10-11', at(10))).toEqual({
       day: 3,
       totalDays: 14,
       fraction: 3 / 14,
     })
-    expect(sprintProgress('2026-10-01', '2026-10-14', at(10)).day).toBe(1)
+    expect(deadlineProgress('2026-10-01', '2026-10-14', at(10)).day).toBe(1)
   })
 })
 

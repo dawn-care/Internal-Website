@@ -16,7 +16,6 @@
     "discord:register": "node scripts/register-discord-command.mjs"
   },
   "dependencies": {
-    "@vercel/blob": "^2.8.0",
     "jose": "^6.2.12",
     "lucide-react": "^1.48.0",
     "react": "^19.2.8",

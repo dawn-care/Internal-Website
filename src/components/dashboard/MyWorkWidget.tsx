@@ -4,9 +4,10 @@ import { Link } from 'react-router-dom'
 import {
   repoRef,
   setStatusOverride,
-  taskCounts,
+  workCounts,
+  type BoardColumn,
   type DashboardQuery,
-  type MyTasks,
+  type MyWork,
 } from '../../lib/dashboard'
 import {
   isDone,
@@ -23,13 +24,17 @@ import { DoneByLabel } from '../tasks/TaskRow'
 import { saveWithToast } from '../tasks/saveTask'
 import { CountBadge, FOOTER_LINK, WidgetBody, WidgetCard } from './Widget'
 
-export default function MyTasksWidget({ query, now }: { query: DashboardQuery; now: Date }) {
-  const tasks = query.data?.tasks
-  const open = tasks && !('error' in tasks) ? tasks.counts.open : undefined
+/**
+ * My open tasks by board column, the way the Thursday check-in goes: what I'm working on,
+ * what's in review, what's next for the deadline, and what's blocked.
+ */
+export default function MyWorkWidget({ query, now }: { query: DashboardQuery; now: Date }) {
+  const work = query.data?.work
+  const open = work && !('error' in work) ? workCounts(work, now).open : undefined
   return (
     <WidgetCard
-      id="my-tasks"
-      title="My tasks"
+      id="my-work"
+      title="My work"
       icon={ListTodo}
       badge={open !== undefined && <CountBadge count={open} label={`${open} open`} />}
       footer={
@@ -41,7 +46,7 @@ export default function MyTasksWidget({ query, now }: { query: DashboardQuery; n
     >
       <WidgetBody
         query={query}
-        value={tasks}
+        value={work}
         skeleton={
           <div className="space-y-3">
             <Skeleton className="h-5 w-24" />
@@ -52,49 +57,46 @@ export default function MyTasksWidget({ query, now }: { query: DashboardQuery; n
           </div>
         }
       >
-        {(data) => <TaskGroups data={data} now={now} />}
+        {(data) => <WorkGroups data={data} now={now} />}
       </WidgetBody>
     </WidgetCard>
   )
 }
 
-function TaskGroups({ data, now }: { data: MyTasks; now: Date }) {
-  const counts = taskCounts(data)
-  const groups = [
-    { key: 'overdue', title: 'Overdue', tasks: data.overdue, total: data.counts.overdue },
-    {
-      key: 'dueThisWeek',
-      title: 'Due this week',
-      tasks: data.dueThisWeek,
-      total: data.counts.dueThisWeek,
-    },
-    { key: 'blocked', title: 'Blocked', tasks: data.blocked, total: data.counts.blocked },
-    {
-      key: 'inProgress',
-      title: 'In progress',
-      tasks: data.inProgress,
-      total: data.counts.inProgress,
-    },
-  ] as const
-  const shown = groups.filter((g) => g.tasks.length > 0)
+const GROUPS: { key: BoardColumn; title: string }[] = [
+  { key: 'inProgress', title: 'In progress' },
+  { key: 'inReview', title: 'In review' },
+  { key: 'activeBacklog', title: 'Up next (Active Backlog)' },
+  { key: 'blocked', title: 'Blocked' },
+]
+
+function WorkGroups({ data, now }: { data: MyWork; now: Date }) {
+  const counts = workCounts(data, now)
+  const shown = GROUPS.filter((g) => data.columns[g.key].length > 0)
 
   return (
     <div className="space-y-6">
+      {counts.overdue > 0 && (
+        <p className="flex items-center gap-1.5 text-sm font-medium text-link">
+          <CircleAlert aria-hidden="true" className="size-4" />
+          {counts.overdue} past {counts.overdue === 1 ? 'its' : 'their'} &ldquo;Done by&rdquo; date
+        </p>
+      )}
       {shown.length === 0 ? (
         <EmptyState>
           {data.counts.open === 0
             ? 'Nothing is assigned to you right now.'
-            : 'None of your tasks are overdue, due this week, blocked, or in progress.'}
+            : 'Nothing of yours is in progress, in review, in Active Backlog, or blocked. The rest is in Product Backlog.'}
         </EmptyState>
       ) : (
         shown.map((g) => (
           <TaskGroup
             key={g.key}
             title={g.title}
-            tasks={g.tasks}
+            tasks={data.columns[g.key]}
             open={counts[g.key]}
-            more={g.total - g.tasks.length}
-            accent={g.key === 'overdue'}
+            more={data.counts[g.key] - data.columns[g.key].length}
+            accent={g.key === 'blocked'}
             statuses={data.statuses}
             now={now}
           />

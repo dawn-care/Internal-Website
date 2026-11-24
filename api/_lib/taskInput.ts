@@ -1,6 +1,6 @@
-import { FIELD_NAMES, STATUS_NAMES, type FieldKey } from './config.js'
+import { FIELD_NAMES, type FieldKey } from './config.js'
 import { parseDateKey } from './dates.js'
-import type { ProjectMeta } from './github/project.js'
+import { statusKeyOf, type ProjectMeta } from './github/project.js'
 
 /**
  * Validation for task writes. Everything the browser sends is checked against the project
@@ -27,7 +27,6 @@ export type FieldValue =
   | { kind: 'singleSelect'; optionId: string }
   | { kind: 'number'; number: number }
   | { kind: 'date'; date: string }
-  | { kind: 'iteration'; iterationId: string }
 
 /** Field changes in the order they're applied. */
 export type FieldChanges = Partial<Record<FieldKey, FieldValue | null>>
@@ -46,10 +45,9 @@ export interface PatchTaskInput {
   fields: FieldChanges
 }
 
-/** Request keys for the single-select, date, number, and iteration fields. */
+/** Request keys for the single-select, date, and number fields. */
 const FIELD_KEYS = {
   statusOptionId: 'status',
-  iterationId: 'iteration',
   estimateHours: 'estimate',
   priorityOptionId: 'priority',
   sizeOptionId: 'size',
@@ -120,6 +118,7 @@ function parseField(
 
   switch (fieldKey) {
     case 'estimate': {
+      if (!meta.estimate) throw new InputError(`This project has no "${label}" field.`)
       if (typeof value !== 'number' || !Number.isFinite(value)) {
         throw new InputError(`${label} must be a number of hours.`)
       }
@@ -134,12 +133,6 @@ function parseField(
         throw new InputError(`"Done by" must be a date like 2026-10-05.`)
       }
       return { kind: 'date', date: value }
-    }
-    case 'iteration': {
-      if (typeof value !== 'string' || !meta.iteration.iterations.some((it) => it.id === value)) {
-        throw new InputError('That sprint is not one of the project’s iterations.')
-      }
-      return { kind: 'iteration', iterationId: value }
     }
     default: {
       const field = meta[fieldKey]
@@ -166,8 +159,8 @@ function parseFields(
 }
 
 /**
- * POST /api/tasks. Without an explicit status, a new task goes to "Sprint Backlog" when it
- * has an iteration and "Product Backlog" otherwise (skipped if the project lacks that option).
+ * POST /api/tasks. Without an explicit status, a new task goes to "Product Backlog" (skipped
+ * if the project lacks that option).
  */
 export function parseCreateTask(body: unknown, meta: ProjectMeta): CreateTaskInput {
   const obj = asObject(body)
@@ -179,10 +172,7 @@ export function parseCreateTask(body: unknown, meta: ProjectMeta): CreateTaskInp
   if (obj.assigneeIds !== undefined) input.assigneeIds = parseAssigneeIds(obj.assigneeIds)
 
   if (!input.fields.status) {
-    const name = input.fields.iteration ? STATUS_NAMES.sprintBacklog : STATUS_NAMES.productBacklog
-    const option = meta.status.options.find(
-      (o) => o.name.trim().toLowerCase() === name.toLowerCase(),
-    )
+    const option = meta.status.options.find((o) => statusKeyOf(o.name) === 'productBacklog')
     if (option) input.fields.status = { kind: 'singleSelect', optionId: option.id }
   }
   return input

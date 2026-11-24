@@ -1,22 +1,30 @@
-import { REQUIRED_REVIEWERS } from '../../config/process'
-import { MOCK_USER } from '../auth/mock'
 import { businessDaysInclusive, isPastSla } from '../businessTime'
+import { MOCK_USER } from '../auth/mock'
+import { deadlinePosition } from '../deadlines'
 import { isUpcoming } from '../meetings'
 import { mockMeetings } from '../meetingsMock'
 import { addDaysToDateKey, zonedDateKey } from '../teamTime'
 import { TasksError } from '../tasks/api'
-import { addDaysKey, isBlocked, isOverdue, selectMine } from '../tasks/selectors'
-import type { Task } from '../tasks/types'
+import { isOverdue, selectMine } from '../tasks/selectors'
+import type { StatusOption, Task } from '../tasks/types'
 import { loadTasks, peekTasks } from '../tasks/useTasks'
-import { selectDashboardTodos } from '../todos/selectors'
-import { mockTodosApi } from '../todos/mock'
-import type { DashboardPr, DashboardResponse, MyPr, MyTasks, ReviewQueuePr } from './types'
+import {
+  BOARD_COLUMNS,
+  type BoardColumn,
+  type DashboardPr,
+  type DashboardResponse,
+  type DeadlineWidget,
+  type MyPr,
+  type MyWork,
+  type ReviewQueuePr,
+} from './types'
 
 /*
  * Fake /api/dashboard for sample mode (VITE_TASKS_MOCK=true, or a preview deployment). Tasks
  * come from the shared sample tasks cache, so "Mark done" here shows up on /tasks too. PRs
- * cover: an overdue review, a PR without a demo video, failing CI, a draft that targets main
- * directly, and changes requested.
+ * cover every Development Methodology check: an overdue review, a UI change without a photo
+ * or video, failing CI, an oversized PR, a PR with no ticket, a draft that targets main
+ * directly, changes requested, and a canary → main release waiting on its second approval.
  */
 
 const HOUR_MS = 3_600_000
@@ -35,11 +43,17 @@ function pr(fields: Partial<DashboardPr> & Pick<DashboardPr, 'id' | 'title' | 'n
     headRefName: 'feature/sample',
     requestedReviewers: [],
     reviews: [],
-    reviewerCount: 2,
-    requiredReviewers: REQUIRED_REVIEWERS,
-    hasDemoVideo: true,
+    reviewerCount: 1,
+    approvals: 0,
+    requiredApprovals: 1,
+    isRelease: false,
     ciState: 'SUCCESS',
     targetsCorrectBase: true,
+    ticket: { number: 52, linked: true, labels: ['Carepartner', 'Frontend'] },
+    missingFocusLabel: false,
+    size: { lines: 214, files: 6, over: false },
+    needsMedia: true,
+    hasMedia: true,
     ...fields,
   } satisfies DashboardPr
 }
@@ -57,8 +71,7 @@ function reviewQueue(now: Date): ReviewQueuePr[] {
         title: 'Morning routine: large-type clock face',
         number: 58,
         author: 'priya-n',
-        headRefName: 'feature/large-clock',
-        reviewerCount: 1,
+        headRefName: '52-large-clock',
         requestedReviewers: [MOCK_USER.login],
       },
       96,
@@ -69,8 +82,10 @@ function reviewQueue(now: Date): ReviewQueuePr[] {
         title: 'Read the day’s schedule aloud',
         number: 61,
         author: 'sam-k',
-        headRefName: 'feature/tts-schedule',
-        hasDemoVideo: false,
+        headRefName: '61-tts-schedule',
+        ticket: { number: 61, linked: false, labels: null },
+        needsMedia: false,
+        size: { lines: 1240, files: 19, over: true },
         ciState: 'PENDING',
       },
       3,
@@ -86,11 +101,12 @@ function myPrs(): MyPr[] {
         title: 'Weather card: high-contrast icons',
         number: 63,
         author: MOCK_USER.login,
-        headRefName: 'feature/weather-contrast',
-        hasDemoVideo: false,
+        headRefName: '63-weather-contrast',
+        ticket: { number: 63, linked: true, labels: ['Carepartner', 'UI/UX'] },
+        hasMedia: false,
+        approvals: 1,
         ciState: 'FAILURE',
       }),
-      reviewsApproved: 1,
       changesRequested: 0,
     },
     {
@@ -103,53 +119,105 @@ function myPrs(): MyPr[] {
         headRefName: 'spike/photo-carousel',
         baseRefName: 'main',
         targetsCorrectBase: false,
-        reviewerCount: 1,
+        ticket: null,
         ciState: null,
       }),
-      reviewsApproved: 0,
       changesRequested: 1,
     },
     {
       ...pr({
         id: 'PR_mock_mine3',
-        title: 'Release: canary → main',
-        number: 65,
+        title: 'Weather service: cache forecasts for an hour',
+        number: 66,
         author: MOCK_USER.login,
-        headRefName: 'canary',
-        baseRefName: 'main',
+        headRefName: '66-weather-cache',
+        ticket: { number: 66, linked: true, labels: ['documentation'] },
+        missingFocusLabel: true,
+        needsMedia: false,
+        hasMedia: false,
+        approvals: 1,
       }),
-      reviewsApproved: 2,
       changesRequested: 0,
     },
   ]
 }
 
-function myTasks(tasks: Task[], statuses: MyTasks['statuses'], today: Date): MyTasks {
+function myWork(tasks: Task[], statuses: StatusOption[], now: Date): MyWork {
   const mine = selectMine(tasks, MOCK_USER.login).filter((t) => t.statusKey !== 'done')
-  const todayKey = addDaysKey(today, 0)
-  const weekEnd = addDaysKey(today, 6)
-  const groups = {
-    overdue: mine.filter((t) => isOverdue(t, today)),
-    dueThisWeek: mine.filter((t) => !!t.doneBy && t.doneBy >= todayKey && t.doneBy <= weekEnd),
-    blocked: mine.filter(isBlocked),
-    inProgress: mine.filter((t) => t.statusKey === 'inProgress'),
-  }
   const byDate = (a: Task, b: Task) => (a.doneBy ?? '~').localeCompare(b.doneBy ?? '~')
-  const top = (list: Task[]) => [...list].sort(byDate).slice(0, LIMIT)
+  const columns = {} as Record<BoardColumn, Task[]>
+  const counts = { ...emptyCounts(), overdue: 0, open: mine.length }
+  for (const column of BOARD_COLUMNS) {
+    const list = mine.filter((t) => t.statusKey === column)
+    columns[column] = [...list].sort(byDate).slice(0, LIMIT)
+    counts[column] = list.length
+  }
+  counts.overdue = mine.filter((t) => isOverdue(t, now)).length
+  return { columns, counts, hiddenCount: 0, statuses }
+}
+
+const emptyCounts = (): Record<BoardColumn, number> => ({
+  activeBacklog: 0,
+  inProgress: 0,
+  inReview: 0,
+  blocked: 0,
+})
+
+/**
+ * The real deadline from src/config/deadlines.ts when one is current or upcoming; otherwise a
+ * sample one ending in two weeks, so the card always has something to show.
+ */
+function deadline(tasks: Task[], statuses: StatusOption[], now: Date): DeadlineWidget {
+  const today = zonedDateKey(now)
+  const position = deadlinePosition(today)
+  const real = position.deadline
+  const start = real?.start ?? addDaysToDateKey(today, -10)
+  const end = real?.end ?? addDaysToDateKey(today, 13)
+  const counts = emptyCounts()
+  for (const t of tasks) {
+    const key = t.statusKey
+    if (key && (BOARD_COLUMNS as readonly string[]).includes(key)) counts[key as BoardColumn] += 1
+  }
+  const names: Partial<Record<BoardColumn, string>> = {}
+  for (const s of statuses) {
+    if (
+      s.key &&
+      (BOARD_COLUMNS as readonly string[]).includes(s.key) &&
+      !names[s.key as BoardColumn]
+    ) {
+      names[s.key as BoardColumn] = s.name
+    }
+  }
   return {
-    overdue: top(groups.overdue),
-    dueThisWeek: top(groups.dueThisWeek),
-    blocked: top(groups.blocked),
-    inProgress: top(groups.inProgress),
-    counts: {
-      overdue: groups.overdue.length,
-      dueThisWeek: groups.dueThisWeek.length,
-      blocked: groups.blocked.length,
-      inProgress: groups.inProgress.length,
-      open: mine.length,
+    deadline: {
+      name: real?.name ?? 'Sample deadline',
+      start,
+      end,
+      active: real ? position.active : true,
+      daysLeft: businessDaysInclusive(today, end),
     },
-    hiddenCount: 0,
-    statuses,
+    refinement: position.justEnded
+      ? { after: position.justEnded.name, by: position.justEnded.refinementBy }
+      : null,
+    board: { counts, names, projectUrl: 'https://github.com/orgs/dawn-team/projects/1' },
+    boardError: null,
+    release: {
+      open: [
+        {
+          title: 'Release: canary → main',
+          url: 'https://github.com/dawn-team/dawn-app/pull/65',
+          repo: 'dawn-team/dawn-app',
+          number: 65,
+          isDraft: false,
+          approvals: 1,
+          requiredApprovals: 2,
+          ciState: 'SUCCESS',
+          mergedAt: null,
+        },
+      ],
+      merged: [],
+    },
+    releaseError: null,
   }
 }
 
@@ -161,52 +229,16 @@ export async function mockDashboard(now = new Date()): Promise<DashboardResponse
   const { meta, tasks } = data
 
   const today = zonedDateKey(now)
-  const iteration = meta.iterations.find((i) => i.id === meta.currentIterationId)
-  let sprint: DashboardResponse['sprint'] = null
-  if (iteration) {
-    const endDate = addDaysToDateKey(iteration.startDate, iteration.duration - 1)
-    let scope = 0
-    let done = 0
-    let unestimatedCount = 0
-    for (const t of tasks) {
-      if (t.iteration?.id !== iteration.id) continue
-      if (t.estimateHours === undefined) unestimatedCount += 1
-      else {
-        scope += t.estimateHours
-        if (t.statusKey === 'done') done += t.estimateHours
-      }
-    }
-    sprint = {
-      id: iteration.id,
-      title: iteration.title,
-      startDate: iteration.startDate,
-      endDate,
-      daysLeft: businessDaysInclusive(today, endDate),
-      burndown: {
-        unit: 'estimateHours',
-        scope,
-        done,
-        remaining: scope - done,
-        unestimatedCount,
-      },
-    }
-  }
-
   const calendar = mockMeetings(today, addDaysToDateKey(today, 14), now)
   return {
     me: MOCK_USER,
-    sprint,
-    tasks: myTasks(tasks, meta.statuses, now),
+    deadline: deadline(tasks, meta.statuses, now),
+    work: myWork(tasks, meta.statuses, now),
     reviewQueue: reviewQueue(now),
     myPrs: myPrs(),
     meetings: {
       connected: true,
       meetings: calendar.meetings.filter((m) => isUpcoming(m, now)).slice(0, LIMIT),
-    },
-    // The same in-memory to-dos as /tasks, so a check-off here shows up there too.
-    todos: {
-      ...selectDashboardTodos(await mockTodosApi.list(now), MOCK_USER.login, today),
-      people: data.team.map(({ login, name, avatarUrl }) => ({ login, name, avatarUrl })),
     },
     generatedAt: now.toISOString(),
   }

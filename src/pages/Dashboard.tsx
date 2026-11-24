@@ -1,11 +1,11 @@
 import { Navigate } from 'react-router-dom'
 import DashboardHeader from '../components/dashboard/DashboardHeader'
+import DeadlineCard from '../components/dashboard/DeadlineCard'
 import MeetingsWidget from '../components/dashboard/MeetingsWidget'
+import MyMetricsWidget from '../components/dashboard/MyMetricsWidget'
 import MyPrsWidget from '../components/dashboard/MyPrsWidget'
-import MyTasksWidget from '../components/dashboard/MyTasksWidget'
+import MyWorkWidget from '../components/dashboard/MyWorkWidget'
 import ReviewQueueWidget from '../components/dashboard/ReviewQueueWidget'
-import SprintCard from '../components/dashboard/SprintCard'
-import TodosWidget from '../components/dashboard/TodosWidget'
 import ErrorState from '../components/ErrorState'
 import LoadingState from '../components/LoadingState'
 import PageTitle from '../components/PageTitle'
@@ -62,18 +62,18 @@ function SignedInDashboard({ user }: { user: AuthUser }) {
           <ErrorState message={query.error.message} onRetry={query.refetch} />
         </div>
       ) : (
-        // Two columns on large screens. The DOM order is the phone order: sprint, tasks,
-        // team to-dos, meetings, reviews, my PRs.
+        // Two columns on large screens. The DOM order is the phone order: deadline, my work,
+        // meetings, reviews, my PRs, my PR metrics.
         <div className="grid items-start gap-6 lg:grid-cols-2">
           <div className="grid gap-6">
-            <SprintCard query={query} now={now} />
-            <MyTasksWidget query={query} now={now} />
-            <TodosWidget query={query} now={now} />
+            <DeadlineCard query={query} now={now} />
+            <MyWorkWidget query={query} now={now} />
           </div>
           <div className="grid gap-6">
             <MeetingsWidget query={query} now={now} />
             <ReviewQueueWidget query={query} now={now} />
             <MyPrsWidget query={query} />
+            <MyMetricsWidget login={user.login} />
           </div>
         </div>
       )}

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import type { Meeting } from '../meetings'
 import type { Task } from '../tasks/types'
-import type { Todo } from '../todos/types'
-import { isAllCaughtUp, todoCounts, waitingCounts } from './summary'
-import type { DashboardResponse, MyPr, MyTasks, ReviewQueuePr, TodosWidget } from './types'
+import { isAllCaughtUp, meetingPrep, prProblems, waitingCounts, workCounts } from './summary'
+import type { DashboardPr, DashboardResponse, MyPr, MyWork, ReviewQueuePr } from './types'
 import { applyOverrides } from './useDashboard'
+
+const NOW = new Date('2026-09-30T14:00:00Z') // Wed Sep 30, 10am Eastern
 
 const task = (itemId: string, fields: Partial<Task> = {}): Task => ({
   itemId,
@@ -17,13 +19,10 @@ const task = (itemId: string, fields: Partial<Task> = {}): Task => ({
   ...fields,
 })
 
-function tasks(fields: Partial<MyTasks> = {}): MyTasks {
+function work(fields: Partial<MyWork> = {}): MyWork {
   return {
-    overdue: [],
-    dueThisWeek: [],
-    blocked: [],
-    inProgress: [],
-    counts: { overdue: 0, dueThisWeek: 0, blocked: 0, inProgress: 0, open: 0 },
+    columns: { activeBacklog: [], inProgress: [], inReview: [], blocked: [] },
+    counts: { activeBacklog: 0, inProgress: 0, inReview: 0, blocked: 0, overdue: 0, open: 0 },
     hiddenCount: 0,
     statuses: [],
     ...fields,
@@ -33,108 +32,207 @@ function tasks(fields: Partial<MyTasks> = {}): MyTasks {
 function response(fields: Partial<DashboardResponse> = {}): DashboardResponse {
   return {
     me: { login: 'ada', name: 'Ada', avatarUrl: '' },
-    sprint: null,
-    tasks: tasks(),
+    deadline: {
+      deadline: null,
+      refinement: null,
+      board: null,
+      boardError: null,
+      release: null,
+      releaseError: null,
+    },
+    work: work(),
     reviewQueue: [],
     myPrs: [],
     meetings: { connected: true, meetings: [] },
-    todos: {
-      items: [],
-      counts: { open: 0, overdue: 0, overdueForMe: 0, mine: 0, everyone: 0, others: 0 },
-      people: [],
-    },
     generatedAt: '2026-09-30T14:00:00.000Z',
     ...fields,
   }
 }
 
+/** A PR that follows every rule. */
+const goodPr: Pick<
+  DashboardPr,
+  | 'isRelease'
+  | 'targetsCorrectBase'
+  | 'ticket'
+  | 'missingFocusLabel'
+  | 'size'
+  | 'needsMedia'
+  | 'hasMedia'
+> = {
+  isRelease: false,
+  targetsCorrectBase: true,
+  ticket: { number: 1, linked: true, labels: ['Server'] },
+  missingFocusLabel: false,
+  size: { lines: 10, files: 1, over: false },
+  needsMedia: true,
+  hasMedia: true,
+}
+
 describe('waitingCounts', () => {
   it('is all caught up only when every count is known and zero', () => {
-    expect(isAllCaughtUp(waitingCounts(response()))).toBe(true)
+    expect(isAllCaughtUp(waitingCounts(response(), NOW))).toBe(true)
     const failed = response({ reviewQueue: { error: { code: 'internal', message: 'x' } } })
-    expect(waitingCounts(failed).reviews).toBeNull()
-    expect(isAllCaughtUp(waitingCounts(failed))).toBe(false)
+    expect(waitingCounts(failed, NOW).reviews).toBeNull()
+    expect(isAllCaughtUp(waitingCounts(failed, NOW))).toBe(false)
   })
 
-  it('counts reviews, overdue and blocked tasks, and PRs with failing CI', () => {
+  it('counts reviews, overdue and blocked tasks, failing CI, and PRs to fix up', () => {
     const counts = waitingCounts(
       response({
         reviewQueue: [{}, {}] as ReviewQueuePr[],
-        myPrs: [{ ciState: 'FAILURE' }, { ciState: 'SUCCESS' }, { ciState: null }] as MyPr[],
-        tasks: tasks({
-          overdue: [task('a'), task('b', { statusKey: 'done', status: 'Done' })],
-          blocked: [task('c', { statusKey: 'blocked' })],
-          counts: { overdue: 7, dueThisWeek: 0, blocked: 1, inProgress: 0, open: 8 },
+        myPrs: [
+          { ...goodPr, isDraft: false, ciState: 'FAILURE' },
+          // A UI change with no photo: needs fixing.
+          { ...goodPr, isDraft: false, ciState: 'SUCCESS', hasMedia: false },
+          // Drafts aren't nagged about.
+          { ...goodPr, isDraft: true, ciState: null, ticket: null },
+        ] as MyPr[],
+        work: work({
+          columns: {
+            activeBacklog: [],
+            inProgress: [task('a', { doneBy: '2026-09-01' })],
+            inReview: [],
+            blocked: [
+              task('c', { statusKey: 'blocked' }),
+              // Checked off here since it loaded (and it was overdue).
+              task('d', { statusKey: 'done', status: 'Done', doneBy: '2026-09-02' }),
+            ],
+          },
+          counts: {
+            activeBacklog: 0,
+            inProgress: 1,
+            inReview: 0,
+            blocked: 2,
+            overdue: 7,
+            open: 8,
+          },
         }),
       }),
+      NOW,
     )
-    // 7 overdue on the server, one of the listed ones since checked off here.
-    expect(counts).toEqual({ reviews: 2, overdue: 6, blocked: 1, failingCi: 1, overdueTodos: 0 })
+    expect(counts).toEqual({ reviews: 2, overdue: 6, blocked: 1, failingCi: 1, prFixes: 1 })
   })
 })
 
-describe('to-do counts', () => {
-  const todo = (id: string, fields: Partial<Todo> = {}): Todo => ({
-    id,
-    title: id,
-    done: false,
-    assignees: [],
-    createdBy: 'ada',
-    createdAt: '2026-09-01T00:00:00Z',
-    updatedBy: 'ada',
-    updatedAt: '2026-09-01T00:00:00Z',
-    version: 1,
-    ...fields,
+describe('workCounts', () => {
+  it('subtracts tasks checked off here since the dashboard loaded', () => {
+    const counts = workCounts(
+      work({
+        columns: {
+          activeBacklog: [task('a', { statusKey: 'done', status: 'Done' })],
+          inProgress: [],
+          inReview: [],
+          blocked: [],
+        },
+        counts: { activeBacklog: 3, inProgress: 0, inReview: 0, blocked: 0, overdue: 0, open: 5 },
+      }),
+      NOW,
+    )
+    expect(counts).toMatchObject({ activeBacklog: 2, open: 4 })
   })
-  const NOW = new Date('2026-09-30T14:00:00Z')
+})
 
-  it('counts only my and unassigned overdue to-dos toward "Waiting on you"', () => {
-    const data = response({
-      todos: {
-        items: [
-          todo('a', { dueDate: '2026-09-28' }),
-          // Checked off here since the dashboard loaded.
-          todo('b', { dueDate: '2026-09-29', done: true, assignees: ['ada'] }),
-          todo('c', { dueDate: '2026-09-29', done: true, assignees: ['grace'] }),
-        ],
-        counts: { open: 6, overdue: 5, overdueForMe: 3, mine: 2, everyone: 2, others: 2 },
-        people: [],
-      },
-    })
-    // 3 of mine/unassigned overdue on the server, minus b; c is Grace's, so doesn't count.
-    expect(waitingCounts(data, NOW).overdueTodos).toBe(2)
-    expect(isAllCaughtUp(waitingCounts(data, NOW))).toBe(false)
-    expect(todoCounts(data.todos as TodosWidget, 'ada', NOW)).toEqual({
-      open: 4,
-      overdueForMe: 2,
-    })
+describe('prProblems', () => {
+  it('is empty for a PR that follows every rule', () => {
+    expect(prProblems(goodPr)).toEqual([])
   })
 
-  it('is unknown when the to-dos widget failed', () => {
-    const data = response({ todos: { error: { code: 'internal', message: 'x' } } })
-    expect(waitingCounts(data, NOW).overdueTodos).toBeNull()
+  it('names each broken rule', () => {
+    expect(
+      prProblems({
+        ...goodPr,
+        targetsCorrectBase: false,
+        ticket: null,
+        size: { lines: 900, files: 3, over: true },
+        hasMedia: false,
+      }),
+    ).toEqual(['Wrong base branch', 'No ticket', 'Over 750 lines or 15 files', 'No photo or video'])
+    expect(prProblems({ ...goodPr, missingFocusLabel: true })).toEqual([
+      'Ticket has no focus-area label',
+    ])
+  })
+
+  it('holds a canary → main release to none of the feature-PR rules', () => {
+    expect(
+      prProblems({
+        ...goodPr,
+        isRelease: true,
+        ticket: null,
+        size: { lines: 9000, files: 80, over: true },
+        needsMedia: false,
+      }),
+    ).toEqual([])
+  })
+
+  it('needs no photo or video when the PR doesn’t change the UI', () => {
+    expect(prProblems({ ...goodPr, needsMedia: false, hasMedia: false })).toEqual([])
+  })
+})
+
+describe('meetingPrep', () => {
+  const sponsor = (start: string, docs: { agenda?: unknown; fourUp?: unknown }) => ({
+    id: start,
+    title: 'Sponsor Meeting',
+    start,
+    end: start.replace('T21:00', 'T22:15'),
+    allDay: false,
+    kind: 'official' as const,
+    recurring: true,
+    htmlLink: 'https://calendar.google.com/',
+    ...docs,
+  })
+  const MONDAY = new Date('2026-09-28T14:00:00Z')
+
+  it('nudges the day before a sponsor meeting that is missing its Agenda or 4Up', () => {
+    const tuesday = sponsor('2026-09-29T21:00:00Z', { agenda: { id: 'a' }, fourUp: null })
+    expect(meetingPrep([tuesday], MONDAY)).toEqual({ meeting: tuesday, missing: ['4Up'] })
+    const neither = sponsor('2026-09-29T21:00:00Z', { agenda: null, fourUp: null })
+    expect(meetingPrep([neither], MONDAY)?.missing).toEqual(['Agenda', '4Up'])
+  })
+
+  it('says nothing when both are posted, a feed hasn’t loaded, or it’s days away', () => {
+    expect(
+      meetingPrep([sponsor('2026-09-29T21:00:00Z', { agenda: {}, fourUp: {} })], MONDAY),
+    ).toBeNull()
+    expect(meetingPrep([sponsor('2026-09-29T21:00:00Z', {})], MONDAY)).toBeNull()
+    expect(
+      meetingPrep([sponsor('2026-10-06T21:00:00Z', { agenda: null, fourUp: null })], MONDAY),
+    ).toBeNull()
+  })
+
+  it('ignores other meetings and sponsor meetings that are over', () => {
+    const retro = {
+      ...sponsor('2026-09-28T21:00:00Z', { agenda: null, fourUp: null }),
+      kind: 'retro' as const,
+    }
+    const over = sponsor('2026-09-28T12:00:00Z', { agenda: null, fourUp: null })
+    over.end = '2026-09-28T13:00:00Z'
+    expect(meetingPrep([retro, over] as Meeting[], MONDAY)).toBeNull()
   })
 })
 
 describe('applyOverrides', () => {
-  const data = response({ tasks: tasks({ overdue: [task('a')], inProgress: [task('a')] }) })
+  const data = response({
+    work: work({
+      columns: { activeBacklog: [], inProgress: [task('a')], inReview: [], blocked: [] },
+    }),
+  })
   const generated = Date.parse(data.generatedAt)
 
   it('shows a status set here until the server has caught up', () => {
     const overrides = new Map([
       ['a', { status: 'Done', statusKey: 'done' as const, at: generated + 1000 }],
     ])
-    const next = applyOverrides(data, overrides).tasks as MyTasks
-    expect(next.overdue[0].statusKey).toBe('done')
-    expect(next.inProgress[0].status).toBe('Done')
+    const next = applyOverrides(data, overrides).work as MyWork
+    expect(next.columns.inProgress[0]).toMatchObject({ status: 'Done', statusKey: 'done' })
   })
 
   it('lets newer server data win', () => {
     const overrides = new Map([
       ['a', { status: 'Done', statusKey: 'done' as const, at: generated - 1000 }],
     ])
-    expect((applyOverrides(data, overrides).tasks as MyTasks).overdue[0].statusKey).toBe(
-      'inProgress',
-    )
+    const next = applyOverrides(data, overrides).work as MyWork
+    expect(next.columns.inProgress[0].statusKey).toBe('inProgress')
   })
 })

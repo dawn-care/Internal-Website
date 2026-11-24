@@ -1,9 +1,8 @@
+import { deadlinePosition } from '../../src/lib/deadlines.js'
 import { businessDaysInclusive } from '../../src/lib/businessTime.js'
 import { isUpcoming, meetingStart } from '../../src/lib/meetingTime.js'
-import { selectDashboardTodos, type DashboardTodos } from '../../src/lib/todos/selectors.js'
-import { aggregate } from './burndown.js'
-import { BURNDOWN_UNIT } from './config.js'
-import { addDays, findCurrentIteration, todayKey } from './dates.js'
+import { DEADLINE_STATUSES, type StatusKey } from './config.js'
+import { addDays, todayKey } from './dates.js'
 import { ConfigError } from './env.js'
 import { CalendarError, listMeetings, type Meeting } from './google/calendar.js'
 import { GitHubApiError, ProjectSetupError, toClientError } from './github/errors.js'
@@ -14,15 +13,22 @@ import {
   type ItemList,
   type ProjectMeta,
 } from './github/project.js'
-import { listMyPrs, listReviewQueue, type MyPr, type ReviewQueuePr } from './github/pulls.js'
+import {
+  listMyPrs,
+  listReleaseStatus,
+  listReviewQueue,
+  type MyPr,
+  type ReleaseStatus,
+  type ReviewQueuePr,
+} from './github/pulls.js'
 import type { StatusOption, Task } from './github/types.js'
 import type { SessionUser } from './session.js'
-import { listTodos, teamMembers, type Todo } from './todos.js'
 
 /*
  * GET /api/dashboard: every widget's data in one response. Each widget is computed on its
  * own: if one source fails, that widget becomes { error } and the others still return.
  * Responses are cached per user (by login) for 60 seconds, never shared across users.
+ * The widgets follow the Development Methodology's deadline-based iterations.
  */
 
 export interface WidgetError {
@@ -32,37 +38,55 @@ export interface WidgetError {
 /** A widget is its data, or { error } when its source failed. */
 export type Widget<T> = T | WidgetError
 
-export interface SprintSummary {
-  id: string
-  title: string
-  /** "YYYY-MM-DD". */
-  startDate: string
-  /** The sprint's last day, "YYYY-MM-DD" (inclusive). */
-  endDate: string
-  /** Business days left, today included. */
+/** The board columns a deadline needs empty, plus Blocked (always worth seeing). */
+export type BoardColumn = 'activeBacklog' | 'inProgress' | 'inReview' | 'blocked'
+
+export const BOARD_COLUMNS: readonly BoardColumn[] = [
+  ...(DEADLINE_STATUSES as BoardColumn[]),
+  'blocked',
+]
+
+export interface DeadlineSummary {
+  name: string
+  /** Inclusive, "YYYY-MM-DD". */
+  start: string
+  end: string
+  /** True when today is inside it; false when it hasn't started yet. */
+  active: boolean
+  /** Business days left, today included (0 once it's over). */
   daysLeft: number
-  /** Live totals for the sprint; null if tasks couldn't be read. */
-  burndown: {
-    unit: typeof BURNDOWN_UNIT
-    scope: number
-    done: number
-    remaining: number
-    unestimatedCount: number
-  } | null
 }
 
-export interface MyTasks {
-  /** Estimated done date before today, not Done. Up to 5 each, soonest first. */
-  overdue: Task[]
-  /** Due today through the next 6 days. */
-  dueThisWeek: Task[]
-  blocked: Task[]
-  inProgress: Task[]
-  counts: {
+/**
+ * The next (or current) deadline and how close the board is to it. Development Methodology:
+ * by the deadline, Active Backlog, In Progress and In Review are empty and canary is merged
+ * into main; backlog refinement follows within two days.
+ */
+export interface DeadlineWidget {
+  /** Null when no deadline is configured from today on (src/config/deadlines.ts). */
+  deadline: DeadlineSummary | null
+  /** The deadline that just ended, while its backlog refinement is due. */
+  refinement: { after: string; by: string } | null
+  /** Team-wide counts per column; null when the board couldn't be read (see boardError). */
+  board: {
+    counts: Record<BoardColumn, number>
+    /** The board's own column names ("Active Backlog (DEADLINE 12-16-26)"), when present. The UI shows its own labels and only reads these to spot a deadline date that disagrees with src/config/deadlines.ts. */
+    names: Partial<Record<BoardColumn, string>>
+    projectUrl: string
+  } | null
+  boardError: WidgetError['error'] | null
+  /** canary → main for this deadline; null when it couldn't be read (see releaseError). */
+  release: ReleaseStatus | null
+  releaseError: WidgetError['error'] | null
+}
+
+/** My open tasks by board column. Up to 5 per column, most urgent first. */
+export interface MyWork {
+  columns: Record<BoardColumn, Task[]>
+  counts: Record<BoardColumn, number> & {
+    /** Estimated done date before today, not Done (any column). */
     overdue: number
-    dueThisWeek: number
-    blocked: number
-    inProgress: number
+    /** Everything assigned to me that isn't Done (Product Backlog included). */
     open: number
   }
   /** Project items GitHub hid from this user. */
@@ -78,30 +102,14 @@ export interface MeetingsWidget {
   meetings: Meeting[]
 }
 
-/** A person named in the to-dos widget. */
-export interface TodoPerson {
-  login: string
-  name: string
-  avatarUrl: string
-}
-
-/**
- * Up to 5 open team to-dos (soonest due first), plus counts, and the names of the
- * people they're assigned to. `people` is [] if the team list couldn't be read: the widget
- * then shows logins instead of failing.
- */
-export type TodosWidget = DashboardTodos<Todo> & { people: TodoPerson[] }
-
 /** Mirrored for the browser with the dashboard UI. */
 export interface DashboardResponse {
   me: SessionUser
-  /** Null when no sprint is running today. */
-  sprint: Widget<SprintSummary | null>
-  tasks: Widget<MyTasks>
+  deadline: Widget<DeadlineWidget>
+  work: Widget<MyWork>
   reviewQueue: Widget<ReviewQueuePr[]>
   myPrs: Widget<MyPr[]>
   meetings: Widget<MeetingsWidget>
-  todos: Widget<TodosWidget>
   generatedAt: string
 }
 
@@ -111,9 +119,8 @@ export interface DashboardSources {
   items(token: string): Promise<ItemList>
   reviewQueue(token: string, org: string, login: string, now: Date): Promise<ReviewQueuePr[]>
   myPrs(token: string, org: string): Promise<MyPr[]>
+  release(token: string, org: string, sinceKey: string): Promise<ReleaseStatus>
   meetings(fromKey: string, throughKey: string): Promise<Meeting[] | null>
-  todos(now: Date): Promise<Todo[]>
-  team(token: string): Promise<TodoPerson[]>
 }
 
 export const defaultSources: DashboardSources = {
@@ -121,9 +128,8 @@ export const defaultSources: DashboardSources = {
   items: listItems,
   reviewQueue: listReviewQueue,
   myPrs: listMyPrs,
+  release: listReleaseStatus,
   meetings: listMeetings,
-  todos: listTodos,
-  team: teamMembers,
 }
 
 export interface DashboardContext {
@@ -141,27 +147,64 @@ const MAX_CACHED_USERS = 100
 
 // ─── Widgets ─────────────────────────────────────────────────────────────────
 
-async function sprintWidget(
+/** A contained failure inside a widget (the rest of it still shows). */
+function partError(err: unknown): WidgetError['error'] {
+  if (err instanceof GitHubApiError && err.kind === 'session-expired') throw err
+  return toWidgetError(err).error
+}
+
+const emptyCounts = (): Record<BoardColumn, number> => ({
+  activeBacklog: 0,
+  inProgress: 0,
+  inReview: 0,
+  blocked: 0,
+})
+
+function isColumn(key: StatusKey | null): key is BoardColumn {
+  return key !== null && (BOARD_COLUMNS as readonly string[]).includes(key)
+}
+
+export async function deadlineWidget(
   ctx: DashboardContext,
+  sources: DashboardSources,
   meta: Promise<ProjectMeta>,
   items: Promise<ItemList>,
-): Promise<SprintSummary | null> {
+): Promise<DeadlineWidget> {
   const today = todayKey(ctx.now)
-  const current = findCurrentIteration((await meta).iteration.iterations, today)
-  if (!current) return null
-  const endDate = addDays(current.startDate, current.duration - 1)
-  // Burndown is extra: a task-list failure leaves the sprint header intact.
-  const burndown = await items.then(
-    ({ tasks }) => ({ unit: BURNDOWN_UNIT, ...aggregate(tasks, current.id) }),
-    () => null,
-  )
+  const position = deadlinePosition(today)
+  const deadline: DeadlineSummary | null = position.deadline && {
+    ...position.deadline,
+    active: position.active,
+    daysLeft:
+      position.deadline.end < today ? 0 : businessDaysInclusive(today, position.deadline.end),
+  }
+
+  const boardPromise = Promise.all([meta, items]).then(([m, list]) => {
+    const counts = emptyCounts()
+    for (const task of list.tasks) if (isColumn(task.statusKey)) counts[task.statusKey] += 1
+    const names: Partial<Record<BoardColumn, string>> = {}
+    for (const option of toClientMeta(m).statuses) {
+      if (isColumn(option.key) && !names[option.key]) names[option.key] = option.name
+    }
+    return { counts, names, projectUrl: m.projectUrl }
+  })
+  // The release is checked from the current deadline's start (or, between deadlines, the
+  // last one's, so its merge still shows).
+  const since = position.active
+    ? position.deadline!.start
+    : (position.justEnded?.start ?? addDays(today, -14))
+  const releasePromise = sources.release(ctx.token, ctx.org, since)
+
+  const [board, release] = await Promise.allSettled([boardPromise, releasePromise])
   return {
-    id: current.id,
-    title: current.title,
-    startDate: current.startDate,
-    endDate,
-    daysLeft: businessDaysInclusive(today, endDate),
-    burndown,
+    deadline,
+    refinement: position.justEnded
+      ? { after: position.justEnded.name, by: position.justEnded.refinementBy }
+      : null,
+    board: board.status === 'fulfilled' ? board.value : null,
+    boardError: board.status === 'rejected' ? partError(board.reason) : null,
+    release: release.status === 'fulfilled' ? release.value : null,
+    releaseError: release.status === 'rejected' ? partError(release.reason) : null,
   }
 }
 
@@ -176,53 +219,36 @@ function byUrgency(a: Task, b: Task): number {
   )
 }
 
-export function groupMyTasks(
+export function groupMyWork(
   list: ItemList,
   login: string,
   today: string,
   statuses: StatusOption[] = [],
-): MyTasks {
+): MyWork {
   const mine = list.tasks.filter(
     (t) =>
       t.statusKey !== 'done' &&
       t.assignees.some((a) => a.login.toLowerCase() === login.toLowerCase()),
   )
-  const weekEnd = addDays(today, 6)
-  const groups = {
-    overdue: mine.filter((t) => t.doneBy !== undefined && t.doneBy < today),
-    dueThisWeek: mine.filter(
-      (t) => t.doneBy !== undefined && t.doneBy >= today && t.doneBy <= weekEnd,
-    ),
-    blocked: mine.filter((t) => t.statusKey === 'blocked'),
-    inProgress: mine.filter((t) => t.statusKey === 'inProgress'),
+  const columns = {} as Record<BoardColumn, Task[]>
+  const counts = { ...emptyCounts(), overdue: 0, open: mine.length }
+  for (const column of BOARD_COLUMNS) {
+    const tasks = mine.filter((t) => t.statusKey === column)
+    columns[column] = [...tasks].sort(byUrgency).slice(0, WIDGET_LIMIT)
+    counts[column] = tasks.length
   }
-  const top = (tasks: Task[]) => [...tasks].sort(byUrgency).slice(0, WIDGET_LIMIT)
-  return {
-    overdue: top(groups.overdue),
-    dueThisWeek: top(groups.dueThisWeek),
-    blocked: top(groups.blocked),
-    inProgress: top(groups.inProgress),
-    counts: {
-      overdue: groups.overdue.length,
-      dueThisWeek: groups.dueThisWeek.length,
-      blocked: groups.blocked.length,
-      inProgress: groups.inProgress.length,
-      open: mine.length,
-    },
-    hiddenCount: list.hiddenCount,
-    statuses,
-  }
+  counts.overdue = mine.filter((t) => t.doneBy !== undefined && t.doneBy < today).length
+  return { columns, counts, hiddenCount: list.hiddenCount, statuses }
 }
 
-async function tasksWidget(
+async function workWidget(
   ctx: DashboardContext,
   meta: Promise<ProjectMeta>,
   items: Promise<ItemList>,
-): Promise<MyTasks> {
-  const today = todayKey(ctx.now)
+): Promise<MyWork> {
   // Statuses only color the badges and power "Mark done": a meta failure doesn't sink the list.
-  const statuses = await meta.then((m) => toClientMeta(m, today).statuses).catch(() => [])
-  return groupMyTasks(await items, ctx.user.login, today, statuses)
+  const statuses = await meta.then((m) => toClientMeta(m).statuses).catch(() => [])
+  return groupMyWork(await items, ctx.user.login, todayKey(ctx.now), statuses)
 }
 
 async function meetingsWidget(
@@ -238,20 +264,6 @@ async function meetingsWidget(
     .filter((m) => isUpcoming(m, ctx.now) && meetingStart(m).getTime() <= until)
     .slice(0, MEETINGS_LIMIT)
   return { connected: true, meetings }
-}
-
-async function todosWidget(ctx: DashboardContext, sources: DashboardSources): Promise<TodosWidget> {
-  const todos = await sources.todos(ctx.now)
-  const selected = selectDashboardTodos(todos, ctx.user.login, todayKey(ctx.now))
-  const logins = new Set(selected.items.flatMap((t) => t.assignees.map((a) => a.toLowerCase())))
-  if (logins.size === 0) return { ...selected, people: [] }
-  // Names are a nicety: a team-list failure shows logins, never fails the widget. A dead
-  // session still surfaces through the other widgets.
-  const team = await sources.team(ctx.token).catch(() => [])
-  const people = team
-    .filter((m) => logins.has(m.login.toLowerCase()))
-    .map(({ login, name, avatarUrl }) => ({ login, name, avatarUrl }))
-  return { ...selected, people }
 }
 
 // ─── Assembly ────────────────────────────────────────────────────────────────
@@ -290,19 +302,18 @@ export async function buildDashboard(
   ctx: DashboardContext,
   sources: DashboardSources = defaultSources,
 ): Promise<DashboardResponse> {
-  // Shared by the sprint and tasks widgets; each is fetched once.
+  // Shared by the deadline and work widgets; each is fetched once.
   const meta = sources.projectMeta(ctx.token)
   const items = sources.items(ctx.token)
   meta.catch(() => {})
   items.catch(() => {})
 
   const settled = await Promise.allSettled([
-    sprintWidget(ctx, meta, items),
-    tasksWidget(ctx, meta, items),
+    deadlineWidget(ctx, sources, meta, items),
+    workWidget(ctx, meta, items),
     sources.reviewQueue(ctx.token, ctx.org, ctx.user.login, ctx.now),
     sources.myPrs(ctx.token, ctx.org),
     meetingsWidget(ctx, sources),
-    todosWidget(ctx, sources),
   ] as const)
 
   for (const result of settled) {
@@ -316,16 +327,15 @@ export async function buildDashboard(
   }
   const value = <T>(result: PromiseSettledResult<T>): Widget<T> =>
     result.status === 'fulfilled' ? result.value : toWidgetError(result.reason)
-  const [sprint, tasks, reviewQueue, myPrs, meetings, todos] = settled
+  const [deadline, work, reviewQueue, myPrs, meetings] = settled
 
   return {
     me: ctx.user,
-    sprint: value(sprint),
-    tasks: value(tasks),
+    deadline: value(deadline),
+    work: value(work),
     reviewQueue: value(reviewQueue),
     myPrs: value(myPrs),
     meetings: value(meetings),
-    todos: value(todos),
     generatedAt: ctx.now.toISOString(),
   }
 }
@@ -351,14 +361,16 @@ export async function getDashboard(
 
   const response = await buildDashboard(ctx, sources)
   const widgets = [
-    response.sprint,
-    response.tasks,
+    response.deadline,
+    response.work,
     response.reviewQueue,
     response.myPrs,
     response.meetings,
-    response.todos,
   ]
-  if (!widgets.some(isWidgetError)) {
+  const partial =
+    !isWidgetError(response.deadline) &&
+    (response.deadline.boardError !== null || response.deadline.releaseError !== null)
+  if (!widgets.some(isWidgetError) && !partial) {
     cache.delete(key)
     cache.set(key, { expires: ctx.now.getTime() + CACHE_MS, response })
     if (cache.size > MAX_CACHED_USERS) {

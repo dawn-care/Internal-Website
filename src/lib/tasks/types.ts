@@ -5,16 +5,7 @@
 
 /** A status's role, from the server config. Other statuses are simply "open". */
 export type StatusKey =
-  'productBacklog' | 'sprintBacklog' | 'inProgress' | 'inReview' | 'done' | 'blocked'
-
-export interface Iteration {
-  id: string
-  title: string
-  /** "YYYY-MM-DD", a calendar date. */
-  startDate: string
-  /** Days. */
-  duration: number
-}
+  'productBacklog' | 'activeBacklog' | 'inProgress' | 'inReview' | 'done' | 'blocked'
 
 export interface Assignee {
   login: string
@@ -46,7 +37,6 @@ export interface Task {
   /** "Estimated done date" ("Done by" in the UI), as "YYYY-MM-DD". */
   doneBy?: string
   type?: string
-  iteration?: Iteration
   /** Issues and PRs only (drafts can't have labels), sorted by name. Absent when none. */
   labels?: Label[]
   updatedAt: string
@@ -63,24 +53,19 @@ export interface StatusOption extends Option {
   color?: string
 }
 
-export interface IterationOption extends Iteration {
-  completed: boolean
-}
-
 export interface TaskMeta {
   projectUrl: string
   /** "owner/name" where New task creates issues. Absent when that can't be worked out. */
   issueRepository?: string
   /** Why New task can't create issues (e.g. no linked repository). Safe to show. */
   issueSetupError?: string
-  burndownUnit: 'estimateHours'
+  /** False when the project has no Estimate field: hide estimate inputs. */
+  hasEstimate: boolean
   statuses: StatusOption[]
   /** Optional fields are absent when the project doesn't have them: hide their UI. */
   priorities?: Option[]
   sizes?: Option[]
   types?: Option[]
-  iterations: IterationOption[]
-  currentIterationId: string | null
 }
 
 export interface TeamMember {
@@ -98,7 +83,7 @@ export interface TasksResponse {
   team: TeamMember[]
 }
 
-/** POST /api/tasks body. Option and iteration ids come from TaskMeta. */
+/** POST /api/tasks body. Option ids come from TaskMeta. */
 export interface NewTaskRequest {
   title: string
   body?: string
@@ -109,8 +94,7 @@ export interface NewTaskRequest {
   /** "YYYY-MM-DD". */
   doneBy?: string
   typeOptionId?: string
-  iterationId?: string
-  /** Omit for the default: Sprint Backlog with an iteration, else Product Backlog. */
+  /** Omit for the default: Product Backlog. */
   statusOptionId?: string
 }
 
@@ -128,7 +112,6 @@ export interface TaskPatch {
   sizeOptionId?: string | null
   doneBy?: string | null
   typeOptionId?: string | null
-  iterationId?: string | null
   statusOptionId?: string | null
 }
 

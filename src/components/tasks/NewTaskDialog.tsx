@@ -74,7 +74,6 @@ export default function NewTaskDialog({
   const [estimate, setEstimate] = useState('')
   const [sizeId, setSizeId] = useState('')
   // Chosen by the user; until then, each follows its default.
-  const [chosenIterationId, setChosenIterationId] = useState<string | null>(null)
   const [chosenStatusId, setChosenStatusId] = useState<string | null>(null)
   const [chosenSizingOpen, setChosenSizingOpen] = useState<boolean | null>(null)
 
@@ -88,15 +87,13 @@ export default function NewTaskDialog({
       ?.find((t) => t.id === typeId)
       ?.name.trim()
       .toLowerCase() === 'dev'
-  const iterationId = chosenIterationId ?? (isDev ? (meta.currentIterationId ?? '') : '')
+  // New tickets start in Product Backlog; move one to Active Backlog when the next deadline
+  // needs it (Development Methodology, "Features").
   const statusFor = (key: StatusKey) => meta.statuses.find((s) => s.key === key)?.id ?? ''
-  const autoStatusId = statusFor(iterationId ? 'sprintBacklog' : 'productBacklog')
-  const statusId = chosenStatusId ?? autoStatusId
+  const statusId = chosenStatusId ?? statusFor('productBacklog')
   const sizingOpen = chosenSizingOpen ?? isDev
   // The server couldn't work out which repository new issues go in (it says why).
   const cannotCreate = !meta.issueRepository && Boolean(meta.issueSetupError)
-  // Current and upcoming sprints only.
-  const iterations = meta.iterations.filter((it) => !it.completed)
 
   useEffect(() => {
     const dialog = ref.current
@@ -150,7 +147,6 @@ export default function NewTaskDialog({
     if (typeId) input.typeOptionId = typeId
     if (doneBy) input.doneBy = doneBy
     if (priorityId) input.priorityOptionId = priorityId
-    if (iterationId) input.iterationId = iterationId
     if (statusId) input.statusOptionId = statusId
     if (estimate.trim() !== '') input.estimateHours = Number(estimate)
     if (sizeId) input.sizeOptionId = sizeId
@@ -324,22 +320,6 @@ export default function NewTaskDialog({
               </Field>
             )}
 
-            <Field label="Sprint" htmlFor={id('sprint')}>
-              <select
-                id={id('sprint')}
-                value={iterationId}
-                onChange={(e) => setChosenIterationId(e.target.value)}
-                className={FIELD}
-              >
-                <option value="">None</option>
-                {iterations.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.id === meta.currentIterationId ? `${it.title} (current)` : it.title}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
             <div>
               <label htmlFor={id('status')} className={LABEL}>
                 Status
@@ -354,7 +334,9 @@ export default function NewTaskDialog({
                 />
               </div>
               {chosenStatusId === null && (
-                <p className="mt-1 text-xs text-ink-muted">Set from the sprint choice.</p>
+                <p className="mt-1 text-xs text-ink-muted">
+                  Move it to Active Backlog if the next deadline needs it.
+                </p>
               )}
             </div>
           </div>
@@ -375,28 +357,30 @@ export default function NewTaskDialog({
               Sizing
             </summary>
             <div className="mt-4 grid gap-5 sm:grid-cols-2">
-              <div>
-                <label htmlFor={id('estimate')} className={LABEL}>
-                  Estimate (hours)
-                </label>
-                <input
-                  id={id('estimate')}
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  max={ESTIMATE_MAX}
-                  step={0.5}
-                  value={estimate}
-                  onChange={(e) => {
-                    setEstimate(e.target.value)
-                    if (estimateError) setEstimateError(null)
-                  }}
-                  aria-invalid={estimateError ? true : undefined}
-                  aria-describedby={describedBy(estimateError !== null && id('estimate-error'))}
-                  className={`mt-1.5 ${FIELD} ${estimateError ? 'border-link' : ''}`}
-                />
-                <FieldError id={id('estimate-error')} message={estimateError} />
-              </div>
+              {meta.hasEstimate && (
+                <div>
+                  <label htmlFor={id('estimate')} className={LABEL}>
+                    Estimate (hours)
+                  </label>
+                  <input
+                    id={id('estimate')}
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={ESTIMATE_MAX}
+                    step={0.5}
+                    value={estimate}
+                    onChange={(e) => {
+                      setEstimate(e.target.value)
+                      if (estimateError) setEstimateError(null)
+                    }}
+                    aria-invalid={estimateError ? true : undefined}
+                    aria-describedby={describedBy(estimateError !== null && id('estimate-error'))}
+                    className={`mt-1.5 ${FIELD} ${estimateError ? 'border-link' : ''}`}
+                  />
+                  <FieldError id={id('estimate-error')} message={estimateError} />
+                </div>
+              )}
               {meta.sizes && (
                 <Field label="Size" htmlFor={id('size')}>
                   <OptionSelect

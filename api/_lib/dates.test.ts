@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, findCurrentIteration, parseDateKey, todayKey } from './dates.js'
+import { addDays, parseDateKey, todayKey } from './dates.js'
 
 describe('parseDateKey', () => {
   it('keeps GitHub calendar dates as-is (no UTC shift)', () => {
@@ -35,26 +35,5 @@ describe('addDays', () => {
     expect(addDays('2026-12-25', 14)).toBe('2027-01-08')
     expect(addDays('2026-10-25', 14)).toBe('2026-11-08')
     expect(addDays('2026-03-01', -1)).toBe('2026-02-28')
-  })
-})
-
-describe('findCurrentIteration', () => {
-  const iterations = [
-    { id: 'a', startDate: '2026-09-01', duration: 14 },
-    { id: 'b', startDate: '2026-09-15', duration: 14 },
-    // A gap (break week) before this one.
-    { id: 'c', startDate: '2026-10-06', duration: 7 },
-  ]
-
-  it('includes the start date and excludes start + duration', () => {
-    expect(findCurrentIteration(iterations, '2026-09-15')?.id).toBe('b')
-    expect(findCurrentIteration(iterations, '2026-09-28')?.id).toBe('b')
-    expect(findCurrentIteration(iterations, '2026-09-14')?.id).toBe('a')
-  })
-
-  it('finds none in a gap, before the first, or after the last', () => {
-    expect(findCurrentIteration(iterations, '2026-09-30')).toBeUndefined()
-    expect(findCurrentIteration(iterations, '2026-08-31')).toBeUndefined()
-    expect(findCurrentIteration(iterations, '2026-10-13')).toBeUndefined()
   })
 })

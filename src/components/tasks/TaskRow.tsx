@@ -1,4 +1,4 @@
-import { CalendarClock, ExternalLink, Pencil, Repeat } from 'lucide-react'
+import { CalendarClock, ExternalLink, Pencil } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { formatCardDate } from '../../lib/dates'
 import {
@@ -43,8 +43,6 @@ interface TaskRowProps {
   task: Task
   meta: TaskMeta
   team: TeamMember[]
-  /** Hide the iteration when every row is in the same one. */
-  showIteration?: boolean
   today?: Date
 }
 
@@ -53,7 +51,7 @@ interface TaskRowProps {
  * assignee, plus a "Mark done" checkbox. Every edit is optimistic and confirmed by a toast.
  * Drafts can be renamed here; issue and PR titles link out to GitHub instead.
  */
-export default function TaskRow({ task, meta, team, showIteration = true, today }: TaskRowProps) {
+export default function TaskRow({ task, meta, team, today }: TaskRowProps) {
   const link = githubLink(task, meta.projectUrl)
   const overdue = isOverdue(task, today)
   const blocked = isBlocked(task)
@@ -127,11 +125,13 @@ export default function TaskRow({ task, meta, team, showIteration = true, today 
             onChange={(id) => save({ priorityOptionId: id }, 'the priority')}
           />
         )}
-        <EstimateInput
-          label={label('Estimate in hours')}
-          value={task.estimateHours}
-          onCommit={(hours) => save({ estimateHours: hours }, 'the estimate')}
-        />
+        {meta.hasEstimate && (
+          <EstimateInput
+            label={label('Estimate in hours')}
+            value={task.estimateHours}
+            onCommit={(hours) => save({ estimateHours: hours }, 'the estimate')}
+          />
+        )}
         {task.size && (
           <span className="px-1">
             <span className="sr-only">Size </span>
@@ -150,12 +150,6 @@ export default function TaskRow({ task, meta, team, showIteration = true, today 
           team={team}
           onChange={(ids) => save({ assigneeIds: ids }, 'the assignee')}
         />
-        {showIteration && task.iteration && (
-          <span className="inline-flex items-center gap-1 px-1">
-            <Repeat aria-hidden="true" className="size-3.5" />
-            {task.iteration.title}
-          </span>
-        )}
         {task.kind === 'draft' && <span className="text-xs">Draft</span>}
       </div>
     </li>

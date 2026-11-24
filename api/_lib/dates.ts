@@ -44,20 +44,3 @@ export function addDays(key: string, days: number): string {
   const [year, month, day] = key.split('-').map(Number)
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
 }
-
-export interface IterationSpan {
-  id: string
-  startDate: string
-  /** Length in days. */
-  duration: number
-}
-
-/** The iteration running on `today`: startDate <= today < startDate + duration. */
-export function findCurrentIteration<T extends IterationSpan>(
-  iterations: readonly T[],
-  today: string,
-): T | undefined {
-  return iterations.find(
-    (it) => it.startDate <= today && today < addDays(it.startDate, it.duration),
-  )
-}

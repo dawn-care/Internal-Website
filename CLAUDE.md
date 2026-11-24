@@ -7,8 +7,10 @@ Faculty coach: Drew Saur.
 
 ## Purpose
 A lightweight hub for the team, sponsor, and coach: see upcoming/past meeting agendas,
-browse project artifacts, and (team only) manage tasks, track sprint progress, see a
-personal developer dashboard, and view the team's meeting calendar.
+browse project artifacts, and (team only) manage tasks, track progress toward the next
+deadline, see a personal developer dashboard, and view the team's meeting calendar.
+The team follows the Development Methodology doc in dawn-care/Artifacts: deadline-based
+iterations (no sprints, no burndown charts), feature branch → canary → main.
 Agendas live in Google Drive and artifacts in the public dawn-care/Artifacts repo (Markdown);
 the site only reads them. Meetings live in
 the shared "DAWN Team" Google Calendar; the site only reads it. Tasks live in our
@@ -20,11 +22,11 @@ GitHub Project; the site reads and writes them through GitHub's API.
 - react-router-dom (BrowserRouter)
 - lucide-react for icons
 - Vercel serverless functions (Node.js runtime) in /api for everything that needs a secret
-- jose (session cookie encryption + Google service-account JWTs), @vercel/blob
-  (burndown snapshots)
+- jose (session cookie encryption + Google service-account JWTs)
 - No state library. No UI component library. No chart library (charts are hand-built SVG).
   No googleapis package.
-- No database. GitHub Projects is the task store; Vercel Blob holds only daily snapshot totals.
+- No database and no storage of our own. GitHub Projects is the task store. (Vercel Blob
+  was removed along with the burndown and team to-dos; old blobs are simply left unused.)
 
 ## Public data: Google Drive
 - Google Drive API v3, called from the browser with an API key.
@@ -119,11 +121,8 @@ GitHub Project; the site reads and writes them through GitHub's API.
   "simplify" it to "/(.*)"; that breaks local dev.
 - Server env vars (never prefixed VITE_, never sent to the browser):
   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET, GITHUB_ORG,
-  GITHUB_PROJECT_NUMBER, BLOB_READ_WRITE_TOKEN, GOOGLE_CALENDAR_ID, GOOGLE_SA_EMAIL,
-  GOOGLE_SA_PRIVATE_KEY, DISCORD_PUBLIC_KEY, DISCORD_USER_MAP, SHAME_DISPATCH_TOKEN,
-  ARTIFACTS_GITHUB_TOKEN.
-  (GITHUB_SNAPSHOT_TOKEN and CRON_SECRET are reserved for an
-  optional future scheduled snapshot job; don't require them.)
+  GITHUB_PROJECT_NUMBER, GOOGLE_CALENDAR_ID, GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY,
+  DISCORD_PUBLIC_KEY, DISCORD_USER_MAP, SHAME_DISPATCH_TOKEN, ARTIFACTS_GITHUB_TOKEN.
 - Server code must fail with a clear error naming any missing required env var, except:
   missing GitHub App vars mean "auth unavailable" (preview deployments), missing
   Google calendar vars mean "calendar not connected", and ARTIFACTS_GITHUB_TOKEN is optional
@@ -182,10 +181,15 @@ GitHub Project; the site reads and writes them through GitHub's API.
 - Project fields are found BY NAME at runtime (cache per function instance). All field
   and option names live in one server config file (/api/_lib/config.ts) so a rename is
   a one-line fix:
-  - Status (single select): Product Backlog, Sprint Backlog, In progress, In review,
+  - Status (single select): Product Backlog, Active Backlog, In progress, In review,
     Done, Blocked. "Done" = complete; everything else is open. "Blocked" is flagged.
-  - Iteration (iteration): the ONLY source of truth for sprint membership.
-  - Estimate (number, HOURS). The burndown's unit.
+    Options match by PREFIX (case-insensitive), because the team puts the deadline in the
+    column name ("Active Backlog (DEADLINE 12-16-26)"); "Sprint Backlog" (the sandbox
+    project's old name, still on project 4) also counts as Active Backlog. STATUS_NAMES /
+    statusKeyOf. The UI never shows the board's column names in the Deadline card (always
+    "Active Backlog" etc.); it only reads the Active Backlog name to warn when a date in it
+    (dateInName in src/lib/deadlines.ts) differs from the configured deadline's end.
+  - Estimate (number, hours). Optional: display and edit only.
   - Priority (single select: P0, P1, P2). Badge, filter, secondary sort (P0 first).
   - Size (single select: XS, S, M, L, XL). Display only, never used in math.
   - Estimated done date (project DATE field): overdue/due-soon logic. In code, call
@@ -194,22 +198,21 @@ GitHub Project; the site reads and writes them through GitHub's API.
   - Ignore "Sub-issues progress" and any other issue-level fields, except labels: issue/PR
     labels are shown read-only on task rows (drafts can't have labels). The site never
     edits labels.
-  There is no Story Points field (it was removed from the project); the site doesn't read
-  or write it, and ignores it if it reappears. The burndown is measured in Estimate hours
-  (BURNDOWN_UNIT = "estimateHours"); never mix units in one chart.
-  Required fields: Status, Iteration, Estimated done date, Estimate. If one is missing,
-  fail with a readable error naming it. All other fields (Type, Priority, Size) are
-  optional: hide their UI
-  (badges, filters, and dialog fields) when absent.
-- New Task dialog: the sprint (Iteration) defaults to "none"; the user can pick one.
+  There are no sprints: the site never reads or writes the board's Iteration field (or the
+  old Story Points field) and ignores them if present. Iterations are the deadlines in
+  src/config/deadlines.ts (see "Deadlines").
+  Required fields: Status, Estimated done date. If one is missing, fail with a readable
+  error naming it. All other fields (Estimate, Type, Priority, Size) are optional: hide
+  their UI (badges, filters, inputs and dialog fields) when absent (TaskMeta.hasEstimate).
 - Status colors come from GitHub's option colors (fetched with the project meta), mapped
   to the status-* tokens in src/index.css via statusColorTokens in src/lib/tasks; unknown
   or missing → GRAY. Every status display (lists, dialog, inline status select) uses the
   one StatusBadge component (and StatusDot in selects): the name is always shown as text,
   Blocked gets an AlertCircle instead of the dot, and Done tasks' titles are dusk with a
   line-through.
-- New items created on the site get Status "Sprint Backlog" if an iteration is set,
-  otherwise "Product Backlog", unless the user picks a status explicitly.
+- New items created on the site get Status "Product Backlog" unless the user picks one
+  (methodology: tickets start in the product backlog and move to Active Backlog when the
+  next deadline needs them).
 - Items GitHub returns redacted (content the user's token can't read) are skipped but
   counted; /tasks shows how many are hidden, with a "Sign in again" button.
 - Items can be draft issues, issues, or PRs. New task creates real ISSUES only, never
@@ -232,7 +235,6 @@ GitHub Project; the site reads and writes them through GitHub's API.
 - A failed /api/tasks request (401/404/500) shows an error with retry, never the
   "no tasks" empty state. When a view is empty because of filters, say so (e.g. "12
   tasks hidden by filters") with a way to show them.
-- "Current iteration" = the iteration where startDate <= today < startDate + duration.
 - Dates: GitHub date fields are calendar dates. Parse them as local dates
   (America/New_York), never as UTC midnight. Overdue = Estimated done date before today
   and not Done.
@@ -247,72 +249,53 @@ GitHub Project; the site reads and writes them through GitHub's API.
 - An expired/revoked session (401 session-expired or unauthenticated from any /api call)
   signs the user out app-wide (src/lib/auth/sessionEvents.ts) with a friendly message.
 
-## Team to-dos (small chores, NOT GitHub)
-- Small team chores ("Email Gerry…", "Set up St. Ann's visit") live in the private Vercel
-  Blob store, one JSON file per item: todos/<id>.json (id = crypto.randomUUID()). They
-  never touch the GitHub Project, the burndown, or GitHub at all.
-- Shape: { id, title, description?, dueDate? ("YYYY-MM-DD", America/New_York calendar
-  date), assignees (GitHub logins, one or more; [] = for everyone), done, doneBy?,
-  doneAt?, createdBy, createdAt, updatedBy, updatedAt, version }. createdBy/updatedBy/doneBy
-  come from the session, never from the request body. A to-do with no assignees is for the
-  whole team and is shown with no assignee label (never "Unassigned"). Older files with a
-  single `assignee` are read as [assignee] and saved in the new shape on their next write.
-- Validation (server): title 1–200 chars (trimmed), description ≤ 2000, dueDate valid
-  YYYY-MM-DD, assignees ≤ 20, each a current org member login (from the team list),
-  de-duplicated. PATCH `assignees` replaces the whole list.
-- Concurrency: one file per item so different items never collide. PATCH/DELETE must
-  send the item's current `version`; if it doesn't match what's stored, respond 409
-  "changed by someone else, reload" and change nothing. Writes bump version.
-- API: one function, /api/todos.ts, with a vercel.json rewrite /api/todos/:id →
-  /api/todos?id=:id (Vercel's non-Next functions treat [[...id]] like [...id], so the bare
-  /api/todos 404s; don't use it): GET (list), POST (create), PATCH /:id
-  (partial update, only changed fields), DELETE /:id. Signed-in only; mutating requests
-  require same-origin. GET returns open items + items done within the last 14 days
-  (older done items stay stored but aren't returned). In-memory list cache ≤ 15s per
-  function instance, invalidated by any write in that instance.
-- Blob: access "private", server-side only, never expose blob URLs. Reuse the Blob
-  helpers from /api/_lib (same store as burndown). Overwrites must be visible on the next
-  read (no stale CDN copy); use the smallest cache TTL the SDK allows for todos/.
-- Code: /api/_lib/todos.ts (storage + validation), src/lib/todos (types, useTodos hook
-  with optimistic updates + rollback, mock data).
-- UI: "To-dos" tab on /tasks and a "Team to-dos" dashboard widget (see below). Mock mode
-  and preview sample-data mode use src/lib/todos mock data, in-memory writes only.
-- Store nothing sensitive beyond what the team types; to-dos are team-internal and are
-  never shown to signed-out visitors.
-
-## Burndown
-- Snapshots are VIEW-TRIGGERED: there is no scheduled job and no server-owned GitHub
-  token. When a signed-in user loads /api/burndown for the CURRENT iteration, the server
-  computes today's totals with that user's token and upserts today's entry
-  (America/New_York date) into burndown/<iterationId>.estimateHours.json. Days nobody
-  views are gaps.
-- File shape: { iteration: {id,title,startDate,duration}, days: [{ date, remaining,
-  done, scope, unestimatedCount, unit }] }, measured in hours (unit "estimateHours").
-  Upsert by date (the latest view of the day wins). Plain burndown/<iterationId>.json
-  files are older Story Points snapshots: never read, list, or overwrite them. If the unit
-  ever changes again, start a new file rather than mixing units. Past iterations are
-  read-only (never rewritten).
-- Vercel Blob store is PRIVATE: read/write with access "private", server-side only;
-  never send blob URLs to the client.
-- Store only totals, never task titles or assignees.
-- Keep the snapshot computation in one function (/api/_lib/burndown.ts) that takes a
-  token, so a scheduled job (cron + a read-only token) can reuse it later if the gaps
-  become a problem.
+## Deadlines
+- The team works in deadline-based iterations: "meaningful and tangible deadlines … a hard
+  date" (Development Methodology). The ONE list is DEADLINES in src/config/deadlines.ts
+  ({ name, start, end }, inclusive America/New_York dates), shared with /api; the PR metrics
+  (PR_METRICS_RULES.iterations) and the dashboard's Deadline card both read it. A new
+  deadline is one new entry.
+- A deadline is done when Active Backlog, In Progress and In Review are empty and canary is
+  merged into main; backlog refinement follows within REFINEMENT_WINDOW_DAYS (2) days.
+  deadlinePosition (src/lib/deadlines.ts) finds the current or next deadline and whether
+  refinement is due.
+- There is no burndown, no sprint view, and no team to-do list (all removed: the team doesn't
+  use them).
 
 ## Developer dashboard (/dashboard, signed-in only)
 - One endpoint, GET /api/dashboard, returns every widget's data in one response:
-  { me, sprint, tasks, reviewQueue, myPrs, meetings, generatedAt }. Each widget is
+  { me, deadline, work, reviewQueue, myPrs, meetings, generatedAt }. Each widget is
   computed independently: if one source fails (e.g. PR search), that widget gets
   { error } and the others still return. The UI renders per-widget errors.
+- Widgets (src/components/dashboard): Deadline card (the current/next deadline, business days
+  left, a "Before the deadline" checklist: team-wide Active Backlog / In progress / In review
+  counts, which must reach 0, plus the canary → main PR (open: approvals/CI; merged since the
+  deadline started: done), Blocked count, and the backlog-refinement reminder; board and
+  release failures show inside the card), My work (my open tasks by column: In progress, In
+  review, Up next (Active Backlog), Blocked; plus an overdue count), Upcoming meetings (with a
+  prep nudge when tomorrow's or today's sponsor meeting lacks its Agenda or 4Up:
+  meetingPrep), Reviews waiting on me, My pull requests, and My PR metrics (the /metrics data
+  for me this deadline: authored/reviewed vs the fair-share band, focus areas covered, PRs
+  within size; fetched in the browser like /metrics, so it loads and fails on its own;
+  myPrMetrics in src/lib/prMetrics; sample mode shows the first team member).
 - PRs come from GitHub GraphQL `search` (type: ISSUE) scoped to `org:GITHUB_ORG`:
   review queue = `is:pr is:open review-requested:@me`, mine = `is:pr is:open author:@me`.
-  For each PR: title, url, repo, number, isDraft, createdAt, baseRefName, requested
-  reviewers, submitted reviews, and the head commit's statusCheckRollup state.
-- Team process rules the dashboard checks (keep them in src/config/process.ts):
-  2 required reviewers per PR; reviews due within 1 business day (Mon–Fri,
-  America/New_York); PR descriptions must include a demo video (detect a video link or
-  GitHub video attachment in the body: .mp4/.mov/.webm, youtube, loom, drive, or
-  github.com/user-attachments); PR flow is feature branch → canary → main.
+  Release status: `head:canary base:main`, open and merged since the deadline's start.
+  For each PR: title, url, repo, number, isDraft, createdAt, mergedAt, base/head refs,
+  requested reviewers, latest reviews, the head commit's statusCheckRollup, labels, the
+  issues it closes (with labels), changedFiles and files (path, additions, deletions).
+- The Development Methodology's PR rules, which the dashboard checks, live in
+  src/config/process.ts (shared with /api and the PR metrics) and src/lib/prRules.ts:
+  approvals: 1 for feature → canary, 2 for canary → main (never the author's own); reviews
+  due within 1 business day (the 24-business-hour target); feature branch → canary → main;
+  one ticket per PR: the issue it closes, else the number its branch starts with
+  ("121-slug"); the ticket needs a focus-area label (FOCUS_AREA_LABELS = the keys of
+  PR_METRICS_RULES.focusOwners, a test checks); size within 750 lines / 15 files, counted
+  like the PR Size metric (PR_SIZE.exclude: docs, tests, lockfiles, images); a UI change
+  (UI label on the ticket, or UI files) needs a photo or video in the description (images
+  count, not only videos). canary → main releases skip the ticket, size and media rules.
+  prProblems (src/lib/dashboard/summary.ts) names what a PR still needs; drafts aren't
+  counted in the header's "PRs to fix up".
 - meetings = the next 5 calendar events (now through +14 days), from the same calendar
   code as /api/meetings; the client joins agendas.
 - Cache /api/dashboard responses per user for 60s in memory. Never share cached data
@@ -335,7 +318,7 @@ GitHub Project; the site reads and writes them through GitHub's API.
   pr-metrics.yml (.github/scripts/pr-metrics/main.mjs). DAWN only hands over facts about
   every merged PR (author, dates, reviews, labels incl. linked/branch issues, changed files)
   and computes nothing. The site computes everything in the browser (src/lib/prMetrics/
-  compute.ts) with the rules in src/config/prMetrics.ts (PR_METRICS_RULES: deadlines, team,
+  compute.ts) with the rules in src/config/prMetrics.ts (PR_METRICS_RULES: deadlines from src/config/deadlines.ts, team,
   focus-area experts, breadth labels, size exclusions, targets); a rule change never needs
   DAWN. One fetch is shared by every card. A 404 means the workflow hasn't run yet, not an
   error. Types: src/lib/prMetrics/types.ts (raw PullRequestsFile, schemaVersion 1; computed
