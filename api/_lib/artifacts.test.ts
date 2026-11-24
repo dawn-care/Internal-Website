@@ -16,7 +16,8 @@ const TREE = {
     { path: '02 Design', type: 'tree' },
     { path: '02 Design/01 Architecture.md', type: 'blob', size: 10, sha: 'b1' },
     { path: '01 Plan/Plan.md', type: 'blob', size: 10, sha: 'c1' },
-    { path: 'diagrams/Domain Model.drawio', type: 'blob', size: 10 },
+    { path: 'diagrams/Domain Model.drawio', type: 'blob', size: 10, sha: 'd1' },
+    { path: 'README.md', type: 'blob', size: 10, sha: 'r1' },
     { path: 'diagrams/model.png', type: 'blob', size: 2048 },
     { path: 'diagrams/huge.png', type: 'blob', size: 50 * 1024 * 1024 },
     { path: '.github/TEMPLATE.md', type: 'blob', size: 10 },
@@ -83,17 +84,39 @@ afterEach(() => {
 })
 
 describe('fetchArtifacts', () => {
-  it('lists Markdown documents in order with titles, folders, slugs and dates', async () => {
+  it('lists documents and diagrams in order with titles, folders, slugs and dates', async () => {
     const snapshot = await fetchArtifacts('tok', fakeGitHub())
-    expect(snapshot.documents.map((d) => [d.path, d.slug, d.title, d.folder])).toEqual([
-      ['Feature List.md', 'feature-list', 'Feature List', null],
-      ['01 Plan/Plan.md', 'plan/plan', 'Plan', 'Plan'],
-      ['02 Design/01 Architecture.md', 'design/architecture', 'Architecture', 'Design'],
+    expect(snapshot.documents.map((d) => [d.path, d.kind, d.slug, d.title, d.folder])).toEqual([
+      ['Feature List.md', 'markdown', 'feature-list', 'Feature List', null],
+      ['01 Plan/Plan.md', 'markdown', 'plan/plan', 'Plan', 'Plan'],
+      ['02 Design/01 Architecture.md', 'markdown', 'design/architecture', 'Architecture', 'Design'],
+      [
+        'diagrams/Domain Model.drawio',
+        'diagram',
+        'diagrams/domain-model',
+        'Domain Model',
+        'diagrams',
+      ],
     ])
     expect(snapshot.documents[0]).toMatchObject({
       markdown: '# Feature List.md',
       updatedAt: '2026-11-20T15:00:00Z',
     })
+    // Diagrams get a date but no text (the viewer loads them from GitHub).
+    expect(snapshot.documents[3]).toMatchObject({ markdown: '', updatedAt: '2026-11-20T15:00:00Z' })
+  })
+
+  it('returns the root README as the index, not as an artifact', async () => {
+    const fetchImpl = fakeGitHub()
+    const snapshot = await fetchArtifacts('tok', fetchImpl)
+    expect(snapshot.index).toBe('# README.md')
+    expect(snapshot.documents.some((d) => d.path === 'README.md')).toBe(false)
+    const { query } = JSON.parse(String(fetchImpl.mock.calls[1][1]?.body)) as { query: string }
+    // The diagram (4th artifact, alias f3) is looked up without downloading its blob.
+    expect(query).toContain('f3: object(expression: $e3) { id }')
+
+    const none = { ...TREE, tree: TREE.tree.filter((e) => e.path !== 'README.md') }
+    expect((await fetchArtifacts('tok', fakeGitHub({ tree: json(none) }))).index).toBeNull()
   })
 
   it('offers only small-enough images, never other files', async () => {
@@ -121,10 +144,14 @@ describe('fetchArtifacts', () => {
       ['# raw Feature List.md', '2026-11-06T12:00:00Z'],
       ['# raw 01 Plan/Plan.md', '2026-11-06T12:00:00Z'],
       ['# raw 02 Design/01 Architecture.md', '2026-11-01T12:00:00Z'],
+      ['', '2026-11-01T12:00:00Z'],
     ])
-    // The tree plus one commits lookup per document; no GraphQL (it needs a token).
+    expect(snapshot.index).toBe('# raw README.md')
+    // The tree plus one commits lookup per artifact; no GraphQL (it needs a token).
     const apiCalls = fetchImpl.mock.calls.filter(([url]) => String(url).includes('api.github.com'))
-    expect(apiCalls).toHaveLength(4)
+    expect(apiCalls).toHaveLength(5)
+    // Diagrams aren't downloaded.
+    expect(fetchImpl.mock.calls.some(([url]) => String(url).endsWith('.drawio'))).toBe(false)
     expect(apiCalls.some(([url]) => String(url).endsWith('/graphql'))).toBe(false)
     for (const [, init] of apiCalls) {
       expect((init?.headers as Record<string, string>).Authorization).toBeUndefined()
@@ -159,7 +186,7 @@ describe('fetchArtifacts', () => {
 
     clearArtifactsCache()
     const fresh = await fetchArtifacts(null, fakeGitHub({ commits: limited }))
-    expect(fresh.documents.map((d) => d.updatedAt)).toEqual([null, null, null])
+    expect(fresh.documents.map((d) => d.updatedAt)).toEqual([null, null, null, null])
     expect(fresh.documents[0].markdown).toBe('# raw Feature List.md')
   })
 
@@ -250,10 +277,15 @@ describe('GET /api/artifacts', () => {
     const res = await call()
     expect(res.statusCode).toBe(200)
     expect(res.body).toMatchObject({
-      source: { url: 'https://github.com/dawn-care/Artifacts', branch: 'main' },
+      source: {
+        url: 'https://github.com/dawn-care/Artifacts',
+        rawUrl: 'https://raw.githubusercontent.com/dawn-care/Artifacts',
+        branch: 'main',
+      },
+      index: '# raw README.md',
       assets: ['diagrams/model.png'],
     })
-    expect((res.body as { documents: unknown[] }).documents).toHaveLength(3)
+    expect((res.body as { documents: unknown[] }).documents).toHaveLength(4)
   })
 
   it('returns every document to a signed-out visitor, cacheable by the CDN', async () => {
@@ -263,7 +295,7 @@ describe('GET /api/artifacts', () => {
     expect(res.statusCode).toBe(200)
     expect(res.headers['cache-control']).toContain('s-maxage=300')
     const body = res.body as { documents: unknown[]; assets: string[] }
-    expect(body.documents).toHaveLength(3)
+    expect(body.documents).toHaveLength(4)
     expect(body.assets).toEqual(['diagrams/model.png'])
     expect(JSON.stringify(body)).not.toContain('tok')
   })

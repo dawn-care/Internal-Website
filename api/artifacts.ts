@@ -6,7 +6,7 @@ import { ARTIFACTS_REPOSITORY } from './_lib/config.js'
 import { sendError, withErrors } from './_lib/http.js'
 
 /*
- * GET /api/artifacts           → ArtifactsResponse (every document, with its Markdown)
+ * GET /api/artifacts           → ArtifactsResponse (every artifact, the README index)
  * GET /api/artifacts?asset=<p> → one image from the repo, for documents that embed it
  *
  * PUBLIC: no session needed. The documents come from the public dawn-care/Artifacts repo,
@@ -40,8 +40,10 @@ export default withErrors(async (req, res) => {
     res.status(200).json({
       source: {
         url: `https://github.com/${ARTIFACTS_REPOSITORY.owner}/${ARTIFACTS_REPOSITORY.name}`,
+        rawUrl: `https://raw.githubusercontent.com/${ARTIFACTS_REPOSITORY.owner}/${ARTIFACTS_REPOSITORY.name}`,
         branch: ARTIFACTS_REPOSITORY.branch,
       },
+      index: snapshot.index,
       documents: snapshot.documents,
       assets: [...snapshot.assets.keys()],
       generatedAt: new Date().toISOString(),

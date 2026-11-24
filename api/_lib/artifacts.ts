@@ -3,8 +3,10 @@ import {
   compareArtifactPaths,
   extensionOf,
   folderForPath,
+  isArtifactPath,
+  isDiagramPath,
   isImagePath,
-  isMarkdownPath,
+  isIndexPath,
   isPublishablePath,
   titleForPath,
   uniqueSlugs,
@@ -14,8 +16,8 @@ import { ARTIFACTS_REPOSITORY } from './config.js'
 import { USER_AGENT } from './github/oauth.js'
 
 /*
- * Reads the Markdown documents (and the images they embed) from the public
- * dawn-care/Artifacts repo. One GitHub API call per refresh lists the files (the git tree);
+ * Reads the artifacts (Markdown documents and draw.io diagrams), the images documents embed,
+ * and the root README.md that orders them, from the public dawn-care/Artifacts repo. One GitHub API call per refresh lists the files (the git tree);
  * then:
  * - with ARTIFACTS_GITHUB_TOKEN: batched GraphQL queries return every document's text and
  *   last commit date (the token also lifts GitHub's limit of 60 anonymous API calls/hour);
@@ -67,6 +69,8 @@ type Fetch = typeof fetch
 
 export interface ArtifactsSnapshot {
   documents: ArtifactDoc[]
+  /** The root README.md (the artifacts' order and sections), or null. */
+  index: string | null
   /** Embeddable image paths → size in bytes. */
   assets: Map<string, number>
 }
@@ -175,10 +179,12 @@ function rawUrl(path: string): string {
 /** Without a token: each document's text from raw.githubusercontent.com (dates come separately). */
 async function fetchRawBatch(
   paths: string[],
+  withText: ReadonlySet<string>,
   fetchImpl: Fetch,
 ): Promise<{ text: string; updatedAt: string | null }[]> {
   return Promise.all(
     paths.map(async (path) => {
+      if (!withText.has(path)) return { text: '', updatedAt: null }
       const res = await call(fetchImpl, rawUrl(path), { headers: { 'User-Agent': USER_AGENT } })
       if (!res.ok) throw await failure(res, `raw ${path}`)
       return { text: await res.text(), updatedAt: null }
@@ -191,10 +197,14 @@ function repoUrl(path: string): string {
   return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}${path}`
 }
 
-/** One batch of documents: their text and the date of the last commit that touched each. */
+/**
+ * One batch of files: the date of the last commit that touched each, and the text of those
+ * in `withText` (diagrams don't need theirs: the viewer loads them from GitHub).
+ */
 async function fetchBatch(
   token: string,
   paths: string[],
+  withText: ReadonlySet<string>,
   fetchImpl: Fetch,
 ): Promise<{ text: string; updatedAt: string | null }[]> {
   const { owner, name, branch } = ARTIFACTS_REPOSITORY
@@ -206,7 +216,12 @@ async function fetchBatch(
     variables[`e${i}`] = `${branch}:${path}`
     variables[`p${i}`] = path
     params.push(`$e${i}: String!`, `$p${i}: String!`)
-    files.push(`f${i}: object(expression: $e${i}) { ... on Blob { text isBinary isTruncated } }`)
+    if (withText.has(path)) {
+      files.push(`f${i}: object(expression: $e${i}) { ... on Blob { text isBinary isTruncated } }`)
+    } else {
+      // Keep the variable used (GraphQL rejects unused ones) without downloading the blob.
+      files.push(`f${i}: object(expression: $e${i}) { id }`)
+    }
     histories.push(`h${i}: history(first: 1, path: $p${i}) { nodes { committedDate } }`)
   })
   const query = `query(${params.join(', ')}) {
@@ -233,7 +248,7 @@ async function fetchBatch(
 
   const commit = (repository.ref as { target?: Record<string, HistoryNode> } | null)?.target ?? {}
   return paths.map((path, i) => {
-    const blob = repository[`f${i}`] as BlobNode | null
+    const blob = withText.has(path) ? (repository[`f${i}`] as BlobNode | null) : null
     if (blob?.isTruncated)
       console.warn(`[artifacts] "${path}" is too large; showing the start only`)
     return {
@@ -259,14 +274,20 @@ export async function fetchArtifacts(
   if (tree.truncated) console.warn('[artifacts] the repository tree was truncated by GitHub')
 
   const blobs = (tree.tree ?? []).filter((e) => e.type === 'blob' && isPublishablePath(e.path))
-  const markdown = blobs
-    .filter((e) => isMarkdownPath(e.path))
+  const indexPath = blobs.find((e) => isIndexPath(e.path))?.path ?? null
+  const artifacts = blobs
+    .filter((e) => isArtifactPath(e.path) && !isIndexPath(e.path))
     .map((e) => e.path)
     .sort(compareArtifactPaths)
-  if (markdown.length > MAX_DOCUMENTS) {
-    console.warn(`[artifacts] showing the first ${MAX_DOCUMENTS} of ${markdown.length} documents`)
+  if (artifacts.length > MAX_DOCUMENTS) {
+    console.warn(`[artifacts] showing the first ${MAX_DOCUMENTS} of ${artifacts.length} artifacts`)
   }
-  const paths = markdown.slice(0, MAX_DOCUMENTS)
+  const paths = artifacts.slice(0, MAX_DOCUMENTS)
+  // Text is needed for documents and the index; diagrams are loaded by the viewer.
+  const withText = new Set([
+    ...paths.filter((p) => !isDiagramPath(p)),
+    ...(indexPath ? [indexPath] : []),
+  ])
   const shaByPath = new Map(blobs.map((e) => [e.path, e.sha ?? '']))
   const assets = new Map(
     blobs
@@ -283,15 +304,23 @@ export async function fetchArtifacts(
         fetchImpl,
       )
   const documents: ArtifactDoc[] = []
+  let index: string | null = null
+  // The index rides along with the last batch; it gets no date and isn't a document.
+  const toFetch = indexPath ? [...paths, indexPath] : paths
   const batchSize = token ? BATCH_SIZE : RAW_BATCH_SIZE
-  for (let start = 0; start < paths.length; start += batchSize) {
-    const batch = paths.slice(start, start + batchSize)
+  for (let start = 0; start < toFetch.length; start += batchSize) {
+    const batch = toFetch.slice(start, start + batchSize)
     const contents = token
-      ? await fetchBatch(token, batch, fetchImpl)
-      : await fetchRawBatch(batch, fetchImpl)
+      ? await fetchBatch(token, batch, withText, fetchImpl)
+      : await fetchRawBatch(batch, withText, fetchImpl)
     batch.forEach((path, i) => {
+      if (path === indexPath) {
+        index = contents[i].text
+        return
+      }
       documents.push({
         path,
+        kind: isDiagramPath(path) ? 'diagram' : 'markdown',
         slug: slugs.get(path)!,
         title: titleForPath(path),
         folder: folderForPath(path),
@@ -300,7 +329,7 @@ export async function fetchArtifacts(
       })
     })
   }
-  return { documents, assets }
+  return { documents, index, assets }
 }
 
 let cached: { snapshot: ArtifactsSnapshot; at: number } | undefined

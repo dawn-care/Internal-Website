@@ -1,18 +1,23 @@
 import {
   BookOpen,
+  ChartColumn,
   ClipboardList,
+  Compass,
   DraftingCompass,
   FlaskConical,
+  FileText,
   FolderOpen,
   ListChecks,
+  Network,
   Presentation,
+  Workflow,
   type LucideIcon,
 } from 'lucide-react'
 
 /**
- * Icons for Artifacts folders (shown as groups on /artifacts), keyed by slug (the folder name
- * without its "NN " prefix, lowercased and hyphenated: "03 Architecture & Design" →
- * "architecture-design").
+ * Icons for the sections on /artifacts, keyed by slug: a "##" heading in the Artifacts
+ * README (or, without one, a folder name without its "NN " prefix), lowercased and
+ * hyphenated: "Architecture & Design" → "architecture-design".
  * Unlisted categories get DEFAULT_CATEGORY_ICON.
  */
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {
@@ -23,6 +28,11 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   testing: FlaskConical,
   presentations: Presentation,
   research: BookOpen,
+  overview: Compass,
+  process: Workflow,
+  metrics: ChartColumn,
+  documents: FileText,
+  diagrams: Network,
 }
 
 export const DEFAULT_CATEGORY_ICON: LucideIcon = FolderOpen

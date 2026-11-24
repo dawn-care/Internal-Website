@@ -1,4 +1,10 @@
-import { compareArtifactPaths, folderForPath, titleForPath, uniqueSlugs } from './paths'
+import {
+  compareArtifactPaths,
+  folderForPath,
+  isDiagramPath,
+  titleForPath,
+  uniqueSlugs,
+} from './paths'
 import type { ArtifactsResponse } from './types'
 
 function daysAgo(days: number): string {
@@ -90,19 +96,48 @@ tablet  ←──  backend  ──→  caregiver app
 
 ---
 
-The diagram source lives in [diagrams/Domain Model.drawio](../diagrams/Domain%20Model.drawio) (opens on GitHub).
+The data model is drawn in the [Domain Model](../diagrams/Domain%20Model.drawio).
 `,
   ],
+  // A diagram: no Markdown; the viewer loads the real file from dawn-care/Artifacts.
+  ['diagrams/Domain Model.drawio', 3, ''],
 ]
+
+/** The repo's root README.md: sections and order (Architecture is left for "Other"). */
+const INDEX = `# D.A.W.N. Artifacts
+
+Sample data: the project's documents, in reading order.
+
+## Overview
+
+Start here.
+
+- [Project Synopsis](Project%20Synopsis.md)
+
+## Requirements
+
+- [Functional and Non-Functional Requirements](Functional%20and%20Non-Functional%20Requirements.md)
+- [Feature List](Feature%20List.md)
+
+## Design
+
+- [Domain Model](diagrams/Domain%20Model.drawio)
+`
 
 /** Fake /api/artifacts for VITE_TASKS_MOCK=true, so local dev needs no network. */
 export function mockArtifacts(): ArtifactsResponse {
   const sorted = [...DOCS].sort((a, b) => compareArtifactPaths(a[0], b[0]))
   const slugs = uniqueSlugs(sorted.map(([path]) => path))
   return {
-    source: { url: 'https://github.com/dawn-care/Artifacts', branch: 'main' },
+    source: {
+      url: 'https://github.com/dawn-care/Artifacts',
+      rawUrl: 'https://raw.githubusercontent.com/dawn-care/Artifacts',
+      branch: 'main',
+    },
+    index: INDEX,
     documents: sorted.map(([path, days, markdown]) => ({
       path,
+      kind: isDiagramPath(path) ? ('diagram' as const) : ('markdown' as const),
       slug: slugs.get(path)!,
       title: titleForPath(path),
       folder: folderForPath(path),

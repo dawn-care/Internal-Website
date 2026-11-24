@@ -11,15 +11,18 @@ import PageTitle from '../components/PageTitle'
 import Skeleton from '../components/Skeleton'
 import {
   artifactSourceUrl,
+  diagramViewerUrl,
   findArtifact,
   inlineText,
+  organizeArtifacts,
   parseDoc,
+  sectionByPath,
   useArtifacts,
   type ArtifactDoc,
   type ArtifactsResponse,
 } from '../lib/artifacts'
 
-/** Public: one document from dawn-care/Artifacts, at /artifacts/<slug>. */
+/** Public: one artifact (document or diagram) from dawn-care/Artifacts, at /artifacts/<slug>. */
 export default function ArtifactDocument() {
   const slug = useParams()['*'] ?? ''
   const query = useArtifacts()
@@ -56,7 +59,7 @@ export default function ArtifactDocument() {
   } else {
     const doc = findArtifact(query.data.documents, slug)
     body = doc ? (
-      <DocumentView doc={doc} data={query.data} />
+      <ArtifactView doc={doc} data={query.data} />
     ) : (
       <NotFound message="We couldn't find that document. It may have been renamed or moved." />
     )
@@ -65,7 +68,99 @@ export default function ArtifactDocument() {
   return <div className="mx-auto max-w-6xl px-6 py-12 sm:py-16">{body}</div>
 }
 
-function DocumentView({ doc, data }: { doc: ArtifactDoc; data: ArtifactsResponse }) {
+/** The header every artifact shares, then the document or the diagram. */
+function ArtifactView({ doc, data }: { doc: ArtifactDoc; data: ArtifactsResponse }) {
+  const section = useMemo(
+    () => sectionByPath(organizeArtifacts(data.documents, data.index)).get(doc.path) ?? null,
+    [data, doc],
+  )
+  return (
+    <>
+      <PageTitle title={doc.title} />
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <Breadcrumb items={[{ label: 'Artifacts', to: '/artifacts' }, { label: doc.title }]} />
+        <a
+          href={artifactSourceUrl(data.source, doc.path)}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-sm text-sm font-medium text-link hover:underline hover:underline-offset-4"
+        >
+          View on GitHub
+          <ExternalLinkLabel />
+        </a>
+      </div>
+      {doc.kind === 'diagram' ? (
+        <DiagramView doc={doc} data={data} section={section} />
+      ) : (
+        <DocumentView doc={doc} data={data} section={section} />
+      )}
+    </>
+  )
+}
+
+function Meta({ doc, section }: { doc: ArtifactDoc; section: string | null }) {
+  if (!section && !doc.updatedAt) return null
+  return (
+    <p className="mb-3 text-sm text-ink-muted">
+      {section}
+      {section && doc.updatedAt && ' · '}
+      {doc.updatedAt && <LastUpdated iso={doc.updatedAt} relative />}
+    </p>
+  )
+}
+
+/**
+ * A draw.io diagram in the diagrams.net viewer, which loads the file straight from GitHub
+ * (the repo is public). Framed white like other embedded previews, in both themes.
+ */
+function DiagramView({
+  doc,
+  data,
+  section,
+}: {
+  doc: ArtifactDoc
+  data: ArtifactsResponse
+  section: string | null
+}) {
+  return (
+    <div className="mt-8">
+      <Meta doc={doc} section={section} />
+      <h1 className="text-4xl font-semibold">{doc.title}</h1>
+      <p className="mt-3 max-w-prose text-ink-muted">
+        Use the viewer&apos;s toolbar to zoom, and its page menu to switch between diagram pages.
+      </p>
+      <div className="mt-8 overflow-hidden rounded-2xl border border-border bg-white">
+        <iframe
+          src={diagramViewerUrl(data.source, doc)}
+          title={`${doc.title} (diagram)`}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          className="block h-[75vh] min-h-96 w-full"
+        />
+      </div>
+      <a
+        href={diagramViewerUrl(data.source, doc, { lightbox: true })}
+        target="_blank"
+        rel="noreferrer"
+        className={`mt-6 ${buttonClasses('secondary')}`}
+      >
+        Open full screen
+        <ExternalLinkLabel />
+      </a>
+    </div>
+  )
+}
+
+function DocumentView({
+  doc,
+  data,
+  section,
+}: {
+  doc: ArtifactDoc
+  data: ArtifactsResponse
+  section: string | null
+}) {
   const { blocks } = parseDoc(doc)
   const context = useMemo<MarkdownContext>(
     () => ({
@@ -84,28 +179,9 @@ function DocumentView({ doc, data }: { doc: ArtifactDoc; data: ArtifactsResponse
 
   return (
     <>
-      <PageTitle title={doc.title} />
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-        <Breadcrumb items={[{ label: 'Artifacts', to: '/artifacts' }, { label: doc.title }]} />
-        <a
-          href={artifactSourceUrl(data.source, doc.path)}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-sm text-sm font-medium text-link hover:underline hover:underline-offset-4"
-        >
-          View on GitHub
-          <ExternalLinkLabel />
-        </a>
-      </div>
       <div className="mt-8 lg:grid lg:grid-cols-[minmax(0,1fr)_14rem] lg:gap-12">
         <article className="max-w-3xl min-w-0">
-          {(doc.folder || doc.updatedAt) && (
-            <p className="mb-3 text-sm text-ink-muted">
-              {doc.folder}
-              {doc.folder && doc.updatedAt && ' · '}
-              {doc.updatedAt && <LastUpdated iso={doc.updatedAt} relative />}
-            </p>
-          )}
+          <Meta doc={doc} section={section} />
           {!hasTitle && <h1 className="text-4xl font-semibold">{doc.title}</h1>}
           {doc.markdown.trim() ? (
             <div className={hasTitle ? '' : 'mt-8'}>

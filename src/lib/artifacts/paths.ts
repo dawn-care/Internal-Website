@@ -56,6 +56,29 @@ export function isMarkdownPath(path: string): boolean {
   return extensionOf(path) === 'md'
 }
 
+/** A draw.io diagram (shown with the diagrams.net viewer). */
+export function isDiagramPath(path: string): boolean {
+  return extensionOf(path) === 'drawio'
+}
+
+/** Files that become artifacts on the site: Markdown documents and draw.io diagrams. */
+export function isArtifactPath(path: string): boolean {
+  return isMarkdownPath(path) || isDiagramPath(path)
+}
+
+/**
+ * The repo's root README.md is not an artifact: it's the index that orders and groups them
+ * (its "##" headings are sections, its links the artifacts in order).
+ */
+export function isIndexPath(path: string): boolean {
+  return /^readme\.md$/i.test(path)
+}
+
+/** "Feature List.md" / "Domain Model.drawio" → the name without its artifact extension. */
+function stripArtifactExtension(name: string): string {
+  return name.replace(/\.(md|drawio)$/i, '')
+}
+
 export function isImagePath(path: string): boolean {
   return extensionOf(path) in ARTIFACT_IMAGE_TYPES
 }
@@ -67,7 +90,7 @@ export function isPublishablePath(path: string): boolean {
 
 /** "Feature List.md" → "Feature List"; "02 Design/01 Architecture.md" → "Architecture". */
 export function titleForPath(path: string): string {
-  const name = path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/i, '')
+  const name = stripArtifactExtension(path.slice(path.lastIndexOf('/') + 1))
   return parseOrderedName(name).name || name
 }
 
@@ -79,8 +102,7 @@ export function folderForPath(path: string): string | null {
 
 /** "02 Design/01 Architecture.md" → "design/architecture". */
 export function slugForPath(path: string): string {
-  return path
-    .replace(/\.md$/i, '')
+  return stripArtifactExtension(path)
     .split('/')
     .map((segment) => slugify(parseOrderedName(segment).name) || slugify(segment) || 'untitled')
     .join('/')
@@ -104,8 +126,8 @@ export function compareArtifactPaths(a: string, b: string): number {
     const bFile = i === bSegments.length - 1
     if (aFile !== bFile) return aFile ? -1 : 1
     return compareOrderedNames(
-      aSegments[i].replace(/\.md$/i, ''),
-      bSegments[i].replace(/\.md$/i, ''),
+      stripArtifactExtension(aSegments[i]),
+      stripArtifactExtension(bSegments[i]),
     )
   }
   return aSegments.length - bSegments.length

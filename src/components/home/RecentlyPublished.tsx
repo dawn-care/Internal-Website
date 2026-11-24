@@ -1,6 +1,11 @@
-import { ArrowRight, FileText } from 'lucide-react'
+import { ArrowRight, FileText, Network } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { recentArtifacts, type ArtifactsQuery } from '../../lib/artifacts'
+import {
+  organizeArtifacts,
+  recentArtifacts,
+  sectionByPath,
+  type ArtifactsQuery,
+} from '../../lib/artifacts'
 import LastUpdated from '../artifacts/LastUpdated'
 import EmptyState from '../EmptyState'
 import ErrorState from '../ErrorState'
@@ -58,6 +63,7 @@ function RecentlyPublishedBody({ artifacts }: { artifacts: ArtifactsQuery }) {
     )
   }
   const recent = recentArtifacts(artifacts.data.documents, RECENT_COUNT)
+  const sections = sectionByPath(organizeArtifacts(artifacts.data.documents, artifacts.data.index))
   if (recent.length === 0) {
     return <EmptyState>Nothing published yet. Project documents will appear here.</EmptyState>
   }
@@ -71,8 +77,12 @@ function RecentlyPublishedBody({ artifacts }: { artifacts: ArtifactsQuery }) {
             className="group shadow-card hover:shadow-card-hover flex h-full card-hover flex-col rounded-2xl bg-surface p-6"
           >
             <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wider text-ink-muted uppercase">
-              <FileText aria-hidden="true" className="size-3.5" />
-              {doc.folder ?? 'Document'}
+              {doc.kind === 'diagram' ? (
+                <Network aria-hidden="true" className="size-3.5" />
+              ) : (
+                <FileText aria-hidden="true" className="size-3.5" />
+              )}
+              {sections.get(doc.path) ?? (doc.kind === 'diagram' ? 'Diagram' : 'Document')}
             </span>
             <span className="mt-2 font-heading text-lg leading-snug font-semibold group-hover:text-link">
               {doc.title}

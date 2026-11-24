@@ -49,14 +49,32 @@ GitHub Project; the site reads and writes them through GitHub's API.
 - Artifacts are NOT in Drive any more (see "Artifacts" below).
 
 ## Public data: Artifacts (dawn-care/Artifacts repo)
-- The /artifacts pages (public: signed in or not) show the Markdown (.md) files on the `main`
-  branch of the PUBLIC dawn-care/Artifacts repo (ARTIFACTS_REPOSITORY in
-  /api/_lib/config.ts). The site never writes to that repo.
+- The /artifacts pages (public: signed in or not) show the artifacts on the `main` branch of
+  the PUBLIC dawn-care/Artifacts repo (ARTIFACTS_REPOSITORY in /api/_lib/config.ts): Markdown
+  (.md) documents and draw.io (.drawio) diagrams (ArtifactDoc.kind "markdown" | "diagram").
+  The site never writes to that repo.
+- Order and sections come from the repo's root README.md (never an artifact itself; returned
+  as `index`): organizeArtifacts in src/lib/artifacts/selectors.ts makes each "##" (or deeper)
+  heading a section, its links (lists, paragraphs or tables, resolved like document links) the
+  section's artifacts in order, and a link-free paragraph under the heading its description.
+  Artifacts the README doesn't link go in a final "Other" section. No README (or one linking
+  no artifact) → grouped by top-level folder, with "NN " prefixes. Section names label
+  artifacts in search, on document pages and on the Home page; section icons are keyed by
+  slug in src/config/categoryIcons.ts. Reordering is a README edit, never a site change.
+  In the folder fallback, root files are "Documents" (untitled if there are no folders) and
+  folder names are capitalized.
+- /artifacts has a List (default) / Cards toggle (src/components/artifacts/ViewToggle.tsx),
+  remembered per browser in localStorage "dawn:artifact-view" (src/lib/storage). Search
+  results are always a list.
+- Diagrams: the server reads only their date (no text). The document page embeds the
+  diagrams.net viewer (viewer.diagrams.net, `#U` + the raw.githubusercontent.com URL, which is
+  CORS-enabled), framed white, plus "Open full screen" (lightbox=1). diagramViewerUrl builds
+  both. Links to a .drawio file from a document go to its site page.
 - The browser doesn't call GitHub itself (anonymous API calls are limited to 60/hour per IP):
   GET /api/artifacts (public, no session) reads the repo once and caches it — 5 minutes per
   function instance (the last good copy is served if a refresh fails) and on the CDN
   (s-maxage=300). It returns every document with its Markdown, title, folder and
-  last-commit date, plus `source` (the repo URL and branch) (ArtifactsResponse in
+  last-commit date, plus `index` (the README) and `source` (repo URL, raw URL, branch) (ArtifactsResponse in
   src/lib/artifacts/types.ts). One API call lists the files (git tree), then:
   - with the optional ARTIFACTS_GITHUB_TOKEN (fine-grained, read-only Contents on
     dawn-care/Artifacts): batched GraphQL returns text + last-commit dates, and the token lifts
